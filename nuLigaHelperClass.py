@@ -1,62 +1,62 @@
 # ---------------------------------------------------------------
 #                          nuLigaHelper
 # ---------------------------------------------------------------
-# A python tool in planning home gomes for TuS Raubling Handball
+# A python tool in planning home games for Handball clubs
 # Functions:
-# - Read home game plan for Gymnasium Raubling from nuLiga
+# - Read home game plan for sports stadium from nuLiga
 # - Update game plan Excel document with Judge scheduling
 # - Send notifications to game Judges
 # - Send notifications to team leaders
 # - Send notification to referee planner
-# - Send newspaper article to Gemeindeanzeiger
+# - Send newspaper article to local newspaper
 # ---------------------------------------------------------------
-# Created by: Manuel Rösler
+# Created by: MrWillibald
 # Version 0.1
 # Date: 16.04.2018
 # ---------------------------------------------------------------
-# Created by: Manuel Rösler
+# Created by: MrWillibald
 # Version 0.2
 # Info: Added JudgeMV, Added SMS capabilities
 # Date: 25.09.2018
 # ---------------------------------------------------------------
-# Created by: Manuel Rösler
+# Created by: MrWillibald
 # Version 0.2.1
 # Info: Fixed issue with 'GE' games, added autofilter
 #       Watch emails and SMS with empty judges!
 # Date: 10.12.2018
 # ---------------------------------------------------------------
-# Created by: Manuel Rösler
+# Created by: MrWillibald
 # Version 0.2.2
 # Info: Only tournament information for MI and GE
 # Date: 11.03.2019
 # ---------------------------------------------------------------
-# Created by: Manuel Rösler
+# Created by: MrWillibald
 # Version 0.3
 # Info: Restructured to object oriented class,
 #       Added home referee notification
 # Date: 12.03.2019
 # ---------------------------------------------------------------
-# Created by: Manuel Rösler
+# Created by: MrWillibald
 # Version 0.4
 # Info: Moved config to external json file, added logger
 # Date: 23.07.2019
 # ---------------------------------------------------------------
-# Created by: Manuel Rösler
+# Created by: MrWillibald
 # Version 0.5
 # Info: Added columns for Kuchen/Verkauf job
 # Date: 07.09.2019
 # ---------------------------------------------------------------
-# Created by: Manuel Rösler
+# Created by: MrWillibald
 # Version 0.6
 # Info: Moved message strings to external config file
 # Date: 10.10.2019
 # ---------------------------------------------------------------
-# Created by: Manuel Rösler
+# Created by: MrWillibald
 # Version 0.6.1
 # Info: Fixed string conversion in warnings
 # Date: 08.11.2019
 # ---------------------------------------------------------------
-# Created by: Manuel Rösler
+# Created by: MrWillibald
 # Version 0.7
 # Info: Reworked home referee notifications with config file
 # Date: 28.02.2020
