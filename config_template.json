@@ -1,0 +1,68 @@
+{
+    "club":{
+        "info":{
+            "name":"TuS Heimatstadt",
+            "location":"xxxxx"
+        },
+        "email":{
+            "smtpserver":"smtp.musterserver.com",
+            "mail_ID":"mustermann@musterserver.com",
+            "mail_password":"password",
+            "mailAddrNewspaper":"info@heimatstadt.de"
+        },
+        "dropbox":{
+            "dropbox_token":"xxxx",
+            "dropbox_folder":"TuS Heimatstadt Handball"
+        },
+        "twilio":{
+            "twilio_sid":"xxxxxxxxxx",
+            "twilio_token":"xxxxxxxxxx",
+            "twilio_ID":"TusHandball"
+        },
+        "columns":{
+            "_colDay":"Day",
+            "_colDate":"Datum",
+            "_colTime":"Zeit",
+            "_colNr":"Nr.",
+            "_colAK":"AK",
+            "_colStaffel":"Staffel",
+            "_colHome":"Heimmannschaft",
+            "_colGuest":"Gastmannschaft",
+            "_colScore":"Tore / Punkte",
+            "_colJTeam":"Team Kampfgericht",
+            "_colJMV":"MV Kampfgericht",
+            "_colMailJMV":"E-Mail/Tel.-Nr. MV Kampfgericht",
+            "_colJudge1":"Zeitnehmer",
+            "_colMailJudge1":"E-Mail/Tel.-Nr. Zeitnehmer",
+            "_colJudge2":"Sekretär",
+            "_colMailJudge2":"E-Mail/Tel.-Nr. Sekretär",
+            "_colCake":"Kuchen/Verkauf",
+            "_colMailCake":"E-Mail/Tel.-Nr. Kuchen/Verkauf",
+            "_enc":"utf-8"
+        },
+        "texts":{
+            "mailErrorSubject":"Benachrichtigung Fehler",
+            "mailError":"Hallo Manu,\n\nbeim Update des Heimspielplans ist ein Fehler aufgetreten, die Spielnummern stimmen nicht überein. Bitte überprüfe den Fehler.\n\nViele Grüße Max",
+            "mailNewspaperSubject":"Veranstaltungshinweis für Heimatstadtanzeiger",
+            "mailNewspaper":"Hallo Frau Mustermann,\n\nhier der Veranstaltungshinweis zu unserem Spieltag für den Heimatstadtanzeiger am {}:\n\nHandball: nächster Heimspieltag\nAm {} den {} finden folgende Begegnungen in der Sporthalle Heimatstadt statt:\n{}Für das leibliche Wohl ist wie immer bestens gesorgt. Die Handballer des TuS Heimatstadt freuen sich auf euren Besuch!\n\nMit freundlichen Grüßen\nMax Mustermann",
+            "mailJudgeSubject":"Benachrichtigung Kampfgericht",
+            "mailJudge":"Hallo {},\n\ndu bist morgen ({}) für das Kampfgericht beim Spiel der {} {} gegen {} eingeteilt. Das Spiel beginnt um {} in der Halle Heimatstadt. Bitte sei 1 Stunde vor Anpfiff in der Halle.\n\nViele Grüße Max",
+            "textJudge":"Hallo {},\ndu bist morgen ({}) für das Kampfgericht beim Spiel der {} eingeteilt. Das Spiel beginnt um {} in der Heimatstadt-Halle. Bitte sei 1 Stunde vor Anpfiff in der Halle.\nVG Max",
+            "mailMVSubject":"Benachrichtigung Kampfgericht",
+            "mailMV":"Hallo {},\n\naus deiner Mannschaft {} sind morgen ({}) {} und {} für das Kampfgericht beim Spiel der {} {} gegen {} eingeteilt. Das Spiel beginnt um {} in der Halle Heimatstadt. Die Spieler erhalten ebenfalls eine Benachrichtigung.\n\nViele Grüße Max",
+            "textMV":"Hallo {},\naus deiner Mannschaft {} sind morgen ({}) {} und {} für das Kampfgericht beim Spiel der {} eingeteilt. Das Spiel beginnt um {} in der Heimatstadt-Halle.\nVG Max",
+            "mailRefCoordSubject":"Benachrichtigung fehlende Schiedsrichter",
+            "mailRefCoordTargets":[
+                {
+                    "Name":"Schiedsrichterwart",
+                    "Address":"+4912345678910"
+                },
+                {
+                    "Name":"Abteilungsleiter",
+                    "Address":"m-chraedel@t-online.de"
+                }
+            ],
+            "mailRefCoord":"Hallo {},\nfür morgen ({}) wurden bei folgenden Heimspielen keine Schiedsricher bestimmt:\n{}Folgende Personen werden benachrichtigt: {}\nVG Max"
+        }
+    }
+}
