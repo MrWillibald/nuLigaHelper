@@ -412,64 +412,6 @@ class nuLigaHomeGames:
                     logging.warning("No valid phone number or email address available at game " + str(game))
         return cnt
 
-    def send_RefNotification_depr(self, date):
-        """Send referee notification to referee coordinator"""
-        noteTable = self.gameTable[self.gameTable[self._colDate].str.contains(
-            strTomorrow) & self.gameTable[self._colScore].str.contains("Heim")]
-        # send SMS
-        cnt = 0
-        fromaddr = self.twilio_ID
-        toaddr = self.cellRefCoordinator
-        smsText = ("Hallo Tanja,\n"
-                   "für morgen (" + date + ") wurden bei folgenden Heimspielen keine Schiedsrichter bestimmt:\n")
-        mailText = ("\n"
-                    "für morgen (" + date + ") wurden bei folgenden Heimspielen keine Schiedsrichter von der spielleitenden Stelle bestimmt:\n")
-        for game in noteTable[self._colNr]:
-            AK = noteTable.loc[noteTable[self._colNr]
-                               == game, self._colAK].values[0]
-            strTime = noteTable.loc[noteTable[self._colNr]
-                                    == game, self._colTime].values[0]
-            smsText = smsText + AK + " um " + strTime + "\n"
-            mailText = mailText + AK + " um " + strTime + "\n"
-            cnt = cnt + 1
-            #print("Spiel " + str(game) + " braucht einen Heimschiedsrichter!")
-        smsText = smsText + "LG Manuel"
-        mailText = mailText + \
-            "Der Schiedsrichterwart (Tanja) wird ebenfalls benachrichtigt.\n\nVG Manuel"
-        self.send_SMS(fromaddr, toaddr, smsText)
-        # send Mails
-        fromaddr = 'manuroesler@aol.com'
-        # Mail to Markus
-        msgMarkus = MIMEMultipart()
-        msgMarkus['Subject'] = 'Benachrichtigung fehlende Schiedsrichter'
-        msgMarkus['From'] = fromaddr
-        toaddr = 'm-chraedel@t-online.de'
-        msgMarkus['To'] = toaddr
-        textMarkus = "Hallo Markus,\n" + mailText
-        msgMarkus.attach(MIMEText(textMarkus, 'plain'))
-        mailMarkus = msgMarkus.as_string()
-        self.send_Mail(fromaddr, toaddr, mailMarkus)
-        # Mail to Andreas
-        msgAndi = MIMEMultipart()
-        msgAndi['Subject'] = 'Benachrichtigung fehlende Schiedsrichter'
-        msgAndi['From'] = fromaddr
-        toaddr = 'andreas.hackenbroich@web.de'
-        msgAndi['To'] = toaddr
-        textAndi = "Hallo Andreas,\n" + mailText
-        msgAndi.attach(MIMEText(textAndi, 'plain'))
-        mailAndi = msgAndi.as_string()
-        self.send_Mail(fromaddr, toaddr, mailAndi)
-        # Mail to Manu
-        msgManu = MIMEMultipart()
-        msgManu['Subject'] = 'Benachrichtigung fehlende Schiedsrichter'
-        msgManu['From'] = fromaddr
-        msgManu['To'] = fromaddr
-        textManu = "Hallo Manu,\n" + mailText
-        msgManu.attach(MIMEText(textManu, 'plain'))
-        mailManu = msgManu.as_string()
-        self.send_Mail(fromaddr, fromaddr, mailManu)
-        return cnt
-
     def send_RefNotification(self, date):
         """Send referee notification to referee coordinator"""
         # collect games with missing referees
