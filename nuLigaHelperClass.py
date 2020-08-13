@@ -61,6 +61,11 @@
 # Info: Reworked home referee notifications with config file
 # Date: 28.02.2020
 # ---------------------------------------------------------------
+# Created by: MrWillibald
+# Version 0.7.1
+# Info: Send error mails only once
+# Date: 13.08.2020
+# ---------------------------------------------------------------
 
 import requests
 import time
@@ -88,7 +93,7 @@ class nuLigaHomeGames:
     def set_today(self, today):
         """Set todays date. Intended for debugging."""
         self._today = today
-        if self._today.month >= 8:
+        if self._today.month >= 7:
             self._year = self._today.year
         else:
             self._year = today.year - 1
@@ -158,8 +163,8 @@ class nuLigaHomeGames:
             self.dbc.files_download_to_file(
                 self.file, '/' + self.dropbox_folder + '/' + self.file)
         except dropbox.exceptions.ApiError:
-            logging.warning("Error while loading judge schedule from Dropbox, \
-                             new schedule is created")
+            logging.warning("Error while loading judge schedule from Dropbox, "\
+                            "new schedule is created")
         logging.info("Judge schedule loaded and saved successfully from Dropbox")
 
     def upload_toDropbox(self):
@@ -179,20 +184,20 @@ class nuLigaHomeGames:
         """Scrape Hallenspielan for specified sports hall from BHV website"""
         logging.info("Read current home game plan from BHV Hallenspielplan website")
         lMonths = [#'September+{part1}'.format(**self.__dictSeason),
-                   'Oktober+{part1}'.format(**self.__dictSeason),
-                   'November+{part1}'.format(**self.__dictSeason),
-                   'Dezember+{part1}'.format(**self.__dictSeason),
-                   'Januar+{part2}'.format(**self.__dictSeason),
-                   'Februar+{part2}'.format(**self.__dictSeason),
-                   'März+{part2}'.format(**self.__dictSeason)]#,
-                   #'April+{part2}'.format(**self.__dictSeason)]
+            'Oktober+{part1}'.format(**self.__dictSeason),
+            'November+{part1}'.format(**self.__dictSeason),
+            'Dezember+{part1}'.format(**self.__dictSeason),
+            #'Januar+{part2}'.format(**self.__dictSeason),
+            'Februar+{part2}'.format(**self.__dictSeason),
+            'März+{part2}'.format(**self.__dictSeason),
+            'April+{part2}'.format(**self.__dictSeason)]
         lGames = list()
         # read all pages in the season (http requests)
         for month in lMonths:
             # read contents from gym plan
-            page = requests.get('https://bhv-handball.liga.nu/cgi-bin/WebObjects/nuLigaHBDE.woa/wa/\
-                                courtInfo?month={}&federation=BHV&championship=OB+{}&location={}'
-                                .format(month, self.__season, self.location))
+            page = requests.get("https://bhv-handball.liga.nu/cgi-bin/WebObjects/nuLigaHBDE.woa/"\
+                "wa/courtInfo?federation=BHV&roundTyp=0&month={}&championship=OB+{}&location={}"\
+                .format(month, self.__season, self.location))
             table = pd.read_html(page.content, header=0, attrs={"class": "result-set"})
             table[0].drop(table[0].columns[[9, 10, 11]], axis=1, inplace=True)
             table[0].columns = ([self._colDay,
@@ -248,6 +253,7 @@ class nuLigaHomeGames:
     def merge_tables(self):
         """Merge up-to-date Hallenspielplan with scheduled jobs file"""
         logging.info("Update home game plan")
+        sendError = False
         for game in self.onlineTable[self._colNr]:
             try:
                 judges = self.gameTable.loc[self.gameTable[self._colNr] == game, 
@@ -275,17 +281,21 @@ class nuLigaHomeGames:
                 # oTable = pTable
                 if self.onlineTable.loc[self.onlineTable[self._colNr] == game, [self._colAK]].values[0] != "GE":
                     # send Error Notification
-                    fromaddr        = self.mail_ID
-                    toaddr          = fromaddr
-                    msg             = MIMEMultipart()
-                    msg['From']     = fromaddr
-                    msg['Subject']  = self.mailErrorSubject
-                    msg['To']       = toaddr
-                    body            = self.mailError
-                    msg.attach(MIMEText(body, 'plain'))
-                    text = msg.as_string()
-                    self.send_Mail(fromaddr, toaddr, text)
+                    sendError = True
                     logging.warning("Spielnummer not contained in home schedule, please correct manually!")
+
+        if sendError:
+            fromaddr        = self.mail_ID
+            toaddr          = fromaddr
+            msg             = MIMEMultipart()
+            msg['From']     = fromaddr
+            msg['Subject']  = self.mailErrorSubject
+            msg['To']       = toaddr
+            body            = self.mailError
+            msg.attach(MIMEText(body, 'plain'))
+            text = msg.as_string()
+            self.send_Mail(fromaddr, toaddr, text)
+            
         # make game and online table identical if merging was successful
         self.gameTable = self.onlineTable
         logging.info("Update home game plan completed")
