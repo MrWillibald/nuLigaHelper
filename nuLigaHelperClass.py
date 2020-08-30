@@ -66,6 +66,11 @@
 # Info: Send error mails only once
 # Date: 13.08.2020
 # ---------------------------------------------------------------
+# Created by: MrWillibald
+# Version 0.8
+# Info: Added month check to prevent double or missing games
+# Date: 13.08.2020
+# ---------------------------------------------------------------
 
 import requests
 import time
@@ -82,7 +87,7 @@ import json
 import logging
 
 # Version string
-version = '0.7'
+version = '0.8'
 # Debug flag
 debug = False
 
@@ -117,6 +122,15 @@ class nuLigaHomeGames:
         # Set up dates and strings
         self.set_today(datetime.date.today())
         #self.set_today(datetime.date(2019, 10, 3))
+        self.__dictMonth = {'September+{part1}'.format(**self.__dictSeason): 'September+{part1}'.format(**self.__dictSeason),
+            'Oktober+{part1}'.format(**self.__dictSeason): 'October+{part1}'.format(**self.__dictSeason),
+            'November+{part1}'.format(**self.__dictSeason): 'November+{part1}'.format(**self.__dictSeason),
+            'Dezember+{part1}'.format(**self.__dictSeason): 'December+{part1}'.format(**self.__dictSeason),
+            'Januar+{part2}'.format(**self.__dictSeason): 'January+{part2}'.format(**self.__dictSeason),
+            'Februar+{part2}'.format(**self.__dictSeason): 'February+{part2}'.format(**self.__dictSeason),
+            'März+{part2}'.format(**self.__dictSeason): 'March+{part2}'.format(**self.__dictSeason),
+            'April+{part2}'.format(**self.__dictSeason): 'April+{part2}'.format(**self.__dictSeason),
+            'Mai+{part2}'.format(**self.__dictSeason): 'May+{part2}'.format(**self.__dictSeason)}
 
         # New config workflow
         with open(os.path.join(os.path.dirname(__file__), 'config.json'),
@@ -183,14 +197,15 @@ class nuLigaHomeGames:
     def get_onlineTable(self):
         """Scrape Hallenspielan for specified sports hall from BHV website"""
         logging.info("Read current home game plan from BHV Hallenspielplan website")
-        lMonths = [#'September+{part1}'.format(**self.__dictSeason),
+        lMonths = ['September+{part1}'.format(**self.__dictSeason),
             'Oktober+{part1}'.format(**self.__dictSeason),
             'November+{part1}'.format(**self.__dictSeason),
             'Dezember+{part1}'.format(**self.__dictSeason),
-            #'Januar+{part2}'.format(**self.__dictSeason),
+            'Januar+{part2}'.format(**self.__dictSeason),
             'Februar+{part2}'.format(**self.__dictSeason),
             'März+{part2}'.format(**self.__dictSeason),
-            'April+{part2}'.format(**self.__dictSeason)]
+            'April+{part2}'.format(**self.__dictSeason),
+            'Mai+{part2}'.format(**self.__dictSeason)]
         lGames = list()
         # read all pages in the season (http requests)
         for month in lMonths:
@@ -209,7 +224,11 @@ class nuLigaHomeGames:
                                  self._colHome,
                                  self._colGuest,
                                  self._colScore])
-            lGames.append(table[0])
+            # check plausibility of date (nuLiga delivers first month of season if month has no games)
+            dateRec = datetime.datetime.strptime(table[0][self._colDate].values[0], '%d.%m.%Y')
+            dateExp = datetime.datetime.strptime(self.__dictMonth[month], '%B+%Y')
+            if dateRec.month == dateExp.month and dateRec.year == dateExp.year:
+                lGames.append(table[0])
         # modify existing columns
         self.onlineTable                                = pd.concat(lGames)
         self.onlineTable.index                          = range(len(self.onlineTable[self._colDay]))
