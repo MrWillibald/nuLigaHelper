@@ -71,6 +71,11 @@
 # Info: Added month check to prevent double or missing games
 # Date: 13.08.2020
 # ---------------------------------------------------------------
+# Created by: MrWillibald
+# Version 0.9
+# Info: Use single request to get all home games
+# Date: 29.09.2020
+# ---------------------------------------------------------------
 
 import requests
 import time
@@ -87,7 +92,7 @@ import json
 import logging
 
 # Version string
-version = '0.8'
+version = '0.9'
 # Debug flag
 debug = False
 
@@ -122,15 +127,6 @@ class nuLigaHomeGames:
         # Set up dates and strings
         self.set_today(datetime.date.today())
         #self.set_today(datetime.date(2019, 10, 3))
-        self.__dictMonth = {'September+{part1}'.format(**self.__dictSeason): 'September+{part1}'.format(**self.__dictSeason),
-            'Oktober+{part1}'.format(**self.__dictSeason): 'October+{part1}'.format(**self.__dictSeason),
-            'November+{part1}'.format(**self.__dictSeason): 'November+{part1}'.format(**self.__dictSeason),
-            'Dezember+{part1}'.format(**self.__dictSeason): 'December+{part1}'.format(**self.__dictSeason),
-            'Januar+{part2}'.format(**self.__dictSeason): 'January+{part2}'.format(**self.__dictSeason),
-            'Februar+{part2}'.format(**self.__dictSeason): 'February+{part2}'.format(**self.__dictSeason),
-            'März+{part2}'.format(**self.__dictSeason): 'March+{part2}'.format(**self.__dictSeason),
-            'April+{part2}'.format(**self.__dictSeason): 'April+{part2}'.format(**self.__dictSeason),
-            'Mai+{part2}'.format(**self.__dictSeason): 'May+{part2}'.format(**self.__dictSeason)}
 
         # New config workflow
         with open(os.path.join(os.path.dirname(__file__), 'config.json'),
@@ -197,38 +193,22 @@ class nuLigaHomeGames:
     def get_onlineTable(self):
         """Scrape Hallenspielan for specified sports hall from BHV website"""
         logging.info("Read current home game plan from BHV Hallenspielplan website")
-        lMonths = ['September+{part1}'.format(**self.__dictSeason),
-            'Oktober+{part1}'.format(**self.__dictSeason),
-            'November+{part1}'.format(**self.__dictSeason),
-            'Dezember+{part1}'.format(**self.__dictSeason),
-            'Januar+{part2}'.format(**self.__dictSeason),
-            'Februar+{part2}'.format(**self.__dictSeason),
-            'März+{part2}'.format(**self.__dictSeason),
-            'April+{part2}'.format(**self.__dictSeason),
-            'Mai+{part2}'.format(**self.__dictSeason)]
         lGames = list()
-        # read all pages in the season (http requests)
-        for month in lMonths:
-            # read contents from gym plan
-            page = requests.get("https://bhv-handball.liga.nu/cgi-bin/WebObjects/nuLigaHBDE.woa/"\
-                "wa/courtInfo?federation=BHV&roundTyp=0&month={}&championship=OB+{}&location={}"\
-                .format(month, self.__season, self.location))
-            table = pd.read_html(page.content, header=0, attrs={"class": "result-set"})
-            table[0].drop(table[0].columns[[9, 10, 11]], axis=1, inplace=True)
-            table[0].columns = ([self._colDay,
-                                 self._colDate,
-                                 self._colTime,
-                                 self._colNr,
-                                 self._colAK,
-                                 self._colStaffel,
-                                 self._colHome,
-                                 self._colGuest,
-                                 self._colScore])
-            # check plausibility of date (nuLiga delivers first month of season if month has no games)
-            dateRec = datetime.datetime.strptime(table[0][self._colDate].values[0], '%d.%m.%Y')
-            dateExp = datetime.datetime.strptime(self.__dictMonth[month], '%B+%Y')
-            if dateRec.month == dateExp.month and dateRec.year == dateExp.year:
-                lGames.append(table[0])
+        # read home games of season (http request)
+        parameters = {'searchTimeRange':'13-5269', 'onlyHomeMeetings':'true', 'club':'30541'}
+        result = requests.post('https://bhv-handball.liga.nu/cgi-bin/WebObjects/nuLigaHBDE.woa/wa/clubMeetings', data = parameters)
+        resultTable = pd.read_html(result.content, header=0, attrs={"class": "result-set"})
+        table = resultTable[0]
+        table.drop(table.columns[[3, 9, 10, 11]], axis=1, inplace=True)
+        table.columns = ([self._colDay,
+                        self._colDate,
+                        self._colTime,
+                        self._colNr,
+                        self._colAK,
+                        self._colHome,
+                        self._colGuest,
+                        self._colScore])
+        lGames.append(table)
         # modify existing columns
         self.onlineTable                                = pd.concat(lGames)
         self.onlineTable.index                          = range(len(self.onlineTable[self._colDay]))
@@ -327,19 +307,20 @@ class nuLigaHomeGames:
         worksheet   = writer.sheets['Heimspielplan']
         workbook    = writer.book
         formatText  = workbook.add_format({'num_format': '@'})
+        worksheet.set_column('B:B', 6)
         worksheet.set_column('C:C', 10)
-        worksheet.set_column('G:H', 20)
-        worksheet.set_column('I:I', 28)
-        worksheet.set_column('J:J', 13)
-        worksheet.set_column('K:K', 18)
-        worksheet.set_column('L:L', 30)
-        worksheet.set_column('M:M', 35, formatText)
-        worksheet.set_column('N:N', 30)
-        worksheet.set_column('O:O', 35, formatText)
-        worksheet.set_column('P:P', 30)
-        worksheet.set_column('Q:Q', 35, formatText)
-        worksheet.set_column('R:R', 30)
-        worksheet.set_column('S:S', 35, formatText)
+        worksheet.set_column('G:G', 16)
+        worksheet.set_column('H:H', 28)
+        worksheet.set_column('I:I', 13)
+        #worksheet.set_column('J:J', 18)
+        worksheet.set_column('K:K', 30)
+        worksheet.set_column('L:L', 35, formatText)
+        worksheet.set_column('M:M', 30)
+        worksheet.set_column('N:N', 35, formatText)
+        worksheet.set_column('O:O', 30)
+        worksheet.set_column('P:P', 35, formatText)
+        worksheet.set_column('Q:Q', 30)
+        worksheet.set_column('R:R', 35, formatText)
         worksheet.autofilter(0, 0, self.gameTable.shape[0], self.gameTable.shape[1])
         writer.save()
         logging.info("Judge schedule saved locally")
