@@ -195,7 +195,7 @@ class nuLigaHomeGames:
         logging.info("Read current home game plan from BHV Hallenspielplan website")
         lGames = list()
         # read home games of season (http request)
-        parameters = {'searchTimeRange':'13-5269', 'onlyHomeMeetings':'true', 'club':'30541'}
+        parameters = {'club':self.clubId, 'searchType':'1', 'searchTimeRangeFrom':'01.09.' + self.__dictSeason['part1'], 'searchTimeRangeTo':'01.07.' + self.__dictSeason['part2'], 'onlyHomeMeetings':'true'}
         result = requests.post('https://bhv-handball.liga.nu/cgi-bin/WebObjects/nuLigaHBDE.woa/wa/clubMeetings', data = parameters)
         resultTable = pd.read_html(result.content, header=0, attrs={"class": "result-set"})
         table = resultTable[0]
