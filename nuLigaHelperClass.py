@@ -126,7 +126,7 @@ class nuLigaHomeGames:
 
         # Set up dates and strings
         self.set_today(datetime.date.today())
-        #self.set_today(datetime.date(2019, 10, 3))
+        #self.set_today(datetime.date(2020, 10, 9))
 
         # New config workflow
         with open(os.path.join(os.path.dirname(__file__), 'config.json'),
