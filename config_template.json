@@ -2,8 +2,7 @@
     "club":{
         "info":{
             "name":"TuS Heimatstadt",
-            "clubId":"xxxxx",
-            "location":"xxxxx"
+            "clubId":"xxxxx"
         },
         "email":{
             "smtpserver":"smtp.musterserver.com",
