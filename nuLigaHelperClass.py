@@ -450,7 +450,7 @@ class nuLigaHomeGames:
                     logging.info("SMS sent to " + MV + ", " + str(toaddr))
                     cnt = cnt + 1
                 else:
-                    logging.warning("No valid phone number or email address available at game " + str(game))
+                    logging.warning("No valid phone number or email adress available at game " + str(game))
         return cnt
 
     def send_RefNotification(self, date):

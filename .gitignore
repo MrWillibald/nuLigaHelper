@@ -1,4 +1,5 @@
 **.log
-**/config.json
+**config.json
 **/.vscode/**
 **/__pycache__/**
+**.code-workspace
