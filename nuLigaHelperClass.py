@@ -11,67 +11,6 @@
 # - Send newspaper article to local newspaper
 # ---------------------------------------------------------------
 # Created by: MrWillibald
-# Version 0.1
-# Date: 16.04.2018
-# ---------------------------------------------------------------
-# Created by: MrWillibald
-# Version 0.2
-# Info: Added JudgeMV, Added SMS capabilities
-# Date: 25.09.2018
-# ---------------------------------------------------------------
-# Created by: MrWillibald
-# Version 0.2.1
-# Info: Fixed issue with 'GE' games, added autofilter
-#       Watch emails and SMS with empty judges!
-# Date: 10.12.2018
-# ---------------------------------------------------------------
-# Created by: MrWillibald
-# Version 0.2.2
-# Info: Only tournament information for MI and GE
-# Date: 11.03.2019
-# ---------------------------------------------------------------
-# Created by: MrWillibald
-# Version 0.3
-# Info: Restructured to object oriented class,
-#       Added home referee notification
-# Date: 12.03.2019
-# ---------------------------------------------------------------
-# Created by: MrWillibald
-# Version 0.4
-# Info: Moved config to external json file, added logger
-# Date: 23.07.2019
-# ---------------------------------------------------------------
-# Created by: MrWillibald
-# Version 0.5
-# Info: Added columns for Kuchen/Verkauf job
-# Date: 07.09.2019
-# ---------------------------------------------------------------
-# Created by: MrWillibald
-# Version 0.6
-# Info: Moved message strings to external config file
-# Date: 10.10.2019
-# ---------------------------------------------------------------
-# Created by: MrWillibald
-# Version 0.6.1
-# Info: Fixed string conversion in warnings
-# Date: 08.11.2019
-# ---------------------------------------------------------------
-# Created by: MrWillibald
-# Version 0.7
-# Info: Reworked home referee notifications with config file
-# Date: 28.02.2020
-# ---------------------------------------------------------------
-# Created by: MrWillibald
-# Version 0.7.1
-# Info: Send error mails only once
-# Date: 13.08.2020
-# ---------------------------------------------------------------
-# Created by: MrWillibald
-# Version 0.8
-# Info: Added month check to prevent double or missing games
-# Date: 13.08.2020
-# ---------------------------------------------------------------
-# Created by: MrWillibald
 # Version 0.9
 # Info: Use single request to get all home games
 # Date: 29.09.2020
@@ -92,9 +31,9 @@ import json
 import logging
 
 # Version string
-version = '0.9'
+VERSION = '0.9'
 # Debug flag
-debug = False
+DEBUG_FLAG = False
 
 
 class nuLigaHomeGames:
@@ -119,14 +58,14 @@ class nuLigaHomeGames:
 
     def __init__(self, *args, **kwargs):
         """Initialize class instance with necessary strings"""
-        self.__version = version
+        self.__version = VERSION
 
         logging.info("Initialization of nuLiga Helper")
         logging.info("Version: " + self.__version)
 
         # Set up dates and strings
         self.set_today(datetime.date.today())
-        #self.set_today(datetime.date(2020, 10, 9))
+        #self.set_today(datetime.date(2020, 11, 5))
 
         # New config workflow
         with open(os.path.join(os.path.dirname(__file__), 'config.json'),
@@ -151,7 +90,7 @@ class nuLigaHomeGames:
 
     def send_Mail(self, fromaddr, toaddr, text):
         """Send E-Mail via specified SMTP server"""
-        if True == debug:
+        if True == DEBUG_FLAG:
             return 0
         server = smtplib.SMTP_SSL(self.smtpserver)
         # server.set_debuglevel(True)
@@ -161,7 +100,7 @@ class nuLigaHomeGames:
 
     def send_SMS(self, fromaddr, toaddr, text):
         """Send SMS via specified Twilio account"""
-        if True == debug:
+        if True == DEBUG_FLAG:
             return  0
         client = Client(self.twilio_sid, self.twilio_token)
         message = client.messages.create(body=text, from_=fromaddr, to=toaddr)
@@ -334,7 +273,7 @@ class nuLigaHomeGames:
         strTime         = []
         tournamentMI    = False
         tournamentGE    = False
-        noteTable       = self.gameTable[self.gameTable[self._colDate] == date].dropna(how='all')
+        noteTable       = self.gameTable[(self.gameTable[self._colDate] == date) & (self.gameTable[self._colGuest] != "spielfrei")].dropna(how='all')
         for game in noteTable[self._colNr]:
             teamRaw = noteTable.loc[noteTable[self._colNr] == game, self._colAK].values[0]
             if teamRaw == 'F':
@@ -383,7 +322,7 @@ class nuLigaHomeGames:
         cnt         = 0
         judge       = ['Du', 'Du']
         mailJudge   = ['', '']
-        noteTable   = self.gameTable[self.gameTable[self._colDate] == date].dropna(how="all")
+        noteTable   = self.gameTable[(self.gameTable[self._colDate] == date) & (self.gameTable[self._colGuest] != "spielfrei")].dropna(how="all")
         for game in noteTable[self._colNr]:
             AK              = noteTable.loc[noteTable[self._colNr] == game, self._colAK].values[0]
             team            = noteTable.loc[noteTable[self._colNr] == game, self._colJTeam].values[0]
