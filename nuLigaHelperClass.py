@@ -33,7 +33,7 @@ import logging
 # Version string
 VERSION = '0.9'
 # Debug flag
-DEBUG_FLAG = False
+DEBUG_FLAG = True
 
 
 class nuLigaHomeGames:
@@ -138,6 +138,12 @@ class nuLigaHomeGames:
         result = requests.post('https://bhv-handball.liga.nu/cgi-bin/WebObjects/nuLigaHBDE.woa/wa/clubMeetings', data = parameters)
         resultTable = pd.read_html(result.content, header=0, attrs={"class": "result-set"})
         table = resultTable[0]
+        # find 'Termin offen' and shift to right
+        table.iloc[:, 3] = table.iloc[:, 3].apply(str)
+        mask = (table.iloc[:, 0] == 'Termin offen')
+        table[mask] = table[mask].shift(periods=1, axis="columns")
+        table.iloc[:, 4] = table.iloc[:, 4].apply(int)
+        # drop obsolete columns and rename
         table.drop(table.columns[[3, 9, 10, 11]], axis=1, inplace=True)
         table.columns = ([self._colDay,
                         self._colDate,
@@ -194,30 +200,12 @@ class nuLigaHomeGames:
         sendError = False
         for game in self.onlineTable[self._colNr]:
             try:
-                judges = self.gameTable.loc[self.gameTable[self._colNr] == game, 
-                                               [self._colJTeam, 
-                                                self._colJMV, 
-                                                self._colMailJMV, 
-                                                self._colJudge1, 
-                                                self._colMailJudge1, 
-                                                self._colJudge2, 
-                                                self._colMailJudge2, 
-                                                self._colCake, 
-                                                self._colMailCake]]
-                self.onlineTable.loc[self.onlineTable[self._colNr] == game, 
-                   [self._colJTeam, 
-                    self._colJMV, 
-                    self._colMailJMV, 
-                    self._colJudge1, 
-                    self._colMailJudge1, 
-                    self._colJudge2, 
-                    self._colMailJudge2, 
-                    self._colCake, 
-                    self._colMailCake]] = judges.values[0]
+                judges = self.gameTable.loc[self.gameTable[self._colNr] == game, self._colJTeam : ]
+                self.onlineTable.loc[self.onlineTable[self._colNr] == game, self._colJTeam : ] = judges.values[0]
                 logging.info("Game " + str(game) + " merged with schedule")
             except IndexError:
                 # oTable = pTable
-                if self.onlineTable.loc[self.onlineTable[self._colNr] == game, [self._colAK]].values[0] != "GE":
+                if self.onlineTable.loc[self.onlineTable[self._colNr] == game, self._colAK].values[0] != "GE":
                     # send Error Notification
                     sendError = True
                     logging.warning("Spielnummer not contained in home schedule, please correct manually!")
