@@ -11,9 +11,9 @@
 # - Send newspaper article to local newspaper
 # ---------------------------------------------------------------
 # Created by: MrWillibald
-# Version 0.9
-# Info: Use single request to get all home games
-# Date: 29.09.2020
+# Version 0.10
+# Info: Fixed "spielfrei" and "Termin offen"
+# Date: 15.10.2020
 # ---------------------------------------------------------------
 
 import requests
@@ -33,7 +33,7 @@ import logging
 # Version string
 VERSION = '0.9'
 # Debug flag
-DEBUG_FLAG = True
+DEBUG_FLAG = False
 
 
 class nuLigaHomeGames:
