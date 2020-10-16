@@ -31,7 +31,7 @@ import json
 import logging
 
 # Version string
-VERSION = '0.9'
+VERSION = '0.10'
 # Debug flag
 DEBUG_FLAG = False
 
