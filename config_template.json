@@ -42,9 +42,9 @@
         },
         "texts":{
             "mailErrorSubject":"Benachrichtigung Fehler",
-            "mailError":"Hallo Manu,\n\nbeim Update des Heimspielplans ist ein Fehler aufgetreten, die Spielnummern stimmen nicht überein. Bitte überprüfe den Fehler.\n\nViele Grüße Max",
+            "mailError":"Hallo Max,\n\nbeim Update des Heimspielplans ist ein Fehler aufgetreten, die Spielnummern stimmen nicht überein. Bitte überprüfe den Fehler.\n\nViele Grüße Max",
             "mailNewspaperSubject":"Veranstaltungshinweis für Heimatstadtanzeiger",
-            "mailNewspaper":"Hallo Frau Mustermann,\n\nhier der Veranstaltungshinweis zu unserem Spieltag für den Heimatstadtanzeiger am {}:\n\nHandball: nächster Heimspieltag\nAm {} den {} finden folgende Begegnungen in der Sporthalle Heimatstadt statt:\n{}Für das leibliche Wohl ist wie immer bestens gesorgt. Die Handballer des TuS Heimatstadt freuen sich auf euren Besuch!\n\nMit freundlichen Grüßen\nMax Mustermann",
+            "mailNewspaper":"Hallo Frau Mustermann,\n\nhier der Veranstaltungshinweis zu unserem Spieltag für den Heimatstadtanzeiger am {}:\n\nHandball: nächster Heimspieltag\nAm {} den {} finden folgende Begegnungen in der Sporthalle Heimatstadt statt:\n{}\nFür das leibliche Wohl ist wie immer bestens gesorgt. Die Handballer des TuS Heimatstadt freuen sich auf euren Besuch!\n\nMit freundlichen Grüßen\nMax Mustermann",
             "mailJudgeSubject":"Benachrichtigung Kampfgericht",
             "mailJudge":"Hallo {},\n\ndu bist morgen ({}) für das Kampfgericht beim Spiel der {} {} gegen {} eingeteilt. Das Spiel beginnt um {} in der Halle Heimatstadt. Bitte sei 1 Stunde vor Anpfiff in der Halle.\n\nViele Grüße Max",
             "textJudge":"Hallo {},\ndu bist morgen ({}) für das Kampfgericht beim Spiel der {} eingeteilt. Das Spiel beginnt um {} in der Heimatstadt-Halle. Bitte sei 1 Stunde vor Anpfiff in der Halle.\nVG Max",
