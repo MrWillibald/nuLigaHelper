@@ -33,7 +33,7 @@ import logging
 # Version string
 VERSION = '0.10'
 # Debug flag
-DEBUG_FLAG = False
+DEBUG_FLAG = True
 
 
 class nuLigaHomeGames:
