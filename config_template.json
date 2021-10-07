@@ -17,7 +17,8 @@
         "twilio":{
             "twilio_sid":"xxxxxxxxxx",
             "twilio_token":"xxxxxxxxxx",
-            "twilio_ID":"TusHandball"
+            "twilio_ID":"TusHandball",
+            "twilio_service_ID":"xxxxxxxxxx"
         },
         "columns":{
             "_colDay":"Day",

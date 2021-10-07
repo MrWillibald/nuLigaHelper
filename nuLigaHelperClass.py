@@ -11,9 +11,9 @@
 # - Send newspaper article to local newspaper
 # ---------------------------------------------------------------
 # Created by: MrWillibald
-# Version 0.10
-# Info: Fixed "spielfrei" and "Termin offen"
-# Date: 15.10.2020
+# Version 0.11
+# Info: Update Twilio API with message service SID
+# Date: 17.10.2021
 # ---------------------------------------------------------------
 
 import requests
@@ -31,9 +31,9 @@ import json
 import logging
 
 # Version string
-VERSION = '0.10'
+VERSION = '0.11'
 # Debug flag
-DEBUG_FLAG = True
+DEBUG_FLAG = False
 
 
 class nuLigaHomeGames:
@@ -65,7 +65,7 @@ class nuLigaHomeGames:
 
         # Set up dates and strings
         self.set_today(datetime.date.today())
-        #self.set_today(datetime.date(2020, 11, 5))
+        #self.set_today(datetime.date(2021, 10, 8))
 
         # New config workflow
         with open(os.path.join(os.path.dirname(__file__), 'config.json'),
@@ -103,7 +103,7 @@ class nuLigaHomeGames:
         if True == DEBUG_FLAG:
             return  0
         client = Client(self.twilio_sid, self.twilio_token)
-        message = client.messages.create(body=text, from_=fromaddr, to=toaddr)
+        message = client.messages.create(messaging_service_sid=self.twilio_service_ID, body=text, from_=fromaddr, to=toaddr)
         return message
 
     def get_fromDropbox(self):
