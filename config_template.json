@@ -2,7 +2,8 @@
     "club":{
         "info":{
             "name":"TuS Heimatstadt",
-            "clubId":"xxxxx"
+            "clubId":"xxxxx",
+            "hallIds": ["xxxxxx"]
         },
         "email":{
             "smtpserver":"smtp.musterserver.com",
@@ -24,6 +25,7 @@
             "_colDay":"Day",
             "_colDate":"Datum",
             "_colTime":"Zeit",
+            "_colHall": "Halle",
             "_colNr":"Nr.",
             "_colAK":"AK",
             "_colStaffel":"Staffel",
