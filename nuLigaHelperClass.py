@@ -11,9 +11,9 @@
 # - Send newspaper article to local newspaper
 # ---------------------------------------------------------------
 # Created by: MrWillibald
-# Version 0.11
-# Info: Update Twilio API with message service SID
-# Date: 17.10.2021
+# Version 0.12
+# Info: Handle multiple halls and Spielfeste
+# Date: 30.10.2021
 # ---------------------------------------------------------------
 
 import requests
@@ -31,7 +31,7 @@ import json
 import logging
 
 # Version string
-VERSION = '0.11'
+VERSION = '0.12'
 # Debug flag
 DEBUG_FLAG = False
 
@@ -134,20 +134,23 @@ class nuLigaHomeGames:
         logging.info("Read current home game plan from BHV Hallenspielplan website")
         lGames = list()
         # read home games of season (http request)
-        parameters = {'club':self.clubId, 'searchType':'1', 'searchTimeRangeFrom':'01.09.' + self.__dictSeason['part1'], 'searchTimeRangeTo':'01.07.' + self.__dictSeason['part2'], 'onlyHomeMeetings':'true'}
+        parameters = {'club':self.clubId, 'searchType':'1', 'searchTimeRangeFrom':'01.09.' + self.__dictSeason['part1'], 'searchTimeRangeTo':'01.07.' + self.__dictSeason['part2'], 'onlyHomeMeetings':'false'}
         result = requests.post('https://bhv-handball.liga.nu/cgi-bin/WebObjects/nuLigaHBDE.woa/wa/clubMeetings', data = parameters)
         resultTable = pd.read_html(result.content, header=0, attrs={"class": "result-set"})
         table = resultTable[0]
-        # find 'Termin offen' and shift to right
+        # find games in own hall and only keep them
         table.iloc[:, 3] = table.iloc[:, 3].apply(str)
+        table.drop(table[(table.iloc[:, 3] != self.hallIds[0]) & (table.iloc[:, 3] != self.hallIds[1])].index, inplace=True)
+        # find 'Termin offen' and shift to right
         mask = (table.iloc[:, 0] == 'Termin offen')
         table[mask] = table[mask].shift(periods=1, axis="columns")
         table.iloc[:, 4] = table.iloc[:, 4].apply(int)
         # drop obsolete columns and rename
-        table.drop(table.columns[[3, 9, 10, 11]], axis=1, inplace=True)
+        table.drop(table.columns[[9, 10, 11]], axis=1, inplace=True)
         table.columns = ([self._colDay,
                         self._colDate,
                         self._colTime,
+                        self._colHall,
                         self._colNr,
                         self._colAK,
                         self._colHome,
@@ -236,18 +239,19 @@ class nuLigaHomeGames:
         formatText  = workbook.add_format({'num_format': '@'})
         worksheet.set_column('B:B', 6)
         worksheet.set_column('C:C', 10)
-        worksheet.set_column('G:G', 16)
-        worksheet.set_column('H:H', 28)
-        worksheet.set_column('I:I', 13)
-        #worksheet.set_column('J:J', 18)
-        worksheet.set_column('K:K', 30)
-        worksheet.set_column('L:L', 35, formatText)
-        worksheet.set_column('M:M', 30)
-        worksheet.set_column('N:N', 35, formatText)
-        worksheet.set_column('O:O', 30)
-        worksheet.set_column('P:P', 35, formatText)
-        worksheet.set_column('Q:Q', 30)
-        worksheet.set_column('R:R', 35, formatText)
+        worksheet.set_column('D:D', 10)
+        worksheet.set_column('H:H', 16)
+        worksheet.set_column('I:I', 28)
+        worksheet.set_column('J:J', 13)
+        #worksheet.set_column('K:K', 18)
+        worksheet.set_column('L:L', 30)
+        worksheet.set_column('M:M', 35, formatText)
+        worksheet.set_column('N:N', 30)
+        worksheet.set_column('O:O', 35, formatText)
+        worksheet.set_column('P:P', 30)
+        worksheet.set_column('Q:Q', 35, formatText)
+        worksheet.set_column('R:R', 30)
+        worksheet.set_column('S:S', 35, formatText)
         worksheet.autofilter(0, 0, self.gameTable.shape[0], self.gameTable.shape[1])
         writer.save()
         logging.info("Judge schedule saved locally")
