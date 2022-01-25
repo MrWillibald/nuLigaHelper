@@ -11,9 +11,9 @@
 # - Send newspaper article to local newspaper
 # ---------------------------------------------------------------
 # Created by: MrWillibald
-# Version 0.12
-# Info: Handle multiple halls and Spielfeste
-# Date: 30.10.2021
+# Version 0.13
+# Info: Fix "Termin offen" with new request
+# Date: 25.01.2022
 # ---------------------------------------------------------------
 
 import requests
@@ -31,9 +31,9 @@ import json
 import logging
 
 # Version string
-VERSION = '0.12'
+VERSION = '0.13'
 # Debug flag
-DEBUG_FLAG = True
+DEBUG_FLAG = False
 
 
 class nuLigaHomeGames:
@@ -130,20 +130,24 @@ class nuLigaHomeGames:
         logging.info("Judge schedule successfully uploaded to Dropbox and cleaned locally")
 
     def get_onlineTable(self):
-        """Scrape Hallenspielan for specified sports hall from BHV website"""
+        """Scrape Hallenspielplan for specified sports hall from BHV website"""
         logging.info("Read current home game plan from BHV Hallenspielplan website")
         lGames = list()
         # read home games of season (http request)
         parameters = {'club':self.clubId, 'searchType':'1', 'searchTimeRangeFrom':'01.09.' + self.__dictSeason['part1'], 'searchTimeRangeTo':'01.07.' + self.__dictSeason['part2'], 'onlyHomeMeetings':'false'}
-        result = requests.post('https://bhv-handball.liga.nu/cgi-bin/WebObjects/nuLigaHBDE.woa/wa/clubMeetings', data = parameters)
+        result = requests.post('https://bhv-handball.liga.nu/cgi-bin/WebObjects/nuLigaHBDE.woa/wa/clubMeetings', data=parameters)
         resultTable = pd.read_html(result.content, header=0, attrs={"class": "result-set"})
         table = resultTable[0]
-        # find games in own hall and only keep them
+        # convert column 3 to str
         table.iloc[:, 3] = table.iloc[:, 3].apply(str)
-        table.drop(table[(table.iloc[:, 3] != self.hallIds[0]) & (table.iloc[:, 3] != self.hallIds[1])].index, inplace=True)
         # find 'Termin offen' and shift to right
         mask = (table.iloc[:, 0] == 'Termin offen')
         table[mask] = table[mask].shift(periods=1, axis="columns")
+        # find games in own halls and only keep them
+        mask = np.array([any(hall in game for hall in self.hallIds) for game in table.iloc[:, 3]])
+        table.drop(table[np.invert(mask)].index, inplace=True)
+        # convert column 3 and 4 to int
+        table.iloc[:, 3] = table.iloc[:, 3].apply(int)
         table.iloc[:, 4] = table.iloc[:, 4].apply(int)
         # drop obsolete columns and rename
         table.drop(table.columns[[9, 10, 11]], axis=1, inplace=True)
