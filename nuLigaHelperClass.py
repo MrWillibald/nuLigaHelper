@@ -140,9 +140,6 @@ class nuLigaHomeGames:
         table = resultTable[0]
         # convert column 3 to str
         table.iloc[:, 3] = table.iloc[:, 3].apply(str)
-        # find 'Termin offen' and shift to right
-        mask = (table.iloc[:, 0] == 'Termin offen')
-        table[mask] = table[mask].shift(periods=1, axis="columns")
         # find games in own halls and only keep them
         mask = np.array([any(hall in game for hall in self.hallIds) for game in table.iloc[:, 3]])
         table.drop(table[np.invert(mask)].index, inplace=True)
