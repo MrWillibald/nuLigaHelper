@@ -138,14 +138,6 @@ class nuLigaHomeGames:
         result = requests.post('https://bhv-handball.liga.nu/cgi-bin/WebObjects/nuLigaHBDE.woa/wa/clubMeetings', data=parameters)
         resultTable = pd.read_html(result.content, header=0, attrs={"class": "result-set"})
         table = resultTable[0]
-        # convert column 3 to str
-        table.iloc[:, 3] = table.iloc[:, 3].apply(str)
-        # find games in own halls and only keep them
-        mask = np.array([any(hall in game for hall in self.hallIds) for game in table.iloc[:, 3]])
-        table.drop(table[np.invert(mask)].index, inplace=True)
-        # convert column 3 and 4 to int
-        table.iloc[:, 3] = table.iloc[:, 3].apply(int)
-        table.iloc[:, 4] = table.iloc[:, 4].apply(int)
         # drop obsolete columns and rename
         table.drop(table.columns[[9, 10, 11]], axis=1, inplace=True)
         table.columns = ([self._colDay,
@@ -157,11 +149,19 @@ class nuLigaHomeGames:
                         self._colHome,
                         self._colGuest,
                         self._colScore])
+        # convert column 3 to str
+        table.iloc[:, 3] = table.iloc[:, 3].apply(str)
+        # fill dates
+        table[[self._colDay, self._colDate]] = table[[self._colDay, self._colDate]].fillna(method='ffill')
+        # find games in own halls and only keep them
+        mask = np.array([any(hall in game for hall in self.hallIds) for game in table.iloc[:, 3]])
+        table.drop(table[np.invert(mask)].index, inplace=True)
+        # convert column 3 and 4 to int
+        table.iloc[:, 3] = table.iloc[:, 3].apply(int)
+        table.iloc[:, 4] = table.iloc[:, 4].apply(int)
         lGames.append(table)
-        # modify existing columns
-        self.onlineTable                                = pd.concat(lGames)
+        self.onlineTable = pd.concat(lGames)
         self.onlineTable.index                          = range(len(self.onlineTable[self._colDay]))
-        self.onlineTable[[self._colDay, self._colDate]] = self.onlineTable[[self._colDay, self._colDate]].fillna(method='ffill')
         self.onlineTable[self._colScore]                = self.onlineTable[self._colScore].astype(str) + "\t"
         # add additional columns
         kwargs              = {self._colJTeam: np.empty(len(self.onlineTable[self._colDay]), dtype=str)}
