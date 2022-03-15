@@ -451,6 +451,7 @@ if __name__ == '__main__':
     # Upload Heimspielplan to Dropbox
     self.upload_toDropbox()
 
+    '''
     # Check if newspaper article has to be send
     gameDateSa      = self.get_today() + datetime.timedelta(days=9)
     strGameDateSa   = gameDateSa.strftime("%d.%m.%Y")
@@ -474,6 +475,7 @@ if __name__ == '__main__':
         strGameDay      = "Sonntag"
         strArticleDate  = articleDate.strftime("%d.%m.%Y")
         cnt             = self.send_Article(strGameDate, strGameDay, strArticleDate)
+    '''
 
     # Check if judge notifications have to be send
     tomorrow    = self.get_today() + datetime.timedelta(days=1)
