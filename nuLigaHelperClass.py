@@ -11,7 +11,7 @@
 # - Send newspaper article to local newspaper
 # ---------------------------------------------------------------
 # Created by: MrWillibald
-# Version 0.1
+# Version 0.14
 # Info: Fix "spielfrei" with new request
 # Date: 25.08.2022
 # ---------------------------------------------------------------
@@ -30,7 +30,7 @@ import json
 import logging
 
 # Version string
-VERSION = '0.13'
+VERSION = '0.14'
 # Debug flag
 DEBUG_FLAG = False
 
