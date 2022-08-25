@@ -11,13 +11,12 @@
 # - Send newspaper article to local newspaper
 # ---------------------------------------------------------------
 # Created by: MrWillibald
-# Version 0.13
-# Info: Fix "Termin offen" with new request
-# Date: 25.01.2022
+# Version 0.1
+# Info: Fix "spielfrei" with new request
+# Date: 25.08.2022
 # ---------------------------------------------------------------
 
 import requests
-import time
 import datetime
 import pandas as pd
 import numpy as np
@@ -50,7 +49,8 @@ class nuLigaHomeGames:
                              'part2': str(self._year + 1),
                              'part3': str(self._year + 1)[-2:]}
         self.__season = '{part1}%2F{part3}'.format(**self.__dictSeason)
-        self.file = 'Heimspielplan_{part1}_{part3}.xlsx'.format(**self.__dictSeason)
+        self.file = 'Heimspielplan_{part1}_{part3}.xlsx'.format(
+            **self.__dictSeason)
 
     def get_today(self):
         """Return todays date"""
@@ -101,9 +101,10 @@ class nuLigaHomeGames:
     def send_SMS(self, fromaddr, toaddr, text):
         """Send SMS via specified Twilio account"""
         if True == DEBUG_FLAG:
-            return  0
+            return 0
         client = Client(self.twilio_sid, self.twilio_token)
-        message = client.messages.create(messaging_service_sid=self.twilio_service_ID, body=text, from_=fromaddr, to=toaddr)
+        message = client.messages.create(
+            messaging_service_sid=self.twilio_service_ID, body=text, from_=fromaddr, to=toaddr)
         return message
 
     def get_fromDropbox(self):
@@ -112,9 +113,10 @@ class nuLigaHomeGames:
             self.dbc.files_download_to_file(
                 self.file, '/' + self.dropbox_folder + '/' + self.file)
         except dropbox.exceptions.ApiError:
-            logging.warning("Error while loading judge schedule from Dropbox, "\
+            logging.warning("Error while loading judge schedule from Dropbox, "
                             "new schedule is created")
-        logging.info("Judge schedule loaded and saved successfully from Dropbox")
+        logging.info(
+            "Judge schedule loaded and saved successfully from Dropbox")
 
     def upload_toDropbox(self):
         """Upload file to specified Dropbox account"""
@@ -127,75 +129,96 @@ class nuLigaHomeGames:
             rmf = os.remove(self.file)
         except OSError:
             logging.warning(rmf)
-        logging.info("Judge schedule successfully uploaded to Dropbox and cleaned locally")
+        logging.info(
+            "Judge schedule successfully uploaded to Dropbox and cleaned locally")
 
     def get_onlineTable(self):
         """Scrape Hallenspielplan for specified sports hall from BHV website"""
-        logging.info("Read current home game plan from BHV Hallenspielplan website")
+        logging.info(
+            "Read current home game plan from BHV Hallenspielplan website")
         lGames = list()
         # read home games of season (http request)
-        parameters = {'club':self.clubId, 'searchType':'1', 'searchTimeRangeFrom':'01.09.' + self.__dictSeason['part1'], 'searchTimeRangeTo':'01.07.' + self.__dictSeason['part2'], 'onlyHomeMeetings':'false'}
-        result = requests.post('https://bhv-handball.liga.nu/cgi-bin/WebObjects/nuLigaHBDE.woa/wa/clubMeetings', data=parameters)
-        resultTable = pd.read_html(result.content, header=0, attrs={"class": "result-set"})
+        parameters = {'club': self.clubId, 'searchType': '1', 'searchTimeRangeFrom': '01.09.' +
+                      self.__dictSeason['part1'], 'searchTimeRangeTo': '01.07.' + self.__dictSeason['part2'], 'onlyHomeMeetings': 'false'}
+        result = requests.post(
+            'https://bhv-handball.liga.nu/cgi-bin/WebObjects/nuLigaHBDE.woa/wa/clubMeetings', data=parameters)
+        resultTable = pd.read_html(result.content, header=0, attrs={
+                                   "class": "result-set"})
         table = resultTable[0]
         # drop obsolete columns and rename
         table.drop(table.columns[[9, 10, 11]], axis=1, inplace=True)
         table.columns = ([self._colDay,
-                        self._colDate,
-                        self._colTime,
-                        self._colHall,
-                        self._colNr,
-                        self._colAK,
-                        self._colHome,
-                        self._colGuest,
-                        self._colScore])
+                          self._colDate,
+                          self._colTime,
+                          self._colHall,
+                          self._colNr,
+                          self._colAK,
+                          self._colHome,
+                          self._colGuest,
+                          self._colScore])
         # convert column 3 to str
         table.iloc[:, 3] = table.iloc[:, 3].apply(str)
         # fill dates
-        table[[self._colDay, self._colDate]] = table[[self._colDay, self._colDate]].fillna(method='ffill')
+        table[[self._colDay, self._colDate]] = table[[
+            self._colDay, self._colDate]].fillna(method='ffill')
         # find games in own halls and only keep them
-        mask = np.array([any(hall in game for hall in self.hallIds) for game in table.iloc[:, 3]])
+        mask = np.array([any(hall in game for hall in self.hallIds)
+                        for game in table.iloc[:, 3]])
         table.drop(table[np.invert(mask)].index, inplace=True)
+        # drop spielfrei
+        mask = np.array([np.isnan(gamenr) for gamenr in table.iloc[:, 4]])
+        table.drop(table[mask].index, inplace=True)
         # convert column 3 and 4 to int
         table.iloc[:, 3] = table.iloc[:, 3].apply(int)
         table.iloc[:, 4] = table.iloc[:, 4].apply(int)
         lGames.append(table)
         self.onlineTable = pd.concat(lGames)
-        self.onlineTable.index                          = range(len(self.onlineTable[self._colDay]))
-        self.onlineTable[self._colScore]                = self.onlineTable[self._colScore].astype(str) + "\t"
+        self.onlineTable.index = range(len(self.onlineTable[self._colDay]))
+        self.onlineTable[self._colScore] = self.onlineTable[self._colScore].astype(
+            str) + "\t"
         # add additional columns
-        kwargs              = {self._colJTeam: np.empty(len(self.onlineTable[self._colDay]), dtype=str)}
-        self.onlineTable    = self.onlineTable.assign(**kwargs)
-        kwargs              = {self._colJMV: np.empty(len(self.onlineTable[self._colDay]), dtype=str)}
-        self.onlineTable    = self.onlineTable.assign(**kwargs)
-        kwargs              = {self._colMailJMV: np.empty(len(self.onlineTable[self._colDay]), dtype=str)}
-        self.onlineTable    = self.onlineTable.assign(**kwargs)
-        kwargs              = {self._colJudge1: np.empty(len(self.onlineTable[self._colDay]), dtype=str)}
-        self.onlineTable    = self.onlineTable.assign(**kwargs)
-        kwargs              = {self._colMailJudge1: np.empty(len(self.onlineTable[self._colDay]), dtype=str)}
-        self.onlineTable    = self.onlineTable.assign(**kwargs)
-        kwargs              = {self._colJudge2: np.empty(len(self.onlineTable[self._colDay]), dtype=str)}
-        self.onlineTable    = self.onlineTable.assign(**kwargs)
-        kwargs              = {self._colMailJudge2: np.empty(len(self.onlineTable[self._colDay]), dtype=str)}
-        self.onlineTable    = self.onlineTable.assign(**kwargs)
-        kwargs              = {self._colCake: np.empty(len(self.onlineTable[self._colDay]), dtype=str)}
-        self.onlineTable    = self.onlineTable.assign(**kwargs)
-        kwargs              = {self._colMailCake: np.empty(len(self.onlineTable[self._colDay]), dtype=str)}
-        self.onlineTable    = self.onlineTable.assign(**kwargs)
+        kwargs = {self._colJTeam: np.empty(
+            len(self.onlineTable[self._colDay]), dtype=str)}
+        self.onlineTable = self.onlineTable.assign(**kwargs)
+        kwargs = {self._colJMV: np.empty(
+            len(self.onlineTable[self._colDay]), dtype=str)}
+        self.onlineTable = self.onlineTable.assign(**kwargs)
+        kwargs = {self._colMailJMV: np.empty(
+            len(self.onlineTable[self._colDay]), dtype=str)}
+        self.onlineTable = self.onlineTable.assign(**kwargs)
+        kwargs = {self._colJudge1: np.empty(
+            len(self.onlineTable[self._colDay]), dtype=str)}
+        self.onlineTable = self.onlineTable.assign(**kwargs)
+        kwargs = {self._colMailJudge1: np.empty(
+            len(self.onlineTable[self._colDay]), dtype=str)}
+        self.onlineTable = self.onlineTable.assign(**kwargs)
+        kwargs = {self._colJudge2: np.empty(
+            len(self.onlineTable[self._colDay]), dtype=str)}
+        self.onlineTable = self.onlineTable.assign(**kwargs)
+        kwargs = {self._colMailJudge2: np.empty(
+            len(self.onlineTable[self._colDay]), dtype=str)}
+        self.onlineTable = self.onlineTable.assign(**kwargs)
+        kwargs = {self._colCake: np.empty(
+            len(self.onlineTable[self._colDay]), dtype=str)}
+        self.onlineTable = self.onlineTable.assign(**kwargs)
+        kwargs = {self._colMailCake: np.empty(
+            len(self.onlineTable[self._colDay]), dtype=str)}
+        self.onlineTable = self.onlineTable.assign(**kwargs)
         logging.info("Current home game plan loaded")
 
     def get_gameTable(self):
         """Read scheduled jobs from downloaded or local file"""
         logging.info("Read local judge schedule")
         try:
-            self.gameTable = pd.read_excel(self.file, dtype={self._colMailJMV: str, 
-                                                             self._colMailJudge1: str, 
-                                                             self._colMailJudge2: str, 
+            self.gameTable = pd.read_excel(self.file, dtype={self._colMailJMV: str,
+                                                             self._colMailJudge1: str,
+                                                             self._colMailJudge2: str,
                                                              self._colMailCake: str})
             logging.info("Judge schedule available")
         except OSError:
             self.gameTable = self.onlineTable
-            logging.warning("Judge schedule not available, empty schedule created")
+            logging.warning(
+                "Judge schedule not available, empty schedule created")
         return 0
 
     def merge_tables(self):
@@ -204,28 +227,31 @@ class nuLigaHomeGames:
         sendError = False
         for game in self.onlineTable[self._colNr]:
             try:
-                judges = self.gameTable.loc[self.gameTable[self._colNr] == game, self._colJTeam : ]
-                self.onlineTable.loc[self.onlineTable[self._colNr] == game, self._colJTeam : ] = judges.values[0]
+                judges = self.gameTable.loc[self.gameTable[self._colNr]
+                                            == game, self._colJTeam:]
+                self.onlineTable.loc[self.onlineTable[self._colNr]
+                                     == game, self._colJTeam:] = judges.values[0]
                 logging.info("Game " + str(game) + " merged with schedule")
             except IndexError:
                 # oTable = pTable
                 if self.onlineTable.loc[self.onlineTable[self._colNr] == game, self._colAK].values[0] != "GE":
                     # send Error Notification
                     sendError = True
-                    logging.warning("Spielnummer not contained in home schedule, please correct manually!")
+                    logging.warning(
+                        "Spielnummer not contained in home schedule, please correct manually!")
 
         if sendError:
-            fromaddr        = self.mail_ID
-            toaddr          = fromaddr
-            msg             = MIMEMultipart()
-            msg['From']     = fromaddr
-            msg['Subject']  = self.mailErrorSubject
-            msg['To']       = toaddr
-            body            = self.mailError
+            fromaddr = self.mail_ID
+            toaddr = fromaddr
+            msg = MIMEMultipart()
+            msg['From'] = fromaddr
+            msg['Subject'] = self.mailErrorSubject
+            msg['To'] = toaddr
+            body = self.mailError
             msg.attach(MIMEText(body, 'plain'))
             text = msg.as_string()
             self.send_Mail(fromaddr, toaddr, text)
-            
+
         # make game and online table identical if merging was successful
         self.gameTable = self.onlineTable
         logging.info("Update home game plan completed")
@@ -234,10 +260,11 @@ class nuLigaHomeGames:
     def write_toXlsx(self):
         """Write updated job scheduling to local *.xlsx file"""
         writer = pd.ExcelWriter(self.file, engine='xlsxwriter')
-        self.gameTable.to_excel(writer, sheet_name='Heimspielplan', encoding=self._enc)
-        worksheet   = writer.sheets['Heimspielplan']
-        workbook    = writer.book
-        formatText  = workbook.add_format({'num_format': '@'})
+        self.gameTable.to_excel(
+            writer, sheet_name='Heimspielplan', encoding=self._enc)
+        worksheet = writer.sheets['Heimspielplan']
+        workbook = writer.book
+        formatText = workbook.add_format({'num_format': '@'})
         worksheet.set_column('B:B', 6)
         worksheet.set_column('C:C', 10)
         worksheet.set_column('D:D', 10)
@@ -253,121 +280,151 @@ class nuLigaHomeGames:
         worksheet.set_column('Q:Q', 35, formatText)
         worksheet.set_column('R:R', 30)
         worksheet.set_column('S:S', 35, formatText)
-        worksheet.autofilter(0, 0, self.gameTable.shape[0], self.gameTable.shape[1])
+        worksheet.autofilter(
+            0, 0, self.gameTable.shape[0], self.gameTable.shape[1])
         writer.save()
         logging.info("Judge schedule saved locally")
 
     def send_Article(self, date, day, articleDate):
         """Send notification article to local newspaper"""
-        cnt             = 0
-        team            = []
-        home            = []
-        guest           = []
-        strTime         = []
-        tournamentMI    = False
-        tournamentGE    = False
-        noteTable       = self.gameTable[(self.gameTable[self._colDate] == date) & (self.gameTable[self._colGuest] != "spielfrei")].dropna(how='all')
+        cnt = 0
+        team = []
+        home = []
+        guest = []
+        strTime = []
+        tournamentMI = False
+        tournamentGE = False
+        noteTable = self.gameTable[(self.gameTable[self._colDate] == date) & (
+            self.gameTable[self._colGuest] != "spielfrei")].dropna(how='all')
         for game in noteTable[self._colNr]:
-            teamRaw = noteTable.loc[noteTable[self._colNr] == game, self._colAK].values[0]
+            teamRaw = noteTable.loc[noteTable[self._colNr]
+                                    == game, self._colAK].values[0]
             if teamRaw == 'F':
                 team.append('Damen')
             elif teamRaw == 'M':
                 team.append('Herren')
             else:
                 team.append(teamRaw)
-            home.append(noteTable.loc[noteTable[self._colNr] == game, self._colHome].values[0])
-            guest.append(noteTable.loc[noteTable[self._colNr] == game, self._colGuest].values[0])
-            strTime.append(noteTable.loc[noteTable[self._colNr] == game, self._colTime].values[0])
-        fromaddr        = self.mail_ID
-        toaddr          = self.mailAddrNewspaper
+            home.append(
+                noteTable.loc[noteTable[self._colNr] == game, self._colHome].values[0])
+            guest.append(
+                noteTable.loc[noteTable[self._colNr] == game, self._colGuest].values[0])
+            strTime.append(
+                noteTable.loc[noteTable[self._colNr] == game, self._colTime].values[0])
+        fromaddr = self.mail_ID
+        toaddr = self.mailAddrNewspaper
         logging.info("Send newspaper article to " + toaddr)
-        msg             = MIMEMultipart()
-        msg['From']     = fromaddr
-        msg['To']       = toaddr
-        msg['Subject']  = self.mailNewspaperSubject
+        msg = MIMEMultipart()
+        msg['From'] = fromaddr
+        msg['To'] = toaddr
+        msg['Subject'] = self.mailNewspaperSubject
 
         # Create schedule from game plan
         schedule = ""
         for i in range(0, len(home)):
             # single tournament information for MI and GE
             if ('MI' == team[i]) and (False == tournamentMI):
-                schedule        = schedule + 'Ab ' + strTime[i].strip(' v').strip(' t') + ' Spielfest der Minis\n'
-                tournamentMI    = True
-                cnt             = cnt + 1
+                schedule = schedule + 'Ab ' + \
+                    strTime[i].strip(' v').strip(' t') + \
+                    ' Spielfest der Minis\n'
+                tournamentMI = True
+                cnt = cnt + 1
             elif ('GE' == team[i]) and (False == tournamentGE):
-                schedule        = schedule + 'Ab ' + strTime[i].strip(' v').strip(' t') + ' Turnier der gemischten E-Jugend\n'
-                tournamentGE    = True
-                cnt             = cnt + 1
+                schedule = schedule + 'Ab ' + \
+                    strTime[i].strip(' v').strip(' t') + \
+                    ' Turnier der gemischten E-Jugend\n'
+                tournamentGE = True
+                cnt = cnt + 1
             elif ('GE' or 'MI') != team[i]:
-                schedule        = schedule + strTime[i].strip(' v').strip(' t') + " " + team[i] + " " + home[i] + " - " + guest[i] + "\n"
-                cnt             = cnt + 1
+                schedule = schedule + strTime[i].strip(' v').strip(
+                    ' t') + " " + team[i] + " " + home[i] + " - " + guest[i] + "\n"
+                cnt = cnt + 1
 
         # Message body created from mail text stored in config
         body = self.mailNewspaper.format(articleDate, day, date, schedule)
         msg.attach(MIMEText(body, 'plain'))
         text = msg.as_string()
         self.send_Mail(fromaddr, toaddr, text)
-        logging.info("Newspaper article for " + str(cnt) + " games at " + date + " sent to " + toaddr)
+        logging.info("Newspaper article for " + str(cnt) +
+                     " games at " + date + " sent to " + toaddr)
         return cnt
 
     def send_Notifications(self, date):
         """Send notifications to game judges via SMS or E-Mail"""
-        cnt         = 0
-        judge       = ['Du', 'Du']
-        mailJudge   = ['', '']
-        noteTable   = self.gameTable[(self.gameTable[self._colDate] == date) & (self.gameTable[self._colGuest] != "spielfrei")].dropna(how="all")
+        cnt = 0
+        judge = ['Du', 'Du']
+        mailJudge = ['', '']
+        noteTable = self.gameTable[(self.gameTable[self._colDate] == date) & (
+            self.gameTable[self._colGuest] != "spielfrei")].dropna(how="all")
         for game in noteTable[self._colNr]:
-            AK              = noteTable.loc[noteTable[self._colNr] == game, self._colAK].values[0]
-            team            = noteTable.loc[noteTable[self._colNr] == game, self._colJTeam].values[0]
-            MV              = noteTable.loc[noteTable[self._colNr] == game, self._colJMV].values[0]
-            mailMV          = noteTable.loc[noteTable[self._colNr] == game, self._colMailJMV].values[0]
-            judge[0]        = noteTable.loc[noteTable[self._colNr] == game, self._colJudge1].values[0]
-            mailJudge[0]    = noteTable.loc[noteTable[self._colNr] == game, self._colMailJudge1].values[0]
-            judge[1]        = noteTable.loc[noteTable[self._colNr] == game, self._colJudge2].values[0]
-            mailJudge[1]    = noteTable.loc[noteTable[self._colNr] == game, self._colMailJudge2].values[0]
-            home            = noteTable.loc[noteTable[self._colNr] == game, self._colHome].values[0]
-            guest           = noteTable.loc[noteTable[self._colNr] == game, self._colGuest].values[0]
-            strTime         = noteTable.loc[noteTable[self._colNr] == game, self._colTime].values[0]
+            AK = noteTable.loc[noteTable[self._colNr]
+                               == game, self._colAK].values[0]
+            team = noteTable.loc[noteTable[self._colNr]
+                                 == game, self._colJTeam].values[0]
+            MV = noteTable.loc[noteTable[self._colNr]
+                               == game, self._colJMV].values[0]
+            mailMV = noteTable.loc[noteTable[self._colNr]
+                                   == game, self._colMailJMV].values[0]
+            judge[0] = noteTable.loc[noteTable[self._colNr]
+                                     == game, self._colJudge1].values[0]
+            mailJudge[0] = noteTable.loc[noteTable[self._colNr]
+                                         == game, self._colMailJudge1].values[0]
+            judge[1] = noteTable.loc[noteTable[self._colNr]
+                                     == game, self._colJudge2].values[0]
+            mailJudge[1] = noteTable.loc[noteTable[self._colNr]
+                                         == game, self._colMailJudge2].values[0]
+            home = noteTable.loc[noteTable[self._colNr]
+                                 == game, self._colHome].values[0]
+            guest = noteTable.loc[noteTable[self._colNr]
+                                  == game, self._colGuest].values[0]
+            strTime = noteTable.loc[noteTable[self._colNr]
+                                    == game, self._colTime].values[0]
             # Notifications to Judges
             for i in range(0, 2):
                 toaddr = mailJudge[i]
                 if type(toaddr) == str:
                     if '@' in toaddr:
                         # send Email
-                        fromaddr        = self.mail_ID
-                        msg             = MIMEMultipart()
-                        msg['From']     = fromaddr
-                        msg['Subject']  = self.mailJudgeSubject
-                        msg['To']       = toaddr
-                        # Message body created from mail text stored in config 
-                        body = self.mailJudge.format(judge[i], date, AK, home, guest, strTime)
+                        fromaddr = self.mail_ID
+                        msg = MIMEMultipart()
+                        msg['From'] = fromaddr
+                        msg['Subject'] = self.mailJudgeSubject
+                        msg['To'] = toaddr
+                        # Message body created from mail text stored in config
+                        body = self.mailJudge.format(
+                            judge[i], date, AK, home, guest, strTime)
                         msg.attach(MIMEText(body, 'plain'))
                         text = msg.as_string()
                         self.send_Mail(fromaddr, toaddr, text)
-                        logging.info("E-Mail sent to " + judge[i] + ", " + str(toaddr))
+                        logging.info("E-Mail sent to " +
+                                     judge[i] + ", " + str(toaddr))
                         cnt = cnt + 1
                     elif '+' in toaddr:
                         # send SMS
                         fromaddr = self.twilio_ID
                         # Message text created from text stored in config
-                        text = self.textJudge.format(judge[i], date, AK, strTime)
+                        text = self.textJudge.format(
+                            judge[i], date, AK, strTime)
                         self.send_SMS(fromaddr, toaddr, text)
-                        logging.info("SMS sent to " + judge[i] + ", " + str(toaddr))
+                        logging.info("SMS sent to " +
+                                     judge[i] + ", " + str(toaddr))
                         cnt = cnt + 1
                     else:
-                        logging.warning("No valid phone number or email adress available at game " + str(game))
+                        logging.warning(
+                            "No valid phone number or email adress available at game " + str(game))
             # Notification to MV
             toaddr = mailMV
             if type(toaddr) == str:
                 if '@' in toaddr:
                     # send Email
-                    fromaddr        = self.mail_ID
-                    msg             = MIMEMultipart()
-                    msg['From']     = fromaddr
-                    msg['Subject']  = self.mailMVSubject
-                    msg['To']       = toaddr
-                    # Message body created from mail text stored in config 
-                    body = self.mailMV.format(MV, team, date, judge[0], judge[1], AK, home, guest, strTime)
+                    fromaddr = self.mail_ID
+                    msg = MIMEMultipart()
+                    msg['From'] = fromaddr
+                    msg['Subject'] = self.mailMVSubject
+                    msg['To'] = toaddr
+                    # Message body created from mail text stored in config
+                    body = self.mailMV.format(
+                        MV, team, date, judge[0], judge[1], AK, home, guest, strTime)
                     msg.attach(MIMEText(body, 'plain'))
                     text = msg.as_string()
                     self.send_Mail(fromaddr, toaddr, text)
@@ -377,25 +434,30 @@ class nuLigaHomeGames:
                     # send SMS
                     fromaddr = self.twilio_ID
                     # Message text created from text stored in config
-                    text = self.textMV.format(MV, team, date, judge[0], judge[1], AK, strTime)
+                    text = self.textMV.format(
+                        MV, team, date, judge[0], judge[1], AK, strTime)
                     self.send_SMS(fromaddr, toaddr, text)
                     logging.info("SMS sent to " + MV + ", " + str(toaddr))
                     cnt = cnt + 1
                 else:
-                    logging.warning("No valid phone number or email adress available at game " + str(game))
+                    logging.warning(
+                        "No valid phone number or email adress available at game " + str(game))
         return cnt
 
     def send_RefNotification(self, date):
         """Send referee notification to referee coordinator"""
         # collect games with missing referees
-        noteTable   = self.gameTable[self.gameTable[self._colDate].str.contains(strTomorrow) & self.gameTable[self._colScore].str.contains("Heim")]
-        cnt         = 0
-        textGames   = ""
+        noteTable = self.gameTable[self.gameTable[self._colDate].str.contains(
+            strTomorrow) & self.gameTable[self._colScore].str.contains("Heim")]
+        cnt = 0
+        textGames = ""
         for game in noteTable[self._colNr]:
-            AK          = noteTable.loc[noteTable[self._colNr] == game, self._colAK].values[0]
-            strTime     = noteTable.loc[noteTable[self._colNr] == game, self._colTime].values[0]
-            textGames   = textGames + AK + " um " + strTime + "\n"
-            cnt         = cnt + 1
+            AK = noteTable.loc[noteTable[self._colNr]
+                               == game, self._colAK].values[0]
+            strTime = noteTable.loc[noteTable[self._colNr]
+                                    == game, self._colTime].values[0]
+            textGames = textGames + AK + " um " + strTime + "\n"
+            cnt = cnt + 1
 
         # Send notifications to all specified receivers
         for receiver in self.mailRefCoordTargets:
@@ -403,26 +465,31 @@ class nuLigaHomeGames:
             if type(toaddr) == str:
                 if '@' in toaddr:
                     # send Email
-                    fromaddr        = self.mail_ID
-                    msg             = MIMEMultipart()
-                    msg['From']     = fromaddr
-                    msg['Subject']  = self.mailRefCoordSubject
-                    msg['To']       = toaddr
-                    # Message body created from mail text stored in config 
-                    body = self.mailRefCoord.format(receiver["Name"], date, textGames, ', '.join(rec["Name"] for rec in self.mailRefCoordTargets))
+                    fromaddr = self.mail_ID
+                    msg = MIMEMultipart()
+                    msg['From'] = fromaddr
+                    msg['Subject'] = self.mailRefCoordSubject
+                    msg['To'] = toaddr
+                    # Message body created from mail text stored in config
+                    body = self.mailRefCoord.format(receiver["Name"], date, textGames, ', '.join(
+                        rec["Name"] for rec in self.mailRefCoordTargets))
                     msg.attach(MIMEText(body, 'plain'))
                     text = msg.as_string()
                     self.send_Mail(fromaddr, toaddr, text)
-                    logging.info("E-Mail sent to " + str(receiver["Name"]) + ", " + str(toaddr))
+                    logging.info("E-Mail sent to " +
+                                 str(receiver["Name"]) + ", " + str(toaddr))
                 elif '+' in toaddr:
                     # send SMS
                     fromaddr = self.twilio_ID
                     # Message text created from text stored in config
-                    text = self.mailRefCoord.format(receiver["Name"], date, textGames, ', '.join(rec["Name"] for rec in self.mailRefCoordTargets))
+                    text = self.mailRefCoord.format(receiver["Name"], date, textGames, ', '.join(
+                        rec["Name"] for rec in self.mailRefCoordTargets))
                     self.send_SMS(fromaddr, toaddr, text)
-                    logging.info("SMS sent to " + str(receiver["Name"]) + ", " + str(toaddr))
+                    logging.info("SMS sent to " +
+                                 str(receiver["Name"]) + ", " + str(toaddr))
                 else:
-                    logging.warning("No valid phone number or email address available for " + str(receiver["Name"]))
+                    logging.warning(
+                        "No valid phone number or email address available for " + str(receiver["Name"]))
 
         return cnt
 
@@ -431,7 +498,8 @@ class nuLigaHomeGames:
 if __name__ == '__main__':
 
     # Initialize logger
-    logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', filename='helper.log',level=logging.DEBUG)
+    logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s',
+                        filename='helper.log', level=logging.DEBUG)
     logging.getLogger().addHandler(logging.StreamHandler())
 
     # Initialize class
@@ -478,7 +546,7 @@ if __name__ == '__main__':
     '''
 
     # Check if judge notifications have to be send
-    tomorrow    = self.get_today() + datetime.timedelta(days=1)
+    tomorrow = self.get_today() + datetime.timedelta(days=1)
     strTomorrow = tomorrow.strftime("%d.%m.%Y")
     if self.gameTable[self._colDate].str.contains(strTomorrow).any():
         cnt = 0
