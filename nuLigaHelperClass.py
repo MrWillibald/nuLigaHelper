@@ -11,8 +11,8 @@
 # - Send newspaper article to local newspaper
 # ---------------------------------------------------------------
 # Created by: MrWillibald
-# Version 0.14
-# Info: Fix "spielfrei" with new request
+# Version 0.15
+# Info: Add additional columns for shop and security
 # Date: 25.08.2022
 # ---------------------------------------------------------------
 
@@ -198,10 +198,22 @@ class nuLigaHomeGames:
         kwargs = {self._colMailJudge2: np.empty(
             len(self.onlineTable[self._colDay]), dtype=str)}
         self.onlineTable = self.onlineTable.assign(**kwargs)
-        kwargs = {self._colCake: np.empty(
+        kwargs = {self._colShop1: np.empty(
             len(self.onlineTable[self._colDay]), dtype=str)}
         self.onlineTable = self.onlineTable.assign(**kwargs)
-        kwargs = {self._colMailCake: np.empty(
+        kwargs = {self._colMailShop1: np.empty(
+            len(self.onlineTable[self._colDay]), dtype=str)}
+        self.onlineTable = self.onlineTable.assign(**kwargs)
+        kwargs = {self._colShop2: np.empty(
+            len(self.onlineTable[self._colDay]), dtype=str)}
+        self.onlineTable = self.onlineTable.assign(**kwargs)
+        kwargs = {self._colMailShop2: np.empty(
+            len(self.onlineTable[self._colDay]), dtype=str)}
+        self.onlineTable = self.onlineTable.assign(**kwargs)
+        kwargs = {self._colSecurity: np.empty(
+            len(self.onlineTable[self._colDay]), dtype=str)}
+        self.onlineTable = self.onlineTable.assign(**kwargs)
+        kwargs = {self._colMailSecurity: np.empty(
             len(self.onlineTable[self._colDay]), dtype=str)}
         self.onlineTable = self.onlineTable.assign(**kwargs)
         logging.info("Current home game plan loaded")
@@ -210,10 +222,10 @@ class nuLigaHomeGames:
         """Read scheduled jobs from downloaded or local file"""
         logging.info("Read local judge schedule")
         try:
-            self.gameTable = pd.read_excel(self.file, dtype={self._colMailJMV: str,
-                                                             self._colMailJudge1: str,
-                                                             self._colMailJudge2: str,
-                                                             self._colMailCake: str})
+            self.gameTable = pd.read_excel(self.file, dtype={
+                self._colMailJMV: str, self._colMailJudge1: str, self._colMailJudge2: str, 
+                self._colMailShop1: str, self._colMailShop2: str, self._colMailSecurity: str
+            })
             logging.info("Judge schedule available")
         except OSError:
             self.gameTable = self.onlineTable
@@ -280,6 +292,10 @@ class nuLigaHomeGames:
         worksheet.set_column('Q:Q', 35, formatText)
         worksheet.set_column('R:R', 30)
         worksheet.set_column('S:S', 35, formatText)
+        worksheet.set_column('T:T', 30)
+        worksheet.set_column('U:U', 35, formatText)
+        worksheet.set_column('V:V', 30)
+        worksheet.set_column('W:W', 35, formatText)
         worksheet.autofilter(
             0, 0, self.gameTable.shape[0], self.gameTable.shape[1])
         writer.save()
