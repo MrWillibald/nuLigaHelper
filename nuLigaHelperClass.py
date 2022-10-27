@@ -5,7 +5,7 @@
 # Functions:
 # - Read home game plan for sports stadium from nuLiga
 # - Update game plan Excel document with judge scheduling
-# - Send notifications to game judges
+# - Send notifications for tasks
 # - Send notifications to team leaders
 # - Send notification to referee planner
 # - Send newspaper article to local newspaper
@@ -13,7 +13,7 @@
 # Created by: MrWillibald
 # Version 0.15
 # Info: Add additional columns for shop and security
-# Date: 25.08.2022
+# Date: 27.10.2022
 # ---------------------------------------------------------------
 
 import requests
@@ -30,7 +30,7 @@ import json
 import logging
 
 # Version string
-VERSION = '0.14'
+VERSION = '0.15'
 # Debug flag
 DEBUG_FLAG = False
 
@@ -65,7 +65,8 @@ class nuLigaHomeGames:
 
         # Set up dates and strings
         self.set_today(datetime.date.today())
-        #self.set_today(datetime.date(2021, 10, 8))
+        if DEBUG_FLAG:
+            self.set_today(datetime.date(2022, 10, 27))
 
         # New config workflow
         with open(os.path.join(os.path.dirname(__file__), 'config.json'),
@@ -368,8 +369,6 @@ class nuLigaHomeGames:
     def send_Notifications(self, date):
         """Send notifications to game judges via SMS or E-Mail"""
         cnt = 0
-        judge = ['Du', 'Du']
-        mailJudge = ['', '']
         noteTable = self.gameTable[(self.gameTable[self._colDate] == date) & (
             self.gameTable[self._colGuest] != "spielfrei")].dropna(how="all")
         for game in noteTable[self._colNr]:
@@ -381,49 +380,67 @@ class nuLigaHomeGames:
                                == game, self._colJMV].values[0]
             mailMV = noteTable.loc[noteTable[self._colNr]
                                    == game, self._colMailJMV].values[0]
-            judge[0] = noteTable.loc[noteTable[self._colNr]
-                                     == game, self._colJudge1].values[0]
-            mailJudge[0] = noteTable.loc[noteTable[self._colNr]
-                                         == game, self._colMailJudge1].values[0]
-            judge[1] = noteTable.loc[noteTable[self._colNr]
-                                     == game, self._colJudge2].values[0]
-            mailJudge[1] = noteTable.loc[noteTable[self._colNr]
-                                         == game, self._colMailJudge2].values[0]
+            receivers = []
+            receivers.append({
+                "name": noteTable.loc[noteTable[self._colNr] == game, self._colJudge1].values[0],
+                "mail": noteTable.loc[noteTable[self._colNr] == game, self._colMailJudge1].values[0],
+                "task": self._colJudge1
+            })
+            receivers.append({
+                "name": noteTable.loc[noteTable[self._colNr] == game, self._colJudge2].values[0],
+                "mail": noteTable.loc[noteTable[self._colNr] == game, self._colMailJudge2].values[0],
+                "task": self._colJudge2
+            })
+            receivers.append({
+                "name": noteTable.loc[noteTable[self._colNr] == game, self._colShop1].values[0],
+                "mail": noteTable.loc[noteTable[self._colNr] == game, self._colMailShop1].values[0],
+                "task": self._colShop1
+            })
+            receivers.append({
+                "name": noteTable.loc[noteTable[self._colNr] == game, self._colShop2].values[0],
+                "mail": noteTable.loc[noteTable[self._colNr] == game, self._colMailShop2].values[0],
+                "task": self._colShop2
+            })
+            receivers.append({
+                "name": noteTable.loc[noteTable[self._colNr] == game, self._colSecurity].values[0],
+                "mail": noteTable.loc[noteTable[self._colNr] == game, self._colMailSecurity].values[0],
+                "task": self._colSecurity
+            })
             home = noteTable.loc[noteTable[self._colNr]
                                  == game, self._colHome].values[0]
             guest = noteTable.loc[noteTable[self._colNr]
                                   == game, self._colGuest].values[0]
             strTime = noteTable.loc[noteTable[self._colNr]
                                     == game, self._colTime].values[0]
-            # Notifications to Judges
-            for i in range(0, 2):
-                toaddr = mailJudge[i]
+            # Notifications for jobs
+            for receiver in receivers:
+                toaddr = receiver["mail"]
                 if type(toaddr) == str:
                     if '@' in toaddr:
                         # send Email
                         fromaddr = self.mail_ID
                         msg = MIMEMultipart()
                         msg['From'] = fromaddr
-                        msg['Subject'] = self.mailJudgeSubject
+                        msg['Subject'] = "Benachrichtigung Dienst " + receiver["task"]
                         msg['To'] = toaddr
                         # Message body created from mail text stored in config
-                        body = self.mailJudge.format(
-                            judge[i], date, AK, home, guest, strTime)
+                        body = self.mailTask.format(
+                            receiver["name"], date, receiver["task"], AK, home, guest, strTime)
                         msg.attach(MIMEText(body, 'plain'))
                         text = msg.as_string()
                         self.send_Mail(fromaddr, toaddr, text)
                         logging.info("E-Mail sent to " +
-                                     judge[i] + ", " + str(toaddr))
+                                     receiver["name"] + ", " + str(toaddr))
                         cnt = cnt + 1
                     elif '+' in toaddr:
                         # send SMS
                         fromaddr = self.twilio_ID
                         # Message text created from text stored in config
-                        text = self.textJudge.format(
-                            judge[i], date, AK, strTime)
+                        text = self.textTask.format(
+                            receiver["name"], date, receiver["task"], AK, strTime)
                         self.send_SMS(fromaddr, toaddr, text)
                         logging.info("SMS sent to " +
-                                     judge[i] + ", " + str(toaddr))
+                                     receiver["name"] + ", " + str(toaddr))
                         cnt = cnt + 1
                     else:
                         logging.warning(
@@ -440,7 +457,7 @@ class nuLigaHomeGames:
                     msg['To'] = toaddr
                     # Message body created from mail text stored in config
                     body = self.mailMV.format(
-                        MV, team, date, judge[0], judge[1], AK, home, guest, strTime)
+                        MV, team, date, receivers[0]["name"], receivers[1]["name"], AK, home, guest, strTime)
                     msg.attach(MIMEText(body, 'plain'))
                     text = msg.as_string()
                     self.send_Mail(fromaddr, toaddr, text)
@@ -451,7 +468,7 @@ class nuLigaHomeGames:
                     fromaddr = self.twilio_ID
                     # Message text created from text stored in config
                     text = self.textMV.format(
-                        MV, team, date, judge[0], judge[1], AK, strTime)
+                        MV, team, date, receivers[0]["name"], receivers[1]["name"], AK, strTime)
                     self.send_SMS(fromaddr, toaddr, text)
                     logging.info("SMS sent to " + MV + ", " + str(toaddr))
                     cnt = cnt + 1
