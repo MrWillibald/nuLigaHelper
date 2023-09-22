@@ -11,9 +11,9 @@
 # - Send newspaper article to local newspaper
 # ---------------------------------------------------------------
 # Created by: MrWillibald
-# Version 0.15
-# Info: Add additional columns for shop and security
-# Date: 27.10.2022
+# Version 0.16
+# Info: Add early service notification
+# Date: 22.09.2023
 # ---------------------------------------------------------------
 
 import requests
@@ -30,7 +30,7 @@ import json
 import logging
 
 # Version string
-VERSION = '0.15'
+VERSION = '0.16'
 # Debug flag
 DEBUG_FLAG = False
 
@@ -45,9 +45,11 @@ class nuLigaHomeGames:
             self._year = self._today.year
         else:
             self._year = today.year - 1
-        self.__dictSeason = {'part1': str(self._year),
-                             'part2': str(self._year + 1),
-                             'part3': str(self._year + 1)[-2:]}
+        self.__dictSeason = {
+            'part1': str(self._year),
+            'part2': str(self._year + 1),
+            'part3': str(self._year + 1)[-2:]
+        }
         self.__season = '{part1}%2F{part3}'.format(**self.__dictSeason)
         self.file = 'Heimspielplan_{part1}_{part3}.xlsx'.format(
             **self.__dictSeason)
@@ -66,11 +68,10 @@ class nuLigaHomeGames:
         # Set up dates and strings
         self.set_today(datetime.date.today())
         if DEBUG_FLAG:
-            self.set_today(datetime.date(2022, 10, 27))
+            self.set_today(datetime.date(2023, 9, 24))
 
         # New config workflow
-        with open(os.path.join(os.path.dirname(__file__), 'config.json'),
-                  encoding='utf-8') as json_config_file:
+        with open(os.path.join(os.path.dirname(__file__), 'config.json'), encoding='utf-8') as json_config_file:
             config = json.load(json_config_file)
 
         # Club properties
@@ -114,8 +115,8 @@ class nuLigaHomeGames:
             self.dbc.files_download_to_file(
                 self.file, '/' + self.dropbox_folder + '/' + self.file)
         except dropbox.exceptions.ApiError:
-            logging.warning("Error while loading judge schedule from Dropbox, "
-                            "new schedule is created")
+            logging.warning(
+                "Error while loading judge schedule from Dropbox, new schedule is created")
         logging.info(
             "Judge schedule loaded and saved successfully from Dropbox")
 
@@ -123,9 +124,8 @@ class nuLigaHomeGames:
         """Upload file to specified Dropbox account"""
         with open(self.file, 'rb') as f:
             data = f.read()
-            self.dbc.files_upload(data,
-                                  '/' + self.dropbox_folder + '/' + self.file,
-                                  mode=dropbox.files.WriteMode.overwrite)
+            self.dbc.files_upload(data, '/' + self.dropbox_folder +
+                                  '/' + self.file, mode=dropbox.files.WriteMode.overwrite)
         try:
             rmf = os.remove(self.file)
         except OSError:
@@ -148,15 +148,17 @@ class nuLigaHomeGames:
         table = resultTable[0]
         # drop obsolete columns and rename
         table.drop(table.columns[[9, 10, 11]], axis=1, inplace=True)
-        table.columns = ([self._colDay,
-                          self._colDate,
-                          self._colTime,
-                          self._colHall,
-                          self._colNr,
-                          self._colAK,
-                          self._colHome,
-                          self._colGuest,
-                          self._colScore])
+        table.columns = ([
+            self._colDay,
+            self._colDate,
+            self._colTime,
+            self._colHall,
+            self._colNr,
+            self._colAK,
+            self._colHome,
+            self._colGuest,
+            self._colScore
+        ])
         # convert column 3 to str
         table.iloc[:, 3] = table.iloc[:, 3].apply(str)
         # fill dates
@@ -224,8 +226,12 @@ class nuLigaHomeGames:
         logging.info("Read local judge schedule")
         try:
             self.gameTable = pd.read_excel(self.file, dtype={
-                self._colMailJMV: str, self._colMailJudge1: str, self._colMailJudge2: str, 
-                self._colMailShop1: str, self._colMailShop2: str, self._colMailSecurity: str
+                self._colMailJMV: str,
+                self._colMailJudge1: str,
+                self._colMailJudge2: str,
+                self._colMailShop1: str,
+                self._colMailShop2: str,
+                self._colMailSecurity: str
             })
             logging.info("Judge schedule available")
         except OSError:
@@ -421,7 +427,8 @@ class nuLigaHomeGames:
                         fromaddr = self.mail_ID
                         msg = MIMEMultipart()
                         msg['From'] = fromaddr
-                        msg['Subject'] = "Benachrichtigung Dienst " + receiver["task"]
+                        msg['Subject'] = "Benachrichtigung Dienst " + \
+                            receiver["task"]
                         msg['To'] = toaddr
                         # Message body created from mail text stored in config
                         body = self.mailTask.format(
@@ -526,6 +533,60 @@ class nuLigaHomeGames:
 
         return cnt
 
+    def send_ServiceNotifications(self, date):
+        """Send early notifications to service via SMS or E-Mail"""
+        cnt = 0
+        noteTable = self.gameTable[(self.gameTable[self._colDate] == date) & (
+            self.gameTable[self._colGuest] != "spielfrei")].dropna(how="all")
+        for game in noteTable[self._colNr]:
+            AK = noteTable.loc[noteTable[self._colNr]
+                               == game, self._colAK].values[0]
+            receiver = {
+                "name": noteTable.loc[noteTable[self._colNr] == game, self._colShop1].values[0],
+                "mail": noteTable.loc[noteTable[self._colNr] == game, self._colMailShop1].values[0],
+                "task": self._colShop1
+            }
+            home = noteTable.loc[noteTable[self._colNr]
+                                 == game, self._colHome].values[0]
+            guest = noteTable.loc[noteTable[self._colNr]
+                                  == game, self._colGuest].values[0]
+            strTime = noteTable.loc[noteTable[self._colNr]
+                                    == game, self._colTime].values[0]
+            # Early notification for service
+            toaddr = receiver["mail"]
+            if type(toaddr) == str:
+                if '@' in toaddr:
+                    # send Email
+                    fromaddr = self.mail_ID
+                    msg = MIMEMultipart()
+                    msg['From'] = fromaddr
+                    msg['Subject'] = "Vorbereitung Dienst " + \
+                        receiver["task"]
+                    msg['To'] = toaddr
+                    # Message body created from mail text stored in config
+                    body = self.mailEarlyTask.format(
+                        receiver["name"], date, receiver["task"], AK, home, guest, strTime)
+                    msg.attach(MIMEText(body, 'plain'))
+                    text = msg.as_string()
+                    self.send_Mail(fromaddr, toaddr, text)
+                    logging.info("E-Mail sent to " +
+                                 receiver["name"] + ", " + str(toaddr))
+                    cnt = cnt + 1
+                elif '+' in toaddr:
+                    # send SMS
+                    fromaddr = self.twilio_ID
+                    # Message text created from text stored in config
+                    text = self.textEarlyTask.format(
+                        receiver["name"], date, receiver["task"], AK, strTime)
+                    self.send_SMS(fromaddr, toaddr, text)
+                    logging.info("SMS sent to " +
+                                 receiver["name"] + ", " + str(toaddr))
+                    cnt = cnt + 1
+                else:
+                    logging.warning(
+                        "No valid phone number or email adress available at game " + str(game))
+        return cnt
+
 
 #  main program
 if __name__ == '__main__':
@@ -591,5 +652,13 @@ if __name__ == '__main__':
         cnt = 0
         cnt = self.send_RefNotification(strTomorrow)
         logging.info("Number of required home referees: " + str(cnt))
+
+    # Check if early catering notifications have to be send
+    nextWeek = self.get_today() + datetime.timedelta(days=7)
+    strNextWeek = nextWeek.strftime("%d.%m.%Y")
+    if self.gameTable[self._colDate].str.contains(strNextWeek).any():
+        cnt = 0
+        cnt = self.send_ServiceNotifications(strNextWeek)
+        logging.info("Number of sent service notifications: " + str(cnt))
 
     logging.info("nuLiga Helper finished")
