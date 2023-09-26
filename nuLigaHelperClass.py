@@ -11,9 +11,9 @@
 # - Send newspaper article to local newspaper
 # ---------------------------------------------------------------
 # Created by: MrWillibald
-# Version 0.16
-# Info: Add early service notification
-# Date: 22.09.2023
+# Version 0.17
+# Info: Only shop team of first game has to be notified early
+# Date: 26.09.2023
 # ---------------------------------------------------------------
 
 import requests
@@ -30,7 +30,7 @@ import json
 import logging
 
 # Version string
-VERSION = '0.16'
+VERSION = '0.17'
 # Debug flag
 DEBUG_FLAG = False
 
@@ -499,37 +499,37 @@ class nuLigaHomeGames:
             textGames = textGames + AK + " um " + strTime + "\n"
             cnt = cnt + 1
 
-        # Send notifications to all specified receivers
-        for receiver in self.mailRefCoordTargets:
-            toaddr = receiver["Address"]
-            if type(toaddr) == str:
-                if '@' in toaddr:
-                    # send Email
-                    fromaddr = self.mail_ID
-                    msg = MIMEMultipart()
-                    msg['From'] = fromaddr
-                    msg['Subject'] = self.mailRefCoordSubject
-                    msg['To'] = toaddr
-                    # Message body created from mail text stored in config
-                    body = self.mailRefCoord.format(receiver["Name"], date, textGames, ', '.join(
-                        rec["Name"] for rec in self.mailRefCoordTargets))
-                    msg.attach(MIMEText(body, 'plain'))
-                    text = msg.as_string()
-                    self.send_Mail(fromaddr, toaddr, text)
-                    logging.info("E-Mail sent to " +
-                                 str(receiver["Name"]) + ", " + str(toaddr))
-                elif '+' in toaddr:
-                    # send SMS
-                    fromaddr = self.twilio_ID
-                    # Message text created from text stored in config
-                    text = self.mailRefCoord.format(receiver["Name"], date, textGames, ', '.join(
-                        rec["Name"] for rec in self.mailRefCoordTargets))
-                    self.send_SMS(fromaddr, toaddr, text)
-                    logging.info("SMS sent to " +
-                                 str(receiver["Name"]) + ", " + str(toaddr))
-                else:
-                    logging.warning(
-                        "No valid phone number or email address available for " + str(receiver["Name"]))
+            # Send notifications to all specified receivers
+            for receiver in self.mailRefCoordTargets:
+                toaddr = receiver["Address"]
+                if type(toaddr) == str:
+                    if '@' in toaddr:
+                        # send Email
+                        fromaddr = self.mail_ID
+                        msg = MIMEMultipart()
+                        msg['From'] = fromaddr
+                        msg['Subject'] = self.mailRefCoordSubject
+                        msg['To'] = toaddr
+                        # Message body created from mail text stored in config
+                        body = self.mailRefCoord.format(receiver["Name"], date, textGames, ', '.join(
+                            rec["Name"] for rec in self.mailRefCoordTargets))
+                        msg.attach(MIMEText(body, 'plain'))
+                        text = msg.as_string()
+                        self.send_Mail(fromaddr, toaddr, text)
+                        logging.info("E-Mail sent to " +
+                                     str(receiver["Name"]) + ", " + str(toaddr))
+                    elif '+' in toaddr:
+                        # send SMS
+                        fromaddr = self.twilio_ID
+                        # Message text created from text stored in config
+                        text = self.mailRefCoord.format(receiver["Name"], date, textGames, ', '.join(
+                            rec["Name"] for rec in self.mailRefCoordTargets))
+                        self.send_SMS(fromaddr, toaddr, text)
+                        logging.info("SMS sent to " +
+                                     str(receiver["Name"]) + ", " + str(toaddr))
+                    else:
+                        logging.warning(
+                            "No valid phone number or email address available for " + str(receiver["Name"]))
 
         return cnt
 
@@ -538,21 +538,29 @@ class nuLigaHomeGames:
         cnt = 0
         noteTable = self.gameTable[(self.gameTable[self._colDate] == date) & (
             self.gameTable[self._colGuest] != "spielfrei")].dropna(how="all")
-        for game in noteTable[self._colNr]:
-            AK = noteTable.loc[noteTable[self._colNr]
-                               == game, self._colAK].values[0]
-            receiver = {
-                "name": noteTable.loc[noteTable[self._colNr] == game, self._colShop1].values[0],
-                "mail": noteTable.loc[noteTable[self._colNr] == game, self._colMailShop1].values[0],
-                "task": self._colShop1
-            }
-            home = noteTable.loc[noteTable[self._colNr]
-                                 == game, self._colHome].values[0]
-            guest = noteTable.loc[noteTable[self._colNr]
-                                  == game, self._colGuest].values[0]
-            strTime = noteTable.loc[noteTable[self._colNr]
-                                    == game, self._colTime].values[0]
-            # Early notification for service
+        # Only first game is relevant
+        game = noteTable[self._colNr].values[0]
+        AK = noteTable.loc[noteTable[self._colNr]
+                           == game, self._colAK].values[0]
+        receivers = []
+        receivers.append({
+            "name": noteTable.loc[noteTable[self._colNr] == game, self._colShop1].values[0],
+            "mail": noteTable.loc[noteTable[self._colNr] == game, self._colMailShop1].values[0],
+            "task": self._colShop1
+        })
+        receivers.append({
+            "name": noteTable.loc[noteTable[self._colNr] == game, self._colShop2].values[0],
+            "mail": noteTable.loc[noteTable[self._colNr] == game, self._colMailShop2].values[0],
+            "task": self._colShop2
+        })
+        home = noteTable.loc[noteTable[self._colNr]
+                             == game, self._colHome].values[0]
+        guest = noteTable.loc[noteTable[self._colNr]
+                              == game, self._colGuest].values[0]
+        strTime = noteTable.loc[noteTable[self._colNr]
+                                == game, self._colTime].values[0]
+        # Early notification for service
+        for receiver in receivers:
             toaddr = receiver["mail"]
             if type(toaddr) == str:
                 if '@' in toaddr:
