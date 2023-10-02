@@ -11,9 +11,9 @@
 # - Send newspaper article to local newspaper
 # ---------------------------------------------------------------
 # Created by: MrWillibald
-# Version 0.17
-# Info: Only shop team of first game has to be notified early
-# Date: 26.09.2023
+# Version 0.18
+# Info: Add change day flag to send notifications if needed
+# Date: 02.10.2023
 # ---------------------------------------------------------------
 
 import requests
@@ -30,9 +30,11 @@ import json
 import logging
 
 # Version string
-VERSION = '0.17'
+VERSION = '0.18'
 # Debug flag
 DEBUG_FLAG = False
+# Change day flag
+CHANGE_DAY = False
 
 
 class nuLigaHomeGames:
@@ -67,8 +69,8 @@ class nuLigaHomeGames:
 
         # Set up dates and strings
         self.set_today(datetime.date.today())
-        if DEBUG_FLAG:
-            self.set_today(datetime.date(2023, 9, 24))
+        if DEBUG_FLAG or CHANGE_DAY:
+            self.set_today(datetime.date(2023, 9, 30))
 
         # New config workflow
         with open(os.path.join(os.path.dirname(__file__), 'config.json'), encoding='utf-8') as json_config_file:
@@ -488,7 +490,7 @@ class nuLigaHomeGames:
         """Send referee notification to referee coordinator"""
         # collect games with missing referees
         noteTable = self.gameTable[self.gameTable[self._colDate].str.contains(
-            strTomorrow) & self.gameTable[self._colScore].str.contains("Heim")]
+            date) & self.gameTable[self._colScore].str.contains("Heim")]
         cnt = 0
         textGames = ""
         for game in noteTable[self._colNr]:
