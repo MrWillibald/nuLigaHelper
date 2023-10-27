@@ -41,7 +41,7 @@ import logging
 # Version string
 VERSION = '0.19'
 # Debug flag
-DEBUG_FLAG = True
+DEBUG_FLAG = False
 # Change day flag
 CHANGE_DAY = False
 
