@@ -11,28 +11,37 @@
 # - Send newspaper article to local newspaper
 # ---------------------------------------------------------------
 # Created by: MrWillibald
-# Version 0.18
-# Info: Add change day flag to send notifications if needed
-# Date: 02.10.2023
+# Version 0.19
+# Info: Update email messaging function
+# Date: 27.10.2023
 # ---------------------------------------------------------------
 
+# scraping libs
 import requests
 import datetime
+
+# data table libs
 import pandas as pd
 import numpy as np
+
+# messaging libs
 import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+from email.utils import formataddr
+from email.message import EmailMessage
+from twilio.rest import Client
+
+# file handling libs
 import dropbox
 import os
-from twilio.rest import Client
+
+# additonal libs
 import json
 import logging
 
 # Version string
-VERSION = '0.18'
+VERSION = '0.19'
 # Debug flag
-DEBUG_FLAG = False
+DEBUG_FLAG = True
 # Change day flag
 CHANGE_DAY = False
 
@@ -92,15 +101,15 @@ class nuLigaHomeGames:
 
         logging.info("Initialization completed")
 
-    def send_Mail(self, fromaddr, toaddr, text):
+    def send_Mail(self, msg):
         """Send E-Mail via specified SMTP server"""
         if True == DEBUG_FLAG:
             return 0
-        server = smtplib.SMTP_SSL(self.smtpserver)
-        # server.set_debuglevel(True)
-        server.login(self.mail_ID, self.mail_password)
-        server.sendmail(fromaddr, toaddr, text)
-        server.quit()
+        with smtplib.SMTP_SSL(self.smtpserver) as server:
+            #server.set_debuglevel(True)
+            server.login(self.mail_ID, self.mail_password)
+            server.send_message(msg)
+            server.quit()
 
     def send_SMS(self, fromaddr, toaddr, text):
         """Send SMS via specified Twilio account"""
@@ -262,16 +271,12 @@ class nuLigaHomeGames:
                         "Spielnummer not contained in home schedule, please correct manually!")
 
         if sendError:
-            fromaddr = self.mail_ID
-            toaddr = fromaddr
-            msg = MIMEMultipart()
-            msg['From'] = fromaddr
+            msg = EmailMessage()
+            msg['From'] = formataddr((self.mail_name, self.mail_ID))
             msg['Subject'] = self.mailErrorSubject
-            msg['To'] = toaddr
-            body = self.mailError
-            msg.attach(MIMEText(body, 'plain'))
-            text = msg.as_string()
-            self.send_Mail(fromaddr, toaddr, text)
+            msg['To'] = formataddr(('Manu', self.mail_ID))
+            msg.set_content(self.mailError)
+            self.send_Mail(msg)
 
         # make game and online table identical if merging was successful
         self.gameTable = self.onlineTable
@@ -336,12 +341,10 @@ class nuLigaHomeGames:
                 noteTable.loc[noteTable[self._colNr] == game, self._colGuest].values[0])
             strTime.append(
                 noteTable.loc[noteTable[self._colNr] == game, self._colTime].values[0])
-        fromaddr = self.mail_ID
-        toaddr = self.mailAddrNewspaper
-        logging.info("Send newspaper article to " + toaddr)
-        msg = MIMEMultipart()
-        msg['From'] = fromaddr
-        msg['To'] = toaddr
+        logging.info("Send newspaper article to " + self.mailAddrNewspaper)
+        msg = EmailMessage()
+        msg['From'] = formataddr((self.mail_name, self.mail_ID))
+        msg['To'] = self.mailAddrNewspaper
         msg['Subject'] = self.mailNewspaperSubject
 
         # Create schedule from game plan
@@ -366,12 +369,10 @@ class nuLigaHomeGames:
                 cnt = cnt + 1
 
         # Message body created from mail text stored in config
-        body = self.mailNewspaper.format(articleDate, day, date, schedule)
-        msg.attach(MIMEText(body, 'plain'))
-        text = msg.as_string()
-        self.send_Mail(fromaddr, toaddr, text)
+        msg.set_content(self.mailNewspaper.format(articleDate, day, date, schedule))
+        self.send_Mail(msg)
         logging.info("Newspaper article for " + str(cnt) +
-                     " games at " + date + " sent to " + toaddr)
+                     " games at " + date + " sent to " + self.mailAddrNewspaper)
         return cnt
 
     def send_Notifications(self, date):
@@ -426,18 +427,15 @@ class nuLigaHomeGames:
                 if type(toaddr) == str:
                     if '@' in toaddr:
                         # send Email
-                        fromaddr = self.mail_ID
-                        msg = MIMEMultipart()
-                        msg['From'] = fromaddr
+                        msg = EmailMessage()
+                        msg['From'] = formataddr((self.mail_name, self.mail_ID))
                         msg['Subject'] = "Benachrichtigung Dienst " + \
                             receiver["task"]
-                        msg['To'] = toaddr
+                        msg['To'] = formataddr((receiver['name'], toaddr))
                         # Message body created from mail text stored in config
-                        body = self.mailTask.format(
-                            receiver["name"], date, receiver["task"], AK, home, guest, strTime)
-                        msg.attach(MIMEText(body, 'plain'))
-                        text = msg.as_string()
-                        self.send_Mail(fromaddr, toaddr, text)
+                        msg.set_content(self.mailTask.format(
+                            receiver["name"], date, receiver["task"], AK, home, guest, strTime))
+                        self.send_Mail(msg)
                         logging.info("E-Mail sent to " +
                                      receiver["name"] + ", " + str(toaddr))
                         cnt = cnt + 1
@@ -459,17 +457,14 @@ class nuLigaHomeGames:
             if type(toaddr) == str:
                 if '@' in toaddr:
                     # send Email
-                    fromaddr = self.mail_ID
-                    msg = MIMEMultipart()
-                    msg['From'] = fromaddr
+                    msg = EmailMessage()
+                    msg['From'] = formataddr((self.mail_name, self.mail_ID))
                     msg['Subject'] = self.mailMVSubject
-                    msg['To'] = toaddr
+                    msg['To'] = formataddr((MV, toaddr))
                     # Message body created from mail text stored in config
-                    body = self.mailMV.format(
-                        MV, team, date, receivers[0]["name"], receivers[1]["name"], AK, home, guest, strTime)
-                    msg.attach(MIMEText(body, 'plain'))
-                    text = msg.as_string()
-                    self.send_Mail(fromaddr, toaddr, text)
+                    msg.set_content(self.mailMV.format(
+                        MV, team, date, receivers[0]["name"], receivers[1]["name"], AK, home, guest, strTime))
+                    self.send_Mail(msg)
                     logging.info("E-Mail sent to " + MV + ", " + str(toaddr))
                     cnt = cnt + 1
                 elif '+' in toaddr:
@@ -507,17 +502,14 @@ class nuLigaHomeGames:
                 if type(toaddr) == str:
                     if '@' in toaddr:
                         # send Email
-                        fromaddr = self.mail_ID
-                        msg = MIMEMultipart()
-                        msg['From'] = fromaddr
+                        msg = EmailMessage()
+                        msg['From'] = formataddr((self.mail_name, self.mail_ID))
                         msg['Subject'] = self.mailRefCoordSubject
-                        msg['To'] = toaddr
+                        msg['To'] = formataddr((receiver['name'], toaddr))
                         # Message body created from mail text stored in config
-                        body = self.mailRefCoord.format(receiver["Name"], date, textGames, ', '.join(
-                            rec["Name"] for rec in self.mailRefCoordTargets))
-                        msg.attach(MIMEText(body, 'plain'))
-                        text = msg.as_string()
-                        self.send_Mail(fromaddr, toaddr, text)
+                        msg.set_content(self.mailRefCoord.format(receiver["Name"], date, textGames, ', '.join(
+                            rec["Name"] for rec in self.mailRefCoordTargets)))
+                        self.send_Mail(msg)
                         logging.info("E-Mail sent to " +
                                      str(receiver["Name"]) + ", " + str(toaddr))
                     elif '+' in toaddr:
@@ -567,18 +559,15 @@ class nuLigaHomeGames:
             if type(toaddr) == str:
                 if '@' in toaddr:
                     # send Email
-                    fromaddr = self.mail_ID
-                    msg = MIMEMultipart()
-                    msg['From'] = fromaddr
+                    msg = EmailMessage()
+                    msg['From'] = formataddr((self.mail_name, self.mail_ID))
                     msg['Subject'] = "Vorbereitung Dienst " + \
                         receiver["task"]
-                    msg['To'] = toaddr
+                    msg['To'] = formataddr((receiver['name'], toaddr))
                     # Message body created from mail text stored in config
-                    body = self.mailEarlyTask.format(
-                        receiver["name"], date, receiver["task"], AK, home, guest, strTime)
-                    msg.attach(MIMEText(body, 'plain'))
-                    text = msg.as_string()
-                    self.send_Mail(fromaddr, toaddr, text)
+                    msg.set_content(self.mailEarlyTask.format(
+                        receiver["name"], date, receiver["task"], AK, home, guest, strTime))
+                    self.send_Mail(msg)
                     logging.info("E-Mail sent to " +
                                  receiver["name"] + ", " + str(toaddr))
                     cnt = cnt + 1
