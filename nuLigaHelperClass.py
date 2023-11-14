@@ -11,8 +11,8 @@
 # - Send newspaper article to local newspaper
 # ---------------------------------------------------------------
 # Created by: MrWillibald
-# Version 0.19
-# Info: Update email messaging function
+# Version 0.20
+# Info: Use email for sale
 # Date: 27.10.2023
 # ---------------------------------------------------------------
 
@@ -39,7 +39,7 @@ import json
 import logging
 
 # Version string
-VERSION = '0.19'
+VERSION = '0.20'
 # Debug flag
 DEBUG_FLAG = False
 # Change day flag
@@ -79,7 +79,7 @@ class nuLigaHomeGames:
         # Set up dates and strings
         self.set_today(datetime.date.today())
         if DEBUG_FLAG or CHANGE_DAY:
-            self.set_today(datetime.date(2023, 9, 30))
+            self.set_today(datetime.date(2023, 11, 17))
 
         # New config workflow
         with open(os.path.join(os.path.dirname(__file__), 'config.json'), encoding='utf-8') as json_config_file:
@@ -101,13 +101,13 @@ class nuLigaHomeGames:
 
         logging.info("Initialization completed")
 
-    def send_Mail(self, msg):
+    def send_Mail(self, msg, ID, password):
         """Send E-Mail via specified SMTP server"""
         if True == DEBUG_FLAG:
             return 0
         with smtplib.SMTP_SSL(self.smtpserver) as server:
             #server.set_debuglevel(True)
-            server.login(self.mail_ID, self.mail_password)
+            server.login(ID, password)
             server.send_message(msg)
             server.quit()
 
@@ -244,6 +244,7 @@ class nuLigaHomeGames:
                 self._colMailShop2: str,
                 self._colMailSecurity: str
             })
+            #self.gameTable = self.gameTable.transpose()
             logging.info("Judge schedule available")
         except OSError:
             self.gameTable = self.onlineTable
@@ -286,6 +287,7 @@ class nuLigaHomeGames:
     def write_toXlsx(self):
         """Write updated job scheduling to local *.xlsx file"""
         writer = pd.ExcelWriter(self.file, engine='xlsxwriter')
+        #self.writeTable = self.gameTable.transpose()
         self.gameTable.to_excel(
             writer, sheet_name='Heimspielplan', encoding=self._enc)
         worksheet = writer.sheets['Heimspielplan']
@@ -370,7 +372,7 @@ class nuLigaHomeGames:
 
         # Message body created from mail text stored in config
         msg.set_content(self.mailNewspaper.format(articleDate, day, date, schedule))
-        self.send_Mail(msg)
+        self.send_Mail(msg, self.mail_ID, self.mail_password)
         logging.info("Newspaper article for " + str(cnt) +
                      " games at " + date + " sent to " + self.mailAddrNewspaper)
         return cnt
@@ -381,11 +383,11 @@ class nuLigaHomeGames:
         noteTable = self.gameTable[(self.gameTable[self._colDate] == date) & (
             self.gameTable[self._colGuest] != "spielfrei")].dropna(how="all")
         for game in noteTable[self._colNr]:
-            AK = noteTable.loc[noteTable[self._colNr]
+            ak = noteTable.loc[noteTable[self._colNr]
                                == game, self._colAK].values[0]
             team = noteTable.loc[noteTable[self._colNr]
                                  == game, self._colJTeam].values[0]
-            MV = noteTable.loc[noteTable[self._colNr]
+            mv = noteTable.loc[noteTable[self._colNr]
                                == game, self._colJMV].values[0]
             mailMV = noteTable.loc[noteTable[self._colNr]
                                    == game, self._colMailJMV].values[0]
@@ -423,58 +425,56 @@ class nuLigaHomeGames:
                                     == game, self._colTime].values[0]
             # Notifications for jobs
             for receiver in receivers:
-                toaddr = receiver["mail"]
-                if type(toaddr) == str:
-                    if '@' in toaddr:
+                if type(receiver["mail"]) == str:
+                    if '@' in receiver["mail"]:
                         # send Email
                         msg = EmailMessage()
                         msg['From'] = formataddr((self.mail_name, self.mail_ID))
                         msg['Subject'] = "Benachrichtigung Dienst " + \
                             receiver["task"]
-                        msg['To'] = formataddr((receiver['name'], toaddr))
+                        msg['To'] = formataddr((receiver['name'], receiver["mail"]))
                         # Message body created from mail text stored in config
                         msg.set_content(self.mailTask.format(
-                            receiver["name"], date, receiver["task"], AK, home, guest, strTime))
-                        self.send_Mail(msg)
+                            receiver["name"], date, receiver["task"], ak, home, guest, strTime))
+                        self.send_Mail(msg, self.mail_ID, self.mail_password)
                         logging.info("E-Mail sent to " +
-                                     receiver["name"] + ", " + str(toaddr))
+                                     receiver["name"] + ", " + str(receiver["mail"]))
                         cnt = cnt + 1
-                    elif '+' in toaddr:
+                    elif '+' in receiver["mail"]:
                         # send SMS
                         fromaddr = self.twilio_ID
                         # Message text created from text stored in config
                         text = self.textTask.format(
-                            receiver["name"], date, receiver["task"], AK, strTime)
-                        self.send_SMS(fromaddr, toaddr, text)
+                            receiver["name"], date, receiver["task"], ak, strTime)
+                        self.send_SMS(fromaddr, receiver["mail"], text)
                         logging.info("SMS sent to " +
-                                     receiver["name"] + ", " + str(toaddr))
+                                     receiver["name"] + ", " + str(receiver["mail"]))
                         cnt = cnt + 1
                     else:
                         logging.warning(
                             "No valid phone number or email adress available at game " + str(game))
             # Notification to MV
-            toaddr = mailMV
-            if type(toaddr) == str:
-                if '@' in toaddr:
+            if type(mailMV) == str:
+                if '@' in mailMV:
                     # send Email
                     msg = EmailMessage()
                     msg['From'] = formataddr((self.mail_name, self.mail_ID))
                     msg['Subject'] = self.mailMVSubject
-                    msg['To'] = formataddr((MV, toaddr))
+                    msg['To'] = formataddr((mv, mailMV))
                     # Message body created from mail text stored in config
                     msg.set_content(self.mailMV.format(
-                        MV, team, date, receivers[0]["name"], receivers[1]["name"], AK, home, guest, strTime))
-                    self.send_Mail(msg)
-                    logging.info("E-Mail sent to " + MV + ", " + str(toaddr))
+                        mv, team, date, receivers[0]["name"], receivers[1]["name"], ak, home, guest, strTime))
+                    self.send_Mail(msg, self.mail_ID, self.mail_password)
+                    logging.info("E-Mail sent to " + mv + ", " + str(mailMV))
                     cnt = cnt + 1
-                elif '+' in toaddr:
+                elif '+' in mailMV:
                     # send SMS
                     fromaddr = self.twilio_ID
                     # Message text created from text stored in config
                     text = self.textMV.format(
-                        MV, team, date, receivers[0]["name"], receivers[1]["name"], AK, strTime)
-                    self.send_SMS(fromaddr, toaddr, text)
-                    logging.info("SMS sent to " + MV + ", " + str(toaddr))
+                        mv, team, date, receivers[0]["name"], receivers[1]["name"], ak, strTime)
+                    self.send_SMS(fromaddr, mailMV, text)
+                    logging.info("SMS sent to " + mv + ", " + str(mailMV))
                     cnt = cnt + 1
                 else:
                     logging.warning(
@@ -489,38 +489,37 @@ class nuLigaHomeGames:
         cnt = 0
         textGames = ""
         for game in noteTable[self._colNr]:
-            AK = noteTable.loc[noteTable[self._colNr]
+            ak = noteTable.loc[noteTable[self._colNr]
                                == game, self._colAK].values[0]
             strTime = noteTable.loc[noteTable[self._colNr]
                                     == game, self._colTime].values[0]
-            textGames = textGames + AK + " um " + strTime + "\n"
+            textGames = textGames + ak + " um " + strTime + "\n"
             cnt = cnt + 1
 
             # Send notifications to all specified receivers
             for receiver in self.mailRefCoordTargets:
-                toaddr = receiver["Address"]
-                if type(toaddr) == str:
-                    if '@' in toaddr:
+                if type(receiver["Address"]) == str:
+                    if '@' in receiver["Address"]:
                         # send Email
                         msg = EmailMessage()
                         msg['From'] = formataddr((self.mail_name, self.mail_ID))
                         msg['Subject'] = self.mailRefCoordSubject
-                        msg['To'] = formataddr((receiver['name'], toaddr))
+                        msg['To'] = formataddr((receiver['name'], receiver["Address"]))
                         # Message body created from mail text stored in config
                         msg.set_content(self.mailRefCoord.format(receiver["Name"], date, textGames, ', '.join(
                             rec["Name"] for rec in self.mailRefCoordTargets)))
-                        self.send_Mail(msg)
+                        self.send_Mail(msg, self.mail_ID, self.mail_password)
                         logging.info("E-Mail sent to " +
-                                     str(receiver["Name"]) + ", " + str(toaddr))
-                    elif '+' in toaddr:
+                                     str(receiver["Name"]) + ", " + str(receiver["Address"]))
+                    elif '+' in receiver["Address"]:
                         # send SMS
                         fromaddr = self.twilio_ID
                         # Message text created from text stored in config
                         text = self.mailRefCoord.format(receiver["Name"], date, textGames, ', '.join(
                             rec["Name"] for rec in self.mailRefCoordTargets))
-                        self.send_SMS(fromaddr, toaddr, text)
+                        self.send_SMS(fromaddr, receiver["Address"], text)
                         logging.info("SMS sent to " +
-                                     str(receiver["Name"]) + ", " + str(toaddr))
+                                     str(receiver["Name"]) + ", " + str(receiver["Address"]))
                     else:
                         logging.warning(
                             "No valid phone number or email address available for " + str(receiver["Name"]))
@@ -534,18 +533,20 @@ class nuLigaHomeGames:
             self.gameTable[self._colGuest] != "spielfrei")].dropna(how="all")
         # Only first game is relevant
         game = noteTable[self._colNr].values[0]
-        AK = noteTable.loc[noteTable[self._colNr]
+        ak = noteTable.loc[noteTable[self._colNr]
                            == game, self._colAK].values[0]
         receivers = []
         receivers.append({
             "name": noteTable.loc[noteTable[self._colNr] == game, self._colShop1].values[0],
             "mail": noteTable.loc[noteTable[self._colNr] == game, self._colMailShop1].values[0],
-            "task": self._colShop1
+            "task": self._colShop1,
+            "partner": noteTable.loc[noteTable[self._colNr] == game, self._colShop2].values[0]
         })
         receivers.append({
             "name": noteTable.loc[noteTable[self._colNr] == game, self._colShop2].values[0],
             "mail": noteTable.loc[noteTable[self._colNr] == game, self._colMailShop2].values[0],
-            "task": self._colShop2
+            "task": self._colShop2,
+            "partner": noteTable.loc[noteTable[self._colNr] == game, self._colShop1].values[0]
         })
         home = noteTable.loc[noteTable[self._colNr]
                              == game, self._colHome].values[0]
@@ -555,31 +556,30 @@ class nuLigaHomeGames:
                                 == game, self._colTime].values[0]
         # Early notification for service
         for receiver in receivers:
-            toaddr = receiver["mail"]
-            if type(toaddr) == str:
-                if '@' in toaddr:
+            if type(receiver["mail"]) == str:
+                if '@' in receiver["mail"]:
                     # send Email
                     msg = EmailMessage()
-                    msg['From'] = formataddr((self.mail_name, self.mail_ID))
+                    msg['From'] = formataddr((self.mail_saleName, self.mail_saleID))
                     msg['Subject'] = "Vorbereitung Dienst " + \
                         receiver["task"]
-                    msg['To'] = formataddr((receiver['name'], toaddr))
+                    msg['To'] = formataddr((receiver['name'], receiver["mail"]))
                     # Message body created from mail text stored in config
                     msg.set_content(self.mailEarlyTask.format(
-                        receiver["name"], date, receiver["task"], AK, home, guest, strTime))
-                    self.send_Mail(msg)
+                        receiver["name"], date, receiver["task"], ak, home, guest, receiver["partner"], strTime, receiver["partner"]))
+                    self.send_Mail(msg, self.mail_saleID, self.mail_salePassword)
                     logging.info("E-Mail sent to " +
-                                 receiver["name"] + ", " + str(toaddr))
+                                 receiver["name"] + ", " + str(receiver["mail"]))
                     cnt = cnt + 1
-                elif '+' in toaddr:
+                elif '+' in receiver["mail"]:
                     # send SMS
                     fromaddr = self.twilio_ID
                     # Message text created from text stored in config
                     text = self.textEarlyTask.format(
-                        receiver["name"], date, receiver["task"], AK, strTime)
-                    self.send_SMS(fromaddr, toaddr, text)
+                        receiver["name"], date, receiver["task"], ak, receiver["partner"], strTime, receiver["partner"])
+                    self.send_SMS(fromaddr, receiver["mail"], text)
                     logging.info("SMS sent to " +
-                                 receiver["name"] + ", " + str(toaddr))
+                                 receiver["name"] + ", " + str(receiver["mail"]))
                     cnt = cnt + 1
                 else:
                     logging.warning(
