@@ -11,8 +11,8 @@
 # - Send newspaper article to local newspaper
 # ---------------------------------------------------------------
 # Created by: MrWillibald
-# Version 0.20
-# Info: Use email for sale
+# Version 0.21
+# Info: Send early notification for all tasks
 # Date: 27.10.2023
 # ---------------------------------------------------------------
 
@@ -39,7 +39,7 @@ import json
 import logging
 
 # Version string
-VERSION = '0.20'
+VERSION = '0.21'
 # Debug flag
 DEBUG_FLAG = False
 # Change day flag
@@ -79,7 +79,7 @@ class nuLigaHomeGames:
         # Set up dates and strings
         self.set_today(datetime.date.today())
         if DEBUG_FLAG or CHANGE_DAY:
-            self.set_today(datetime.date(2023, 11, 17))
+            self.set_today(datetime.date(2023, 11, 26))
 
         # New config workflow
         with open(os.path.join(os.path.dirname(__file__), 'config.json'), encoding='utf-8') as json_config_file:
@@ -438,7 +438,7 @@ class nuLigaHomeGames:
                             receiver["name"], date, receiver["task"], ak, home, guest, strTime))
                         self.send_Mail(msg, self.mail_ID, self.mail_password)
                         logging.info("E-Mail sent to " +
-                                     receiver["name"] + ", " + str(receiver["mail"]))
+                                     receiver["name"] + ", " + receiver["task"] + ", " + str(receiver["mail"]))
                         cnt = cnt + 1
                     elif '+' in receiver["mail"]:
                         # send SMS
@@ -448,7 +448,7 @@ class nuLigaHomeGames:
                             receiver["name"], date, receiver["task"], ak, strTime)
                         self.send_SMS(fromaddr, receiver["mail"], text)
                         logging.info("SMS sent to " +
-                                     receiver["name"] + ", " + str(receiver["mail"]))
+                                     receiver["name"] + ", " + receiver["task"] + ", " + str(receiver["mail"]))
                         cnt = cnt + 1
                     else:
                         logging.warning(
@@ -465,7 +465,7 @@ class nuLigaHomeGames:
                     msg.set_content(self.mailMV.format(
                         mv, team, date, receivers[0]["name"], receivers[1]["name"], ak, home, guest, strTime))
                     self.send_Mail(msg, self.mail_ID, self.mail_password)
-                    logging.info("E-Mail sent to " + mv + ", " + str(mailMV))
+                    logging.info("E-Mail sent to " + mv + ", MV, " + str(mailMV))
                     cnt = cnt + 1
                 elif '+' in mailMV:
                     # send SMS
@@ -474,7 +474,7 @@ class nuLigaHomeGames:
                     text = self.textMV.format(
                         mv, team, date, receivers[0]["name"], receivers[1]["name"], ak, strTime)
                     self.send_SMS(fromaddr, mailMV, text)
-                    logging.info("SMS sent to " + mv + ", " + str(mailMV))
+                    logging.info("SMS sent to " + mv + ", MV, " + str(mailMV))
                     cnt = cnt + 1
                 else:
                     logging.warning(
@@ -569,7 +569,7 @@ class nuLigaHomeGames:
                         receiver["name"], date, receiver["task"], ak, home, guest, receiver["partner"], strTime, receiver["partner"]))
                     self.send_Mail(msg, self.mail_saleID, self.mail_salePassword)
                     logging.info("E-Mail sent to " +
-                                 receiver["name"] + ", " + str(receiver["mail"]))
+                                 receiver["name"] + ", " + receiver["task"] + ", " + str(receiver["mail"]))
                     cnt = cnt + 1
                 elif '+' in receiver["mail"]:
                     # send SMS
@@ -579,11 +579,85 @@ class nuLigaHomeGames:
                         receiver["name"], date, receiver["task"], ak, receiver["partner"], strTime, receiver["partner"])
                     self.send_SMS(fromaddr, receiver["mail"], text)
                     logging.info("SMS sent to " +
-                                 receiver["name"] + ", " + str(receiver["mail"]))
+                                 receiver["name"] + ", " + receiver["task"] + ", " + str(receiver["mail"]))
                     cnt = cnt + 1
                 else:
                     logging.warning(
                         "No valid phone number or email adress available at game " + str(game))
+        return cnt
+    
+    def send_PreNotifications(self, date):
+        """Send early notifications to game judges via SMS or E-Mail"""
+        cnt = 0
+        noteTable = self.gameTable[(self.gameTable[self._colDate] == date) & (
+            self.gameTable[self._colGuest] != "spielfrei")].dropna(how="all")
+        for gameNr, game in enumerate(noteTable[self._colNr]):
+            ak = noteTable.loc[noteTable[self._colNr]
+                               == game, self._colAK].values[0]
+            receivers = []
+            receivers.append({
+                "name": noteTable.loc[noteTable[self._colNr] == game, self._colJudge1].values[0],
+                "mail": noteTable.loc[noteTable[self._colNr] == game, self._colMailJudge1].values[0],
+                "task": self._colJudge1
+            })
+            receivers.append({
+                "name": noteTable.loc[noteTable[self._colNr] == game, self._colJudge2].values[0],
+                "mail": noteTable.loc[noteTable[self._colNr] == game, self._colMailJudge2].values[0],
+                "task": self._colJudge2
+            })
+            # exclude first shop tasks, are notified separately
+            if gameNr > 0:
+                receivers.append({
+                    "name": noteTable.loc[noteTable[self._colNr] == game, self._colShop1].values[0],
+                    "mail": noteTable.loc[noteTable[self._colNr] == game, self._colMailShop1].values[0],
+                    "task": self._colShop1
+                })
+                receivers.append({
+                    "name": noteTable.loc[noteTable[self._colNr] == game, self._colShop2].values[0],
+                    "mail": noteTable.loc[noteTable[self._colNr] == game, self._colMailShop2].values[0],
+                    "task": self._colShop2
+                })
+            receivers.append({
+                "name": noteTable.loc[noteTable[self._colNr] == game, self._colSecurity].values[0],
+                "mail": noteTable.loc[noteTable[self._colNr] == game, self._colMailSecurity].values[0],
+                "task": self._colSecurity
+            })
+            home = noteTable.loc[noteTable[self._colNr]
+                                 == game, self._colHome].values[0]
+            guest = noteTable.loc[noteTable[self._colNr]
+                                  == game, self._colGuest].values[0]
+            strTime = noteTable.loc[noteTable[self._colNr]
+                                    == game, self._colTime].values[0]
+            # Notifications for jobs
+            for receiver in receivers:
+                if type(receiver["mail"]) == str:
+                    if '@' in receiver["mail"]:
+                        # send Email
+                        msg = EmailMessage()
+                        msg['From'] = formataddr((self.mail_name, self.mail_ID))
+                        msg['Subject'] = "Benachrichtigung Dienst " + \
+                            receiver["task"]
+                        msg['To'] = formataddr((receiver['name'], receiver["mail"]))
+                        # Message body created from mail text stored in config
+                        msg.set_content(self.mailPreTask.format(
+                            receiver["name"], date, receiver["task"], ak, home, guest, strTime))
+                        self.send_Mail(msg, self.mail_ID, self.mail_password)
+                        logging.info("E-Mail sent to " +
+                                     receiver["name"] + ", " + receiver["task"] + ", " + str(receiver["mail"]))
+                        cnt = cnt + 1
+                    elif '+' in receiver["mail"]:
+                        # send SMS
+                        fromaddr = self.twilio_ID
+                        # Message text created from text stored in config
+                        text = self.textPreTask.format(
+                            receiver["name"], date, receiver["task"], ak, strTime)
+                        self.send_SMS(fromaddr, receiver["mail"], text)
+                        logging.info("SMS sent to " +
+                                     receiver["name"] + ", " + receiver["task"] + ", " + str(receiver["mail"]))
+                        cnt = cnt + 1
+                    else:
+                        logging.warning(
+                            "No valid phone number or email adress available at game " + str(game))
         return cnt
 
 
@@ -644,7 +718,7 @@ if __name__ == '__main__':
     if self.gameTable[self._colDate].str.contains(strTomorrow).any():
         cnt = 0
         cnt = self.send_Notifications(strTomorrow)
-        logging.info("Number of sent judge notifications: " + str(cnt))
+        logging.info("Number of sent service notifications: " + str(cnt))
 
     # Check if referee notifications have to be send
     if not self.gameTable[self.gameTable[self._colDate].str.contains(strTomorrow) & self.gameTable[self._colScore].str.contains("Heim")].empty:
@@ -658,6 +732,7 @@ if __name__ == '__main__':
     if self.gameTable[self._colDate].str.contains(strNextWeek).any():
         cnt = 0
         cnt = self.send_ServiceNotifications(strNextWeek)
+        cnt = self.send_PreNotifications(strNextWeek)
         logging.info("Number of sent service notifications: " + str(cnt))
 
     logging.info("nuLiga Helper finished")
