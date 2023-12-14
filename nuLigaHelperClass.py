@@ -79,7 +79,7 @@ class nuLigaHomeGames:
         # Set up dates and strings
         self.set_today(datetime.date.today())
         if DEBUG_FLAG or CHANGE_DAY:
-            self.set_today(datetime.date(2023, 11, 26))
+            self.set_today(datetime.date(2023, 12, 9))
 
         # New config workflow
         with open(os.path.join(os.path.dirname(__file__), 'config.json'), encoding='utf-8') as json_config_file:
@@ -277,7 +277,7 @@ class nuLigaHomeGames:
             msg['Subject'] = self.mailErrorSubject
             msg['To'] = formataddr(('Manu', self.mail_ID))
             msg.set_content(self.mailError)
-            self.send_Mail(msg)
+            self.send_Mail(msg, self.mail_ID, self.mail_password)
 
         # make game and online table identical if merging was successful
         self.gameTable = self.onlineTable
