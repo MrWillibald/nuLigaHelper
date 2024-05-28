@@ -258,11 +258,21 @@ class nuLigaHomeGames:
         sendError = False
         for game in self.onlineTable[self._colNr]:
             try:
+                oldDate = self.gameTable.loc[self.gameTable[self._colNr]
+                                            == game, self._colDate].values[0]
+                oldTime = self.gameTable.loc[self.gameTable[self._colNr]
+                                            == game, self._colTime].values[0]
                 judges = self.gameTable.loc[self.gameTable[self._colNr]
                                             == game, self._colJTeam:]
                 self.onlineTable.loc[self.onlineTable[self._colNr]
                                      == game, self._colJTeam:] = judges.values[0]
                 logging.info("Game " + str(game) + " merged with schedule")
+                newDate = self.onlineTable.loc[self.gameTable[self._colNr]
+                                            == game, self._colDate].values[0]
+                newTime = self.onlineTable.loc[self.gameTable[self._colNr]
+                                            == game, self._colTime].values[0]
+                if (newDate != oldDate) or (newTime != oldTime):
+                    logging.info("Game " + str(game) + " is shifted! Old date: " + oldDate + " " + oldTime + " New date: " + newDate + " " + newTime)
             except IndexError:
                 # oTable = pTable
                 if self.onlineTable.loc[self.onlineTable[self._colNr] == game, self._colAK].values[0] != "GE":
