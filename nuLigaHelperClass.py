@@ -183,7 +183,7 @@ class nuLigaHomeGames:
         mask = np.array([np.isnan(gamenr) for gamenr in table.iloc[:, 4]])
         table.drop(table[mask].index, inplace=True)
         # convert column 3 and 4 to int
-        table.iloc[:, 3] = table.iloc[:, 3].apply(int)
+        table.iloc[:, 3] = table.iloc[:, 3].apply(float).apply(int)
         table.iloc[:, 4] = table.iloc[:, 4].apply(int)
         lGames.append(table)
         self.onlineTable = pd.concat(lGames)
