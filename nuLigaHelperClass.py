@@ -11,9 +11,9 @@
 # - Send newspaper article to local newspaper
 # ---------------------------------------------------------------
 # Created by: MrWillibald
-# Version 0.21
-# Info: Send early notification for all tasks
-# Date: 27.10.2023
+# Version 0.22
+# Info: Send shift notification for all tasks
+# Date: 20.08.2024
 # ---------------------------------------------------------------
 
 # scraping libs
@@ -39,7 +39,7 @@ import json
 import logging
 
 # Version string
-VERSION = '0.21'
+VERSION = '0.22'
 # Debug flag
 DEBUG_FLAG = False
 # Change day flag
@@ -79,7 +79,7 @@ class nuLigaHomeGames:
         # Set up dates and strings
         self.set_today(datetime.date.today())
         if DEBUG_FLAG or CHANGE_DAY:
-            self.set_today(datetime.date(2023, 12, 9))
+            self.set_today(datetime.date(2024, 8, 20))
 
         # New config workflow
         with open(os.path.join(os.path.dirname(__file__), 'config.json'), encoding='utf-8') as json_config_file:
@@ -230,6 +230,12 @@ class nuLigaHomeGames:
         kwargs = {self._colMailSecurity: np.empty(
             len(self.onlineTable[self._colDay]), dtype=str)}
         self.onlineTable = self.onlineTable.assign(**kwargs)
+        kwargs = {self._colCleaning: np.empty(
+            len(self.onlineTable[self._colDay]), dtype=str)}
+        self.onlineTable = self.onlineTable.assign(**kwargs)
+        kwargs = {self._colMailCleaning: np.empty(
+            len(self.onlineTable[self._colDay]), dtype=str)}
+        self.onlineTable = self.onlineTable.assign(**kwargs)
         logging.info("Current home game plan loaded")
 
     def get_gameTable(self):
@@ -242,7 +248,8 @@ class nuLigaHomeGames:
                 self._colMailJudge2: str,
                 self._colMailShop1: str,
                 self._colMailShop2: str,
-                self._colMailSecurity: str
+                self._colMailSecurity: str,
+                self._colMailCleaning: str
             })
             #self.gameTable = self.gameTable.transpose()
             logging.info("Judge schedule available")
@@ -273,6 +280,7 @@ class nuLigaHomeGames:
                                             == game, self._colTime].values[0]
                 if (newDate != oldDate) or (newTime != oldTime):
                     logging.info("Game " + str(game) + " is shifted! Old date: " + oldDate + " " + oldTime + " New date: " + newDate + " " + newTime)
+                    self.send_ShfitNotification(game, oldDate, oldTime, newDate, newTime)
             except IndexError:
                 # oTable = pTable
                 if self.onlineTable.loc[self.onlineTable[self._colNr] == game, self._colAK].values[0] != "GE":
@@ -304,8 +312,9 @@ class nuLigaHomeGames:
         workbook = writer.book
         formatText = workbook.add_format({'num_format': '@'})
         worksheet.set_column('B:B', 6)
-        worksheet.set_column('C:C', 10)
+        worksheet.set_column('C:C', 12)
         worksheet.set_column('D:D', 10)
+        worksheet.set_column('F:F', 12)
         worksheet.set_column('H:H', 16)
         worksheet.set_column('I:I', 28)
         worksheet.set_column('J:J', 13)
@@ -322,6 +331,8 @@ class nuLigaHomeGames:
         worksheet.set_column('U:U', 35, formatText)
         worksheet.set_column('V:V', 30)
         worksheet.set_column('W:W', 35, formatText)
+        worksheet.set_column('X:X', 30)
+        worksheet.set_column('Y:Y', 35, formatText)
         worksheet.autofilter(
             0, 0, self.gameTable.shape[0], self.gameTable.shape[1])
         writer.save()
@@ -426,6 +437,11 @@ class nuLigaHomeGames:
                 "name": noteTable.loc[noteTable[self._colNr] == game, self._colSecurity].values[0],
                 "mail": noteTable.loc[noteTable[self._colNr] == game, self._colMailSecurity].values[0],
                 "task": self._colSecurity
+            })
+            receivers.append({
+                "name": noteTable.loc[noteTable[self._colNr] == game, self._colCleaning].values[0],
+                "mail": noteTable.loc[noteTable[self._colNr] == game, self._colMailCleaning].values[0],
+                "task": self._colCleaning
             })
             home = noteTable.loc[noteTable[self._colNr]
                                  == game, self._colHome].values[0]
@@ -632,6 +648,11 @@ class nuLigaHomeGames:
                 "mail": noteTable.loc[noteTable[self._colNr] == game, self._colMailSecurity].values[0],
                 "task": self._colSecurity
             })
+            receivers.append({
+                "name": noteTable.loc[noteTable[self._colNr] == game, self._colCleaning].values[0],
+                "mail": noteTable.loc[noteTable[self._colNr] == game, self._colMailCleaning].values[0],
+                "task": self._colCleaning
+            })
             home = noteTable.loc[noteTable[self._colNr]
                                  == game, self._colHome].values[0]
             guest = noteTable.loc[noteTable[self._colNr]
@@ -669,7 +690,76 @@ class nuLigaHomeGames:
                         logging.warning(
                             "No valid phone number or email adress available at game " + str(game))
         return cnt
-
+    
+    def send_ShfitNotification(self, game, oldDate, oldTime, newDate, newTime):
+        """Send notifications on shifted datum to game judges via SMS or E-Mail"""
+        cnt = 0
+        noteTable = self.gameTable[(self.gameTable[self._colGuest] != "spielfrei")].dropna(how="all")
+        ak = noteTable.loc[noteTable[self._colNr] == game, self._colAK].values[0]
+        receivers = []
+        receivers.append({
+            "name": noteTable.loc[noteTable[self._colNr] == game, self._colJudge1].values[0],
+            "mail": noteTable.loc[noteTable[self._colNr] == game, self._colMailJudge1].values[0],
+            "task": self._colJudge1
+        })
+        receivers.append({
+            "name": noteTable.loc[noteTable[self._colNr] == game, self._colJudge2].values[0],
+            "mail": noteTable.loc[noteTable[self._colNr] == game, self._colMailJudge2].values[0],
+            "task": self._colJudge2
+        })
+        receivers.append({
+            "name": noteTable.loc[noteTable[self._colNr] == game, self._colShop1].values[0],
+            "mail": noteTable.loc[noteTable[self._colNr] == game, self._colMailShop1].values[0],
+            "task": self._colShop1
+        })
+        receivers.append({
+            "name": noteTable.loc[noteTable[self._colNr] == game, self._colShop2].values[0],
+            "mail": noteTable.loc[noteTable[self._colNr] == game, self._colMailShop2].values[0],
+            "task": self._colShop2
+        })
+        receivers.append({
+            "name": noteTable.loc[noteTable[self._colNr] == game, self._colSecurity].values[0],
+            "mail": noteTable.loc[noteTable[self._colNr] == game, self._colMailSecurity].values[0],
+            "task": self._colSecurity
+        })
+        receivers.append({
+            "name": noteTable.loc[noteTable[self._colNr] == game, self._colCleaning].values[0],
+            "mail": noteTable.loc[noteTable[self._colNr] == game, self._colMailCleaning].values[0],
+            "task": self._colCleaning
+        })
+        home = noteTable.loc[noteTable[self._colNr] == game, self._colHome].values[0]
+        guest = noteTable.loc[noteTable[self._colNr] == game, self._colGuest].values[0]
+        # Notifications for jobs
+        for receiver in receivers:
+            if type(receiver["mail"]) == str:
+                if '@' in receiver["mail"]:
+                    # send Email
+                    msg = EmailMessage()
+                    msg['From'] = formataddr((self.mail_name, self.mail_ID))
+                    msg['Subject'] = "Benachrichtigung Verschiebung Dienst " + \
+                        receiver["task"]
+                    msg['To'] = formataddr((receiver['name'], receiver["mail"]))
+                    # Message body created from mail text stored in config
+                    msg.set_content(self.mailShifted.format(
+                        receiver["name"], receiver["task"], ak, home, guest, oldDate, oldTime, newDate, newTime))
+                    self.send_Mail(msg, self.mail_ID, self.mail_password)
+                    logging.info("E-Mail sent to " +
+                                 receiver["name"] + ", " + receiver["task"] + ", " + str(receiver["mail"]))
+                    cnt = cnt + 1
+                elif '+' in receiver["mail"]:
+                    # send SMS
+                    fromaddr = self.twilio_ID
+                    # Message text created from text stored in config
+                    text = self.textShifted.format(
+                        receiver["name"], receiver["task"], oldDate, oldTime, newDate, newTime)
+                    self.send_SMS(fromaddr, receiver["mail"], text)
+                    logging.info("SMS sent to " +
+                                 receiver["name"] + ", " + receiver["task"] + ", " + str(receiver["mail"]))
+                    cnt = cnt + 1
+                else:
+                    logging.warning(
+                        "No valid phone number or email adress available at game " + str(game))
+        return cnt
 
 #  main program
 if __name__ == '__main__':
