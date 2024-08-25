@@ -244,6 +244,15 @@ class nuLigaHomeGames:
         try:
             # Transpose table on reading
             self.gameTable = pd.read_excel(self.file, index_col=0, header=0).T
+            self.gameTable = self.gameTable.astype({
+                self._colMailJMV: str,
+                self._colMailJudge1: str,
+                self._colMailJudge2: str,
+                self._colMailShop1: str,
+                self._colMailShop2: str,
+                self._colMailSecurity: str,
+                self._colMailCleaning: str
+            })
             logging.info("Judge schedule available")
         except OSError:
             self.gameTable = self.onlineTable
