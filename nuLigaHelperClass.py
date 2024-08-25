@@ -11,9 +11,9 @@
 # - Send newspaper article to local newspaper
 # ---------------------------------------------------------------
 # Created by: MrWillibald
-# Version 0.22
-# Info: Send shift notification for all tasks
-# Date: 20.08.2024
+# Version 0.23
+# Info: Transpose excel table for better reading
+# Date: 25.08.2024
 # ---------------------------------------------------------------
 
 # scraping libs
@@ -39,7 +39,7 @@ import json
 import logging
 
 # Version string
-VERSION = '0.22'
+VERSION = '0.23'
 # Debug flag
 DEBUG_FLAG = False
 # Change day flag
@@ -111,13 +111,13 @@ class nuLigaHomeGames:
             server.send_message(msg)
             server.quit()
 
-    def send_SMS(self, fromaddr, toaddr, text):
+    def send_SMS(self, toaddr, text):
         """Send SMS via specified Twilio account"""
         if True == DEBUG_FLAG:
             return 0
         client = Client(self.twilio_sid, self.twilio_token)
         message = client.messages.create(
-            messaging_service_sid=self.twilio_service_ID, body=text, from_=fromaddr, to=toaddr)
+            messaging_service_sid=self.twilio_service_ID, body=text, to=toaddr)
         return message
 
     def get_fromDropbox(self):
@@ -242,16 +242,8 @@ class nuLigaHomeGames:
         """Read scheduled jobs from downloaded or local file"""
         logging.info("Read local judge schedule")
         try:
-            self.gameTable = pd.read_excel(self.file, dtype={
-                self._colMailJMV: str,
-                self._colMailJudge1: str,
-                self._colMailJudge2: str,
-                self._colMailShop1: str,
-                self._colMailShop2: str,
-                self._colMailSecurity: str,
-                self._colMailCleaning: str
-            })
-            #self.gameTable = self.gameTable.transpose()
+            # Transpose table on reading
+            self.gameTable = pd.read_excel(self.file, index_col=0, header=0).T
             logging.info("Judge schedule available")
         except OSError:
             self.gameTable = self.onlineTable
@@ -305,36 +297,25 @@ class nuLigaHomeGames:
     def write_toXlsx(self):
         """Write updated job scheduling to local *.xlsx file"""
         writer = pd.ExcelWriter(self.file, engine='xlsxwriter')
-        #self.writeTable = self.gameTable.transpose()
-        self.gameTable.to_excel(
+        # transpose table before writing for better reading
+        self.writeTable = self.gameTable.transpose()
+        self.writeTable.to_excel(
             writer, sheet_name='Heimspielplan', encoding=self._enc)
         worksheet = writer.sheets['Heimspielplan']
         workbook = writer.book
         formatText = workbook.add_format({'num_format': '@'})
-        worksheet.set_column('B:B', 6)
-        worksheet.set_column('C:C', 12)
-        worksheet.set_column('D:D', 10)
-        worksheet.set_column('F:F', 12)
-        worksheet.set_column('H:H', 16)
-        worksheet.set_column('I:I', 28)
-        worksheet.set_column('J:J', 13)
-        #worksheet.set_column('K:K', 18)
-        worksheet.set_column('L:L', 30)
-        worksheet.set_column('M:M', 35, formatText)
-        worksheet.set_column('N:N', 30)
-        worksheet.set_column('O:O', 35, formatText)
-        worksheet.set_column('P:P', 30)
-        worksheet.set_column('Q:Q', 35, formatText)
-        worksheet.set_column('R:R', 30)
-        worksheet.set_column('S:S', 35, formatText)
-        worksheet.set_column('T:T', 30)
-        worksheet.set_column('U:U', 35, formatText)
-        worksheet.set_column('V:V', 30)
-        worksheet.set_column('W:W', 35, formatText)
-        worksheet.set_column('X:X', 30)
-        worksheet.set_column('Y:Y', 35, formatText)
-        worksheet.autofilter(
-            0, 0, self.gameTable.shape[0], self.gameTable.shape[1])
+        worksheet.set_column(0, 100, 35)
+        worksheet.set_row(11, None, formatText)
+        worksheet.set_row(13, None, formatText)
+        worksheet.set_row(15, None, formatText)
+        worksheet.set_row(17, None, formatText)
+        worksheet.set_row(19, None, formatText)
+        worksheet.set_row(21, None, formatText)
+        worksheet.set_row(23, None, formatText)
+        # freeze first column
+        worksheet.freeze_panes(0 ,1) 
+        #worksheet.autofilter(
+        #    0, 0, self.writeTable.shape[0], self.writeTable.shape[1])
         writer.save()
         logging.info("Judge schedule saved locally")
 
@@ -468,11 +449,10 @@ class nuLigaHomeGames:
                         cnt = cnt + 1
                     elif '+' in receiver["mail"]:
                         # send SMS
-                        fromaddr = self.twilio_ID
                         # Message text created from text stored in config
                         text = self.textTask.format(
                             receiver["name"], date, receiver["task"], ak, strTime)
-                        self.send_SMS(fromaddr, receiver["mail"], text)
+                        self.send_SMS(receiver["mail"], text)
                         logging.info("SMS sent to " +
                                      receiver["name"] + ", " + receiver["task"] + ", " + str(receiver["mail"]))
                         cnt = cnt + 1
@@ -494,12 +474,10 @@ class nuLigaHomeGames:
                     logging.info("E-Mail sent to " + mv + ", MV, " + str(mailMV))
                     cnt = cnt + 1
                 elif '+' in mailMV:
-                    # send SMS
-                    fromaddr = self.twilio_ID
                     # Message text created from text stored in config
                     text = self.textMV.format(
                         mv, team, date, receivers[0]["name"], receivers[1]["name"], ak, strTime)
-                    self.send_SMS(fromaddr, mailMV, text)
+                    self.send_SMS(mailMV, text)
                     logging.info("SMS sent to " + mv + ", MV, " + str(mailMV))
                     cnt = cnt + 1
                 else:
@@ -539,11 +517,10 @@ class nuLigaHomeGames:
                                      str(receiver["Name"]) + ", " + str(receiver["Address"]))
                     elif '+' in receiver["Address"]:
                         # send SMS
-                        fromaddr = self.twilio_ID
                         # Message text created from text stored in config
                         text = self.mailRefCoord.format(receiver["Name"], date, textGames, ', '.join(
                             rec["Name"] for rec in self.mailRefCoordTargets))
-                        self.send_SMS(fromaddr, receiver["Address"], text)
+                        self.send_SMS(receiver["Address"], text)
                         logging.info("SMS sent to " +
                                      str(receiver["Name"]) + ", " + str(receiver["Address"]))
                     else:
@@ -599,11 +576,10 @@ class nuLigaHomeGames:
                     cnt = cnt + 1
                 elif '+' in receiver["mail"]:
                     # send SMS
-                    fromaddr = self.twilio_ID
                     # Message text created from text stored in config
                     text = self.textEarlyTask.format(
                         receiver["name"], date, receiver["task"], ak, receiver["partner"], strTime, receiver["partner"])
-                    self.send_SMS(fromaddr, receiver["mail"], text)
+                    self.send_SMS(receiver["mail"], text)
                     logging.info("SMS sent to " +
                                  receiver["name"] + ", " + receiver["task"] + ", " + str(receiver["mail"]))
                     cnt = cnt + 1
@@ -678,11 +654,10 @@ class nuLigaHomeGames:
                         cnt = cnt + 1
                     elif '+' in receiver["mail"]:
                         # send SMS
-                        fromaddr = self.twilio_ID
                         # Message text created from text stored in config
                         text = self.textPreTask.format(
                             receiver["name"], date, receiver["task"], ak, strTime)
-                        self.send_SMS(fromaddr, receiver["mail"], text)
+                        self.send_SMS(receiver["mail"], text)
                         logging.info("SMS sent to " +
                                      receiver["name"] + ", " + receiver["task"] + ", " + str(receiver["mail"]))
                         cnt = cnt + 1
@@ -748,11 +723,10 @@ class nuLigaHomeGames:
                     cnt = cnt + 1
                 elif '+' in receiver["mail"]:
                     # send SMS
-                    fromaddr = self.twilio_ID
                     # Message text created from text stored in config
                     text = self.textShifted.format(
                         receiver["name"], receiver["task"], oldDate, oldTime, newDate, newTime)
-                    self.send_SMS(fromaddr, receiver["mail"], text)
+                    self.send_SMS(receiver["mail"], text)
                     logging.info("SMS sent to " +
                                  receiver["name"] + ", " + receiver["task"] + ", " + str(receiver["mail"]))
                     cnt = cnt + 1
