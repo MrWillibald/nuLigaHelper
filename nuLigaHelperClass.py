@@ -275,9 +275,9 @@ class nuLigaHomeGames:
                 self.onlineTable.loc[self.onlineTable[self._colNr]
                                      == game, self._colJTeam:] = judges.values[0]
                 logging.info("Game " + str(game) + " merged with schedule")
-                newDate = self.onlineTable.loc[self.gameTable[self._colNr]
+                newDate = self.onlineTable.loc[self.onlineTable[self._colNr]
                                             == game, self._colDate].values[0]
-                newTime = self.onlineTable.loc[self.gameTable[self._colNr]
+                newTime = self.onlineTable.loc[self.onlineTable[self._colNr]
                                             == game, self._colTime].values[0]
                 if (newDate != oldDate) or (newTime != oldTime):
                     logging.info("Game " + str(game) + " is shifted! Old date: " + oldDate + " " + oldTime + " New date: " + newDate + " " + newTime)
