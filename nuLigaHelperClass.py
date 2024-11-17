@@ -41,7 +41,7 @@ import logging
 # Version string
 VERSION = '0.23'
 # Debug flag
-DEBUG_FLAG = False
+DEBUG_FLAG = True
 # Change day flag
 CHANGE_DAY = False
 
@@ -174,7 +174,7 @@ class nuLigaHomeGames:
         table.iloc[:, 3] = table.iloc[:, 3].apply(str)
         # fill dates
         table[[self._colDay, self._colDate]] = table[[
-            self._colDay, self._colDate]].fillna(method='ffill')
+            self._colDay, self._colDate]].ffill()
         # find games in own halls and only keep them
         mask = np.array([any(hall in game for hall in self.hallIds)
                         for game in table.iloc[:, 3]])
@@ -280,7 +280,7 @@ class nuLigaHomeGames:
                 newTime = self.onlineTable.loc[self.onlineTable[self._colNr]
                                             == game, self._colTime].values[0]
                 if (newDate != oldDate) or (newTime != oldTime):
-                    logging.info("Game " + str(game) + " is shifted! Old date: " + oldDate + " " + oldTime + " New date: " + newDate + " " + newTime)
+                    logging.info("Game " + str(game) + " is shifted! Old date: " + str(oldDate) + " " + str(oldTime) + " New date: " + str(newDate) + " " + str(newTime))
                     self.send_ShfitNotification(game, oldDate, oldTime, newDate, newTime)
             except IndexError:
                 # oTable = pTable
@@ -309,9 +309,10 @@ class nuLigaHomeGames:
         # transpose table before writing for better reading
         self.writeTable = self.gameTable.transpose()
         self.writeTable.to_excel(
-            writer, sheet_name='Heimspielplan', encoding=self._enc)
+            writer, sheet_name='Heimspielplan')
         worksheet = writer.sheets['Heimspielplan']
         workbook = writer.book
+        workbook.encoding = self._enc
         formatText = workbook.add_format({'num_format': '@'})
         worksheet.set_column(0, 100, 35)
         worksheet.set_row(11, None, formatText)
@@ -325,7 +326,7 @@ class nuLigaHomeGames:
         worksheet.freeze_panes(0 ,1) 
         #worksheet.autofilter(
         #    0, 0, self.writeTable.shape[0], self.writeTable.shape[1])
-        writer.save()
+        writer.close()
         logging.info("Judge schedule saved locally")
 
     def send_Article(self, date, day, articleDate):
