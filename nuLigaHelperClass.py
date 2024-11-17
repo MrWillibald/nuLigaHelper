@@ -182,7 +182,9 @@ class nuLigaHomeGames:
         # drop spielfrei
         mask = np.array([np.isnan(gamenr) for gamenr in table[self._colNr]])
         table.drop(table[mask].index, inplace=True)
-        # convert column 3 and 4 to int
+        # convert columns
+        table[self._colDate] = table[self._colDate].apply(str)
+        table[self._colTime] = table[self._colTime].apply(str)
         table[self._colHall] = table[self._colHall].apply(int)
         table[self._colNr] = table[self._colNr].apply(int)
         lGames.append(table)
@@ -245,6 +247,8 @@ class nuLigaHomeGames:
             # Transpose table on reading
             self.gameTable = pd.read_excel(self.file, index_col=0, header=0).T
             self.gameTable = self.gameTable.astype({
+                self._colDate: str,
+                self._colTime: str,
                 self._colMailJMV: str,
                 self._colMailJudge1: str,
                 self._colMailJudge2: str,
@@ -280,7 +284,7 @@ class nuLigaHomeGames:
                 newTime = self.onlineTable.loc[self.onlineTable[self._colNr]
                                             == game, self._colTime].values[0]
                 if (newDate != oldDate) or (newTime != oldTime):
-                    logging.info("Game " + str(game) + " is shifted! Old date: " + str(oldDate) + " " + str(oldTime) + " New date: " + str(newDate) + " " + str(newTime))
+                    logging.info("Game " + str(game) + " is shifted! Old date: " + oldDate + " " + oldTime + " New date: " + newDate + " " + newTime)
                     self.send_ShfitNotification(game, oldDate, oldTime, newDate, newTime)
             except IndexError:
                 # oTable = pTable
