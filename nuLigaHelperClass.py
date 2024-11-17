@@ -11,9 +11,9 @@
 # - Send newspaper article to local newspaper
 # ---------------------------------------------------------------
 # Created by: MrWillibald
-# Version 0.23
-# Info: Transpose excel table for better reading
-# Date: 25.08.2024
+# Version 0.24
+# Info: Update to Python 3.12
+# Date: 17.11.2024
 # ---------------------------------------------------------------
 
 # scraping libs
@@ -39,9 +39,9 @@ import json
 import logging
 
 # Version string
-VERSION = '0.23'
+VERSION = '0.24'
 # Debug flag
-DEBUG_FLAG = True
+DEBUG_FLAG = False
 # Change day flag
 CHANGE_DAY = False
 
