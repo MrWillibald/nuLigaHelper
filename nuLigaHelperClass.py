@@ -171,20 +171,20 @@ class nuLigaHomeGames:
             self._colScore
         ])
         # convert column 3 to str
-        table.iloc[:, 3] = table.iloc[:, 3].apply(str)
+        table[self._colHall] = table[self._colHall].apply(str)
         # fill dates
         table[[self._colDay, self._colDate]] = table[[
             self._colDay, self._colDate]].ffill()
         # find games in own halls and only keep them
         mask = np.array([any(hall in game for hall in self.hallIds)
-                        for game in table.iloc[:, 3]])
+                        for game in table[self._colHall]])
         table.drop(table[np.invert(mask)].index, inplace=True)
         # drop spielfrei
-        mask = np.array([np.isnan(gamenr) for gamenr in table.iloc[:, 4]])
+        mask = np.array([np.isnan(gamenr) for gamenr in table[self._colNr]])
         table.drop(table[mask].index, inplace=True)
         # convert column 3 and 4 to int
-        table.iloc[:, 3] = table.iloc[:, 3].apply(float).apply(int)
-        table.iloc[:, 4] = table.iloc[:, 4].apply(int)
+        table[self._colHall] = table[self._colHall].apply(int)
+        table[self._colNr] = table[self._colNr].apply(int)
         lGames.append(table)
         self.onlineTable = pd.concat(lGames)
         self.onlineTable.index = range(len(self.onlineTable[self._colDay]))
