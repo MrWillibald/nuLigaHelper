@@ -11,9 +11,9 @@
 # - Send newspaper article to local newspaper
 # ---------------------------------------------------------------
 # Created by: MrWillibald
-# Version 0.24
-# Info: Update to Python 3.12
-# Date: 17.11.2024
+# Version 0.25
+# Info: Limit logging of libs
+# Date: 26.11.2024
 # ---------------------------------------------------------------
 
 # scraping libs
@@ -39,7 +39,7 @@ import json
 import logging
 
 # Version string
-VERSION = '0.24'
+VERSION = '0.25'
 # Debug flag
 DEBUG_FLAG = False
 # Change day flag
@@ -128,8 +128,7 @@ class nuLigaHomeGames:
         except dropbox.exceptions.ApiError:
             logging.warning(
                 "Error while loading judge schedule from Dropbox, new schedule is created")
-        logging.info(
-            "Judge schedule loaded and saved successfully from Dropbox")
+        logging.info("Judge schedule loaded and saved successfully from Dropbox")
 
     def upload_toDropbox(self):
         """Upload file to specified Dropbox account"""
@@ -141,13 +140,11 @@ class nuLigaHomeGames:
             rmf = os.remove(self.file)
         except OSError:
             logging.warning(rmf)
-        logging.info(
-            "Judge schedule successfully uploaded to Dropbox and cleaned locally")
+        logging.info("Judge schedule successfully uploaded to Dropbox and cleaned locally")
 
     def get_onlineTable(self):
         """Scrape Hallenspielplan for specified sports hall from BHV website"""
-        logging.info(
-            "Read current home game plan from BHV Hallenspielplan website")
+        logging.info("Read current home game plan from BHV Hallenspielplan website")
         lGames = list()
         # read home games of season (http request)
         parameters = {'club': self.clubId, 'searchType': '1', 'searchTimeRangeFrom': '01.09.' +
@@ -305,6 +302,7 @@ class nuLigaHomeGames:
         # make game and online table identical if merging was successful
         self.gameTable = self.onlineTable
         logging.info("Update home game plan completed")
+
         return 0
 
     def write_toXlsx(self):
@@ -756,9 +754,15 @@ if __name__ == '__main__':
     logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s',
                         filename='helper.log', level=logging.DEBUG)
     logging.getLogger().addHandler(logging.StreamHandler())
+    # Limit lib logging to warnings
+    logging.getLogger('twilio.http_client').setLevel(logging.WARNING)
+    logging.getLogger("requests").setLevel(logging.WARNING)
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
 
     # Initialize class
+    logging.info("#################################################")
     self = nuLigaHomeGames()
+    logging.info("-------------------------------------------------")
 
     # Download Heimspielplan from Dropbox
     self.get_fromDropbox()
@@ -766,13 +770,16 @@ if __name__ == '__main__':
     # Check nuLiga Hallenplan and update Heimspielplan
     self.get_onlineTable()
     self.get_gameTable()
+    logging.info("-------------------------------------------------")
     self.merge_tables()
+    logging.info("-------------------------------------------------")
 
     # Save Heimspielplan as Excel-File
     self.write_toXlsx()
 
     # Upload Heimspielplan to Dropbox
     self.upload_toDropbox()
+    logging.info("-------------------------------------------------")
 
     '''
     # Check if newspaper article has to be send
@@ -807,12 +814,14 @@ if __name__ == '__main__':
         cnt = 0
         cnt = self.send_Notifications(strTomorrow)
         logging.info("Number of sent service notifications: " + str(cnt))
+        logging.info("-------------------------------------------------")
 
     # Check if referee notifications have to be send
     if not self.gameTable[self.gameTable[self._colDate].str.contains(strTomorrow) & self.gameTable[self._colScore].str.contains("Heim")].empty:
         cnt = 0
         cnt = self.send_RefNotification(strTomorrow)
         logging.info("Number of required home referees: " + str(cnt))
+        logging.info("-------------------------------------------------")
 
     # Check if early catering notifications have to be send
     nextWeek = self.get_today() + datetime.timedelta(days=7)
@@ -822,5 +831,7 @@ if __name__ == '__main__':
         cnt = self.send_ServiceNotifications(strNextWeek)
         cnt = self.send_PreNotifications(strNextWeek)
         logging.info("Number of sent service notifications: " + str(cnt))
+        logging.info("-------------------------------------------------")
 
     logging.info("nuLiga Helper finished")
+    logging.info("#################################################")
