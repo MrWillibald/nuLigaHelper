@@ -11,9 +11,9 @@
 # - Send newspaper article to local newspaper
 # ---------------------------------------------------------------
 # Created by: MrWillibald
-# Version 0.26
-# Info: Send referee notice on change of scheduled referee
-# Date: 17.03.2025
+# Version 0.27
+# Info: Send refereee notification also to MV
+# Date: 25.11.2025
 # ---------------------------------------------------------------
 
 # scraping libs
@@ -39,7 +39,7 @@ import json
 import logging
 
 # Version string
-VERSION = "0.26"
+VERSION = "0.27"
 # Debug flag
 DEBUG_FLAG = False
 # Change day flag
@@ -78,7 +78,7 @@ class nuLigaHomeGames:
         # Set up dates and strings
         self.set_today(datetime.date.today())
         if DEBUG_FLAG or CHANGE_DAY:
-            self.set_today(datetime.date(2024, 8, 20))
+            self.set_today(datetime.date(2025, 11, 21))
 
         # New config workflow
         with open(
@@ -328,7 +328,7 @@ class nuLigaHomeGames:
         return 0
     
     def no_referee_handler(self, game, date, time, oldRef, newRef):
-        if (newRef != oldRef) and ("Heim" in newRef):
+        if (newRef != oldRef) and ("§77" in newRef):
             logging.info(
                 "Game "
                 + str(game)
@@ -716,15 +716,22 @@ class nuLigaHomeGames:
         """Send referee notification to referee coordinator"""
         cnt = 0
         ak = self.onlineTable.loc[self.onlineTable[self._colNr] == game, self._colAK].values[0]
+        mv = self.onlineTable.loc[self.onlineTable[self._colNr] == game, self._colJMV].values[0]
+        mailMv = self.onlineTable.loc[self.onlineTable[self._colNr] == game, self._colJMV].values[0]
+
+        # Add MV to receivers
+        receivers = self.mailRefCoordTargets
+        if isinstance(receivers, list) and pd.notna(mv):
+            receivers.append({"Name": str(mv), "Address": str(mailMv)})
 
         # Send notifications to all specified receivers
-        for receiver in self.mailRefCoordTargets:
+        for receiver in receivers:
             text = self.mailRefCoord.format(
                 receiver["Name"],
                 ak,
                 date,
                 time,
-                ", ".join(rec["Name"] for rec in self.mailRefCoordTargets)
+                ", ".join(rec["Name"] for rec in receivers)
             )
             if type(receiver["Address"]) == str:
                 if "@" in receiver["Address"]:
@@ -732,7 +739,7 @@ class nuLigaHomeGames:
                     msg = EmailMessage()
                     msg["From"] = formataddr((self.mail_name, self.mail_ID))
                     msg["Subject"] = self.mailRefCoordSubject
-                    msg["To"] = formataddr((receiver["name"], receiver["Address"]))
+                    msg["To"] = formataddr((receiver["Name"], receiver["Address"]))
                     # Message body created from mail text stored in config
                     msg.set_content(text)
                     self.send_Mail(msg, self.mail_ID, self.mail_password)
@@ -1221,7 +1228,7 @@ if __name__ == "__main__":
     # Check if referee notifications have to be send
     if not nlh.gameTable[
         nlh.gameTable[nlh._colDate].str.contains(strTomorrow)
-        & nlh.gameTable[nlh._colScore].str.contains("Heim")
+        & nlh.gameTable[nlh._colScore].str.contains("§77")
     ].empty:
         cnt = 0
         cnt = nlh.send_RefNotification(strTomorrow)
