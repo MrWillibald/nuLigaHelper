@@ -3,8 +3,8 @@
 # Activate the virtual environment
 source venv/bin/activate
 
-# Run the optimizer script
-python nuLigaHelperClass.py
+# Run the nuLigaHelper daily job
+python main.py
 
 # Deactivate the virtual environment
 deactivate

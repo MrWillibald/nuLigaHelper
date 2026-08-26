@@ -3,3 +3,5 @@
 **/.vscode/**
 **/__pycache__/**
 **.code-workspace
+**.db
+venv/
