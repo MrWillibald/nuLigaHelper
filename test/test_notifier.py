@@ -2,13 +2,14 @@
 #                          nuLigaHelper – tests
 # ---------------------------------------------------------------
 # Notification dispatch: channel selection, texts, receiver groups.
-# All sends run in debug mode; outgoing texts are captured instead.
+# All sends run against a TextRecorder – nothing goes out for real.
 #
-# Scenario: game 1001 on 05.09.2026 is fully assigned:
+# Scenario: game 1001 on 05.09.2026, responsible team "BL mD":
 #   Zeitnehmer=Alice(mail)  Sekretär=Bob(sms)
 #   Verkauf=Alice(mail)     Verkauf=Bob(sms)
 #   Ordnungsdienst=Alice    Reinigung=Caro(no contact -> always skipped)
-#   MV=Frank(sms), Kampfgericht-Team="BL mD"
+#   Frank is MV of "BL mD" and receives the MV notification by SMS
+#   as long as tasks of the game are still open.
 #
 # Run standalone:  python test/test_notifier.py
 # Or via pytest:   pytest test/test_notifier.py
@@ -39,28 +40,37 @@ class TextRecorder:
         return "\n".join(parts)
 
 
-def _setup():
+def _setup(fully_assigned: bool = False):
     """Build the scenario database and return (session, game, notifier, recorder)."""
     engine = h.make_engine()
     session = h.Session(engine)
     h.sync_sample_games(session)
 
     game = session.query(db.Game).filter_by(game_nr=1001).one()
-    game.jteam = "BL mD"  # team providing the judges (shown in the MV text)
+    team = session.query(db.Team).filter_by(name="BL mD").one()  # own ak team
+    game.team_id = team.id
+    game.jteam = "BL mD"
 
-    people = {
-        "mail": db.get_or_create_person(session, "Alice", email="alice@x.de"),
-        "sms": db.get_or_create_person(session, "Bob", phone="+491700000001"),
-        "none": db.get_or_create_person(session, "Caro"),
-        "mv": db.get_or_create_person(session, "Frank", phone="+491700000002"),
-    }
-    for role, key in [
-        (db.ROLE_TIMEKEEPER, "mail"), (db.ROLE_SECRETARY, "sms"),
-        (db.ROLE_SALE, "mail"), (db.ROLE_SALE, "sms"),
-        (db.ROLE_SECURITY, "mail"), (db.ROLE_CLEANING, "none"),
-        (db.ROLE_MV, "mv"),
+    alice = db.get_or_create_person(session, "Alice", email="alice@x.de")
+    alice.team_id = team.id
+    bob = db.get_or_create_person(session, "Bob", phone="+491700000001")
+    caro = db.get_or_create_person(session, "Caro")
+    caro.team_id = db.get_support_team(session).id
+    dora = db.get_or_create_person(session, "Dora", phone="+491700000003")
+    dora.team_id = caro.team_id
+    frank = db.get_or_create_person(session, "Frank", phone="+491700000002")
+    frank.team_id = team.id
+    db.set_team_mv(session, team, frank)
+
+    # an open task means: nobody assigned at all
+    cleaning = dora if fully_assigned else None
+    for role, person in [
+        (db.ROLE_TIMEKEEPER, alice), (db.ROLE_SECRETARY, bob),
+        (db.ROLE_SALE, alice), (db.ROLE_SALE, bob),
+        (db.ROLE_SECURITY, alice), (db.ROLE_CLEANING, cleaning),
     ]:
-        db.assign_person(session, game, people[key], role)
+        if person is not None:
+            db.assign_person(session, game, person, role)
     session.commit()
 
     n = notifier.Notifier(h.load_club_config(), session, h.SEASON)
@@ -72,19 +82,30 @@ def _setup():
 
 def test_notify_game_day_prefers_mail_then_sms_and_skips_missing_contacts():
     session, game, n, rec = _setup()
-    # Alice gets e-mails, Bob gets SMS, Caro (no contact data) is skipped,
-    # Frank receives the MV notification by SMS -> 6 dispatches total
+    # helpers: 5 assigned contacts (Caro not assigned anywhere here) plus
+    # the MV reminder for the open Reinigung slot = 6
     assert n.notify_game_day(GAME_DATE) == 6
-    assert len(rec.mails) + len(rec.smss) == 6
+
+
+def test_mv_notification_only_while_tasks_are_open():
+    session, game, n, rec = _setup(fully_assigned=True)
+    assert not db.missing_slots(game), "scenario must be complete"
+
+    cnt = n.notify_game_day(GAME_DATE)
+    assert cnt == 6, "all six helper messages, but no MV reminder"
+    assert all("+491700000002" != num for num, _ in rec.smss), \
+        "the MV must not be contacted"
 
 
 def test_mv_notification_contains_judge_team_and_both_judges():
     session, game, n, rec = _setup()
     n.notify_game_day(GAME_DATE)
 
-    text = rec.all_text()
-    assert "BL mD" in text, "MV message must mention the responsible team"
-    assert "Alice" in text and "Bob" in text, "MV message must list both judges"
+    mv_smss = [body for num, body in rec.smss if num == "+491700000002"]
+    assert len(mv_smss) == 1, "exactly one MV message expected"
+    assert "BL mD" in mv_smss[0], "MV message must mention the responsible team"
+    assert "Alice" in mv_smss[0] and "Bob" in mv_smss[0], \
+        "MV message must list both judges"
 
 
 def test_service_early_notifies_both_sales():

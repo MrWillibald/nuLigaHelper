@@ -46,8 +46,30 @@
         <p class="hint" style="margin-bottom:12px;">
           Mannschaften werden automatisch aus dem Spielplan (Altersklasse) abgeleitet –
           zusammen mit dem Support-Team gibt es hier nichts zu verwalten.
-          Die Zuordnung erfolgt bei den Personen und im Spielplan.
+          Pro Mannschaft kann genau ein Mitglied als Mannschaftsverantwortlicher
+          (MV) hinterlegt werden. Dieser wird benachrichtigt, wenn bei einem Spiel
+          seiner Mannschaft noch Dienste offen sind.
         </p>
+        <div class="team-mv-list">
+          {% for t in teams %}
+          <div class="team-mv-row">
+            <span class="team-mv-name">
+              {{ t.name }}{% if t.is_support %} <em>(Support)</em>{% endif %}
+            </span>
+            <select class="mv-select" data-team="{{ t.id }}"
+                    {% if not t.members %}disabled title="Keine Mitglieder"{% endif %}>
+              <option value="">&ndash; kein MV &ndash;</option>
+              {% for m in t.members %}
+              <option value="{{ m.id }}" {% if m.id == t.mv_person_id %}selected{% endif %}>
+                {{ m.name }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+          {% else %}
+          <em>Noch keine Mannschaften vorhanden.</em>
+          {% endfor %}
+        </div>
       </div>
     </div>
 

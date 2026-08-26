@@ -106,6 +106,13 @@ select.select-warn{border-color:#e8b23c;background:#fffaf0}
 /* ---- teams info card ---- */
 .team-admin-card{margin-top:26px;padding:22px;border:1px solid rgba(10,29,78,.10);border-radius:20px;background:#fff}
 .team-admin-card h3{margin-bottom:12px}
+.team-mv-list{display:flex;flex-direction:column;gap:8px}
+.team-mv-row{display:grid;grid-template-columns:minmax(110px,1fr) minmax(160px,220px);gap:10px;align-items:center;
+  padding:8px 12px;border-radius:11px;background:#f3f6fa}
+.team-mv-name{font-weight:800;color:var(--navy)}
+.team-mv-name em{color:var(--muted);font-weight:400;font-size:.85rem}
+.mv-select{width:100%;border:1px solid var(--line);border-radius:10px;padding:8px 10px;
+  font-size:.9rem;font-family:inherit;color:var(--text);background:#fff}
 
 /* ---- statistics ---- */
 .stat-title{color:var(--navy);margin:30px 0 16px;font-size:1.25rem;text-transform:uppercase;letter-spacing:.04em}

@@ -31,7 +31,6 @@ MONATE = [
 ]
 
 SLOT_LABELS = [
-    ("MV Kampfgericht", db.ROLE_MV),
     ("Zeitnehmer", db.ROLE_TIMEKEEPER),
     ("Sekretär", db.ROLE_SECRETARY),
     ("Verkauf 1", db.ROLE_SALE),
@@ -39,15 +38,6 @@ SLOT_LABELS = [
     ("Ordnungsdienst", db.ROLE_SECURITY),
     ("Reinigung", db.ROLE_CLEANING),
 ]
-
-ROLE_SLOT_COUNT = {
-    db.ROLE_MV: 1,
-    db.ROLE_TIMEKEEPER: 1,
-    db.ROLE_SECRETARY: 1,
-    db.ROLE_SALE: 2,
-    db.ROLE_SECURITY: 1,
-    db.ROLE_CLEANING: 1,
-}
 
 
 def get_db_path() -> str:
@@ -114,7 +104,16 @@ def create_app() -> Flask:
 
     def team_options(session) -> list[dict]:
         return [
-            {"id": t.id, "name": t.name, "is_support": t.is_support}
+            {
+                "id": t.id,
+                "name": t.name,
+                "is_support": t.is_support,
+                "mv_person_id": t.mv_person_id,
+                "members": [
+                    {"id": p.id, "name": p.name}
+                    for p in sorted(t.persons, key=lambda p: p.name)
+                ],
+            }
             for t in db.get_all_teams(session)
         ]
 
@@ -292,12 +291,7 @@ def create_app() -> Flask:
             d = parse_date(game.date)
             if d is None or d < today:
                 continue
-            missing_roles: dict[str, int] = {}
-            for role, slots in ROLE_SLOT_COUNT.items():
-                filled = len(game.assignments_by_role(role))
-                missing = max(0, slots - filled)
-                if missing:
-                    missing_roles[role] = missing
+            missing_roles = db.missing_slots(game)
             if missing_roles:
                 gaps.append({
                     "nr": game.game_nr,
@@ -401,6 +395,37 @@ def create_app() -> Flask:
         return redirect(url_for("persons"))
 
     # ------------------------------------------------------------------
+    # Team management: exactly one Mannschaftsverantwortlicher per team,
+    # who must be a member of that team. Everything else about teams is
+    # derived automatically.
+    # ------------------------------------------------------------------
+
+    @app.post("/api/teams/<int:team_id>/mv")
+    def api_team_mv(team_id: int):
+        session = get_session()
+        team = session.get(db.Team, team_id)
+        if team is None:
+            return api_error("Mannschaft nicht gefunden.", 404)
+
+        data = request.get_json(silent=True) or {}
+        raw_person_id = data.get("person_id")
+        if not raw_person_id:
+            team.mv_person_id = None
+            session.commit()
+            return jsonify(ok=True)
+
+        person = session.get(db.Person, int(raw_person_id))
+        if person is None:
+            return api_error("Person nicht gefunden.", 404)
+        if person.team_id != team.id:
+            return api_error(
+                f"{person.name} ist kein Mitglied der Mannschaft {team.name}."
+            )
+        team.mv_person_id = person.id
+        session.commit()
+        return jsonify(ok=True)
+
+    # ------------------------------------------------------------------
     # JSON API for inline updates
     # ------------------------------------------------------------------
 
@@ -417,9 +442,9 @@ def create_app() -> Flask:
             return api_error("Spiel nicht gefunden.", 404)
 
         role = data.get("role")
-        if role not in ROLE_SLOT_COUNT:
+        if role not in db.ROLE_SLOT_COUNT:
             return api_error("Unbekannter Dienst.")
-        slot_count = ROLE_SLOT_COUNT[role]
+        slot_count = db.ROLE_SLOT_COUNT[role]
         try:
             slot = int(data.get("slot") or 0)
         except (TypeError, ValueError):

@@ -67,7 +67,7 @@ def _card_html(html: str) -> str:
 
 def test_schedule_renders_games_without_contact_data():
     html = client.get("/").get_data(as_text=True)
-    assert html.count("<select") == len(games) * 8  # 7 role slots + team select
+    assert html.count("<select") == len(games) * 7  # 6 role slots + team select
     assert "TuS Raubling" in html
     assert "alice@x.de" not in html and "+4917" not in html, \
         "contact data must never appear on the overview"
@@ -96,12 +96,12 @@ def test_playing_and_outside_helpers_are_greyed_but_selectable():
     client.post(f"/api/games/{GAME_ID}/team", json={"team_id": TEAM_RESPONSIBLE_ID})
     card = _card_html(client.get("/").get_data(as_text=True))
 
-    assert card.count('class="option-playing"') == 7, \
+    assert card.count('class="option-playing"') == 6, \
         "Alice belongs to the playing team and must be marked in all slots"
     assert "spielt in diesem Spiel selbst" in card, \
         "the play-hint tooltip must be present"
 
-    assert card.count('class="foreign-option"') == 7, \
+    assert card.count('class="foreign-option"') == 6, \
         "Dora belongs to an unrelated team and must be greyed in all slots"
     assert f"gehört zu {AK_UNRELATED}" in card
 
@@ -176,6 +176,33 @@ def test_team_editing_is_completely_disabled():
         any_team = session.query(db.Team).first().id
     assert client.post(f"/teams/{any_team}/delete").status_code == 404
     assert client.post("/teams/add", data={"name": "Neues Team"}).status_code == 404
+
+
+def test_team_mv_can_be_assigned_to_members_only():
+    # UI offers an MV select per team
+    page = client.get("/personen").get_data(as_text=True)
+    assert "Mannschaftsverantwortlicher" in page
+    assert 'class="mv-select"' in page
+
+    # a member can become MV; the selection is reflected in the page
+    r = client.post(f"/api/teams/{TEAM_PLAYING_ID}/mv", json={"person_id": ALICE_ID})
+    assert r.get_json() == {"ok": True}
+    page = client.get("/personen").get_data(as_text=True)
+    row = re.search(
+        r'team-mv-row[^>]*>\s*<span[^>]*>\s*BL mD.*?selected', page, re.S)
+    assert row, "Alice must appear as selected MV of her team"
+
+    # a person of another team is rejected
+    r = client.post(f"/api/teams/{TEAM_PLAYING_ID}/mv", json={"person_id": DORA_ID})
+    body = r.get_json()
+    assert body["ok"] is False and "kein Mitglied" in body["error"]
+
+    # clearing works
+    r = client.post(f"/api/teams/{TEAM_PLAYING_ID}/mv", json={"person_id": None})
+    assert r.get_json() == {"ok": True}
+    with h.Session(h.app_db_engine()) as session:
+        team = session.get(db.Team, TEAM_PLAYING_ID)
+        assert team.mv_person_id is None
 
 
 def test_statistics_page_with_bars_and_aggregated_gaps():

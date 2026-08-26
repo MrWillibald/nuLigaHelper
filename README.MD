@@ -20,8 +20,8 @@ A helper class to organize home games with nuLiga Handball.
 
 Start the web interface with `run_webapp.sh` (or `python3 webapp.py`). It is then reachable in the local network at `http://<device-ip>:8080`.
 
-- **Heimspielplan**: all home games of the current season grouped by day. Each game gets a responsible team ("Team Kampfgericht") and tasks (MV, Zeitnehmer, Sekretär, Verkauf, Ordnungsdienst, Reinigung) assigned via dropdown directly in the schedule; changes are saved instantly. If a team is assigned to a game, helpers of other teams are greyed out in the dropdowns but can still be chosen (with a hint). Contact data is intentionally not shown on the overview.
-- **Helfer verwalten**: add, edit and delete persons incl. e-mail, phone and team. Every person belongs to a team; persons without an active team belong to the support team (created automatically).
+- **Heimspielplan**: all home games of the current season grouped by day. Each game gets a responsible team ("Team Kampfgericht") and tasks (Zeitnehmer, Sekretär, Verkauf, Ordnungsdienst, Reinigung) assigned via dropdown directly in the schedule; changes are saved instantly. If a team is assigned to a game, helpers of other teams are greyed out in the dropdowns but can still be chosen (with a hint). Contact data is intentionally not shown on the overview.
+- **Helfer verwalten**: add, edit and delete persons incl. e-mail, phone and team. Every person belongs to a team; persons without an active team belong to the support team (created automatically). Each team can have exactly one Mannschaftsverantwortlicher ("MV"), chosen among its members.
 - **Statistik**: games covered per team, jobs per person (incl. role breakdown) and a list of upcoming games with missing assignments.
 
 Teams are fully automatic: they are derived from the scraped age classes (`ak`, e.g. "BL mD") plus one support team ("Supporter") for persons without an active team. Teams cannot be created or edited manually. The responsible team is chosen per game; it is never pre-assigned, since the team playing the game should not be pre-booked for its own support tasks. In the dropdowns, members of the responsible team and the support team appear normally; members of other teams and of the playing team itself are greyed out but can still be selected (with a hint).
@@ -45,9 +45,11 @@ or individually via `python3 test/test_db.py` etc., or with pytest (`pytest test
 # Database schema
 
 - `games`: one row per scraped home game (number, date, time, hall, age class, teams, score)
-- `teams`: derived automatically from the scraped age classes plus one support team
+- `teams`: derived automatically from the scraped age classes plus one support team; each team optionally references its MV (Mannschaftsverantwortlicher)
 - `persons`: name plus e-mail address and/or phone number and team, stored once per person
-- `assignments`: link between a game and a person including the role (MV, Zeitnehmer, Sekretär, Verkauf, Ordnungsdienst, Reinigung)
+- `assignments`: link between a game and a person including the role (Zeitnehmer, Sekretär, Verkauf, Ordnungsdienst, Reinigung)
+
+The MV of a game's responsible team receives an MV notification as long as tasks of that game are still unassigned.
 
 The database is prepared to be used by a future web interface.
 

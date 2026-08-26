@@ -77,6 +77,22 @@ document.querySelectorAll(".team-select").forEach((select) => {
   select.addEventListener("focus", () => select.setAttribute("data-prev", select.value));
 });
 
+document.querySelectorAll(".mv-select").forEach((select) => {
+  select.addEventListener("focus", () => select.setAttribute("data-prev", select.value));
+  select.addEventListener("change", async () => {
+    const result = await postJSON(`/api/teams/${select.dataset.team}/mv`, {
+      person_id: select.value ? Number(select.value) : null,
+    });
+    if (result.ok) {
+      showToast("MV gespeichert", true);
+      window.location.reload();
+    } else {
+      showToast(result.error || "Fehler beim Speichern", false);
+      select.value = select.getAttribute("data-prev") || "";
+    }
+  });
+});
+
 document.querySelectorAll("[data-delete-person]").forEach((button) => {
   button.addEventListener("click", async () => {
     const name = button.dataset.name;

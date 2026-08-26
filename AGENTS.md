@@ -62,9 +62,16 @@ test/run_tests.sh                          # whole suite, must stay green
   "spielt selbst" hint; members of other teams → greyed when a responsible team
   is set; responsible/support members unmarked. Everything stays selectable;
   duplicates within a role are rejected server-side.
-- Roles: `MV`, `Zeitnehmer`, `Sekretär`, `Verkauf` (**2 slots**), `Ordnungsdienst`,
-  `Reinigung` — see `ROLE_SLOT_COUNT`. Any aggregation over roles must iterate
-  roles once, not `SLOT_LABELS` (which repeats Verkauf).
+- Roles: `Zeitnehmer`, `Sekretär`, `Verkauf` (**2 slots**), `Ordnungsdienst`,
+  `Reinigung` — see `db.ROLE_SLOT_COUNT`. Any aggregation over roles must iterate
+  roles once (e.g. `ROLE_SLOT_COUNT.items()`), not `SLOT_LABELS` in `webapp.py`
+  (which repeats Verkauf for the two UI dropdowns).
+- **Team MV**: each team can have exactly one Mannschaftsverantwortlicher
+  (`Team.mv_person`), who must be a member of that team; assign via web UI
+  ("Helfer verwalten" → Mannschaften) or CLI (`manage_db.py set-mv`). The MV of
+  a game's responsible team receives the MV notification only while the game
+  still has open task slots (`db.missing_slots`). MV is not a per-game
+  assignment role anymore.
 - **Contact data (mail/phone) must never be rendered on the schedule overview.**
   Channel choice: prefer e-mail, fall back to phone; skip with warning if neither.
 - Dates/times are stored exactly as scraped (German `dd.mm.yyyy` strings).

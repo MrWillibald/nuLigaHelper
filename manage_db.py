@@ -140,6 +140,19 @@ def cmd_set_jteam(args):
     print(f"Responsible team of game {args.game_nr} set to '{team_name}'")
 
 
+def cmd_set_mv(args):
+    session, _ = open_session(args)
+    team = _resolve_team(session, args.team)
+    person = session.query(db.Person).filter(db.Person.name == args.person).first()
+    if person is None:
+        raise SystemExit(f"Person '{args.person}' not found")
+    try:
+        db.set_team_mv(session, team, person)
+    except ValueError as exc:
+        raise SystemExit(str(exc))
+    print(f"{person.name} is now MV of '{team.name}'")
+
+
 def build_parser():
     parser = argparse.ArgumentParser(description="nuLigaHelper database management CLI")
     parser.add_argument("--db", help="Path to SQLite file (default from config.json)")
@@ -170,7 +183,7 @@ def build_parser():
     p = sub.add_parser("assign", help="Assign a person to a game role")
     p.add_argument("game_nr", type=int)
     p.add_argument("role", choices=[
-        db.ROLE_MV, db.ROLE_TIMEKEEPER, db.ROLE_SECRETARY,
+        db.ROLE_TIMEKEEPER, db.ROLE_SECRETARY,
         db.ROLE_SALE, db.ROLE_SECURITY, db.ROLE_CLEANING,
     ])
     p.add_argument("person")
@@ -181,11 +194,16 @@ def build_parser():
     p = sub.add_parser("unassign", help="Remove an assignment")
     p.add_argument("game_nr", type=int)
     p.add_argument("role", choices=[
-        db.ROLE_MV, db.ROLE_TIMEKEEPER, db.ROLE_SECRETARY,
+        db.ROLE_TIMEKEEPER, db.ROLE_SECRETARY,
         db.ROLE_SALE, db.ROLE_SECURITY, db.ROLE_CLEANING,
     ])
     p.add_argument("person")
     p.set_defaults(func=cmd_unassign)
+
+    p = sub.add_parser("set-mv", help="Set the Mannschaftsverantwortlicher of a team")
+    p.add_argument("team", help="Team name")
+    p.add_argument("person", help="Person name (must be a member of the team)")
+    p.set_defaults(func=cmd_set_mv)
 
     p = sub.add_parser("set-jteam", help="Set the team providing judges for a game")
     p.add_argument("game_nr", type=int)

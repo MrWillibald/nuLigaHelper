@@ -122,12 +122,11 @@ class Notifier:
         for game in games:
             cnt += self._notify_game_helpers(game, date, self.mailTask, self.textTask)
 
-            # Notification to MV (team representative of the judge team)
-            mv_assignment = game.assignment_by_role(db.ROLE_MV)
-            team_label = game.judge_team_name or ""
-            if mv_assignment is None or not team_label:
+            # The MV of the responsible team is reminded as long as tasks
+            # of the game are still unassigned.
+            mv = game.team.mv_person if game.team is not None else None
+            if mv is None or not db.missing_slots(game):
                 continue
-            mv = mv_assignment.person
             judge_names = [
                 a.person.name if a is not None else ""
                 for a in (
@@ -136,14 +135,15 @@ class Notifier:
                 )
             ]
             cnt += self._dispatch(
-                self._person_receiver(mv, db.ROLE_MV),
+                self._person_receiver(mv, "MV Kampfgericht"),
                 subject=self.mailMVSubject,
                 mail_body=self.mailMV.format(
-                    mv.name, team_label, date, *judge_names,
+                    mv.name, game.judge_team_name or "", date, *judge_names,
                     game.ak, game.home, game.guest, game.time,
                 ),
                 sms_body=self.textMV.format(
-                    mv.name, team_label, date, *judge_names, game.ak, game.time,
+                    mv.name, game.judge_team_name or "", date, *judge_names,
+                    game.ak, game.time,
                 ),
                 game_nr=game.game_nr,
             )
@@ -285,9 +285,9 @@ class Notifier:
     def _notify_missing_referee(self, game: db.Game, date: str, time: str) -> int:
         cnt = 0
         targets = list(self.mailRefCoordTargets)
-        mv_assignment = game.assignment_by_role(db.ROLE_MV)
-        if mv_assignment is not None and mv_assignment.person.email:
-            targets.append({"Name": mv_assignment.person.name, "Address": mv_assignment.person.email})
+        mv = game.team.mv_person if game.team is not None else None
+        if mv is not None and mv.email:
+            targets.append({"Name": mv.name, "Address": mv.email})
 
         all_names = ", ".join(t["Name"] for t in targets)
 

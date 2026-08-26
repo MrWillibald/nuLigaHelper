@@ -42,6 +42,15 @@ GAME_DAY_ROLES = [
     ROLE_CLEANING,
 ]
 
+# Slot count per role; keys define the display order for open-task lists
+ROLE_SLOT_COUNT = {
+    ROLE_TIMEKEEPER: 1,
+    ROLE_SECRETARY: 1,
+    ROLE_SALE: 2,
+    ROLE_SECURITY: 1,
+    ROLE_CLEANING: 1,
+}
+
 DEFAULT_DB_PATH = "nuliga_helper.db"
 
 
@@ -120,9 +129,15 @@ class Team(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(120), unique=True)
     is_support: Mapped[bool] = mapped_column(default=False)
+    mv_person_id: Mapped[int | None] = mapped_column(
+        ForeignKey("persons.id"), nullable=True
+    )
 
-    persons: Mapped[list["Person"]] = relationship(back_populates="team")
+    persons: Mapped[list["Person"]] = relationship(
+        back_populates="team", foreign_keys="Person.team_id"
+    )
     games: Mapped[list["Game"]] = relationship(back_populates="team")
+    mv_person: Mapped["Person | None"] = relationship(foreign_keys=[mv_person_id])
 
     def __repr__(self):
         return f"<Team {self.name!r}{' (support)' if self.is_support else ''}>"
@@ -139,7 +154,9 @@ class Person(Base):
     phone: Mapped[str | None] = mapped_column(String(60), nullable=True)
     team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"), nullable=True)
 
-    team: Mapped[Team | None] = relationship(back_populates="persons")
+    team: Mapped[Team | None] = relationship(
+        back_populates="persons", foreign_keys=[team_id]
+    )
     assignments: Mapped[list["Assignment"]] = relationship(back_populates="person")
 
     def __repr__(self):
@@ -398,11 +415,36 @@ def set_role_assignments(session: Session, game: Game, role: str,
 
 
 def delete_person(session: Session, person: Person) -> None:
-    """Delete a person together with all their assignments."""
+    """Delete a person together with all their assignments and MV roles."""
+    for team in session.scalars(
+        select(Team).where(Team.mv_person_id == person.id)
+    ):
+        team.mv_person_id = None
     for assignment in list(person.assignments):
         session.delete(assignment)
     session.delete(person)
     session.commit()
+
+
+def set_team_mv(session: Session, team: Team, person: Person | None) -> None:
+    """
+    Make *person* the single Mannschaftsverantwortlicher of *team*.
+    The person must already be a member of the team; None clears the role.
+    """
+    if person is not None and person.team_id != team.id:
+        raise ValueError(f"{person.name} ist kein Mitglied von {team.name}")
+    team.mv_person_id = person.id if person is not None else None
+    session.commit()
+
+
+def missing_slots(game: Game) -> dict[str, int]:
+    """Open task slots of a game as {role: missing_count}, in display order."""
+    result = {}
+    for role, slots in ROLE_SLOT_COUNT.items():
+        missing = max(0, slots - len(game.assignments_by_role(role)))
+        if missing:
+            result[role] = missing
+    return result
 
 
 def assign_person(session: Session, game: Game, person: Person, role: str) -> Assignment:
