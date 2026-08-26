@@ -32,6 +32,16 @@ The interface is currently open (no authentication) and intended for local netwo
 
 Optional environment variables: `NULIGAHELPER_DB` (path to the SQLite file) and `NULIGAHELPER_SECRET` (Flask secret key).
 
+# Testing
+
+The `test/` folder contains automated tests for the database, notification and web layers. They run completely offline against throwaway databases:
+
+```bash
+test/run_tests.sh
+```
+
+or individually via `python3 test/test_db.py` etc., or with pytest (`pytest test/ -v`). See `test/README.md` for details.
+
 # Database schema
 
 - `games`: one row per scraped home game (number, date, time, hall, age class, teams, score)
