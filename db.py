@@ -5,6 +5,8 @@
 # and small query helpers used by notifier and (later) web UI
 # ---------------------------------------------------------------
 
+from __future__ import annotations
+
 import logging
 from dataclasses import dataclass, field
 from datetime import date, datetime
@@ -57,9 +59,44 @@ def make_engine(db_path: str = DEFAULT_DB_PATH):
     return create_engine(f"sqlite:///{resolve_db_path(db_path)}")
 
 
+SUPPORT_TEAM_NAME = "Supporter"
+
+
 def init_db(engine) -> None:
-    """Create all tables if they do not exist yet."""
+    """Create all tables and make sure the support team exists."""
     Base.metadata.create_all(engine)
+    session = Session(engine)
+    try:
+        if get_support_team(session) is None:
+            session.add(Team(name=SUPPORT_TEAM_NAME, is_support=True))
+            session.commit()
+            logging.info(f"Support team '{SUPPORT_TEAM_NAME}' created")
+    finally:
+        session.close()
+
+
+def get_support_team(session: Session) -> Team | None:
+    return session.scalars(select(Team).where(Team.is_support.is_(True))).first()
+
+
+def get_or_create_team(session: Session, name: str) -> Team:
+    name = name.strip()
+    existing = get_support_team(session)
+    if existing is not None and existing.name.lower() == name.lower():
+        return existing
+    team = session.scalars(select(Team).where(Team.name == name)).first()
+    if team is None:
+        team = Team(name=name)
+        session.add(team)
+        session.flush()
+    return team
+
+
+def get_all_teams(session: Session) -> list[Team]:
+    """All teams ordered by name."""
+    return list(
+        session.scalars(select(Team).order_by(Team.is_support.desc(), Team.name))
+    )
 
 
 def make_session_factory(engine):
@@ -75,6 +112,22 @@ class Base(DeclarativeBase):
     pass
 
 
+class Team(Base):
+    """A club team from the game plan or the general support team."""
+
+    __tablename__ = "teams"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), unique=True)
+    is_support: Mapped[bool] = mapped_column(default=False)
+
+    persons: Mapped[list["Person"]] = relationship(back_populates="team")
+    games: Mapped[list["Game"]] = relationship(back_populates="team")
+
+    def __repr__(self):
+        return f"<Team {self.name!r}{' (support)' if self.is_support else ''}>"
+
+
 class Person(Base):
     """A club member that can be assigned tasks for home games."""
 
@@ -84,7 +137,9 @@ class Person(Base):
     name: Mapped[str] = mapped_column(String(120), unique=True)
     email: Mapped[str | None] = mapped_column(String(200), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"), nullable=True)
 
+    team: Mapped[Team | None] = relationship(back_populates="persons")
     assignments: Mapped[list["Assignment"]] = relationship(back_populates="person")
 
     def __repr__(self):
@@ -110,12 +165,23 @@ class Game(Base):
     guest: Mapped[str | None] = mapped_column(String(120), nullable=True)
     score: Mapped[str | None] = mapped_column(String(120), nullable=True)
 
-    # Team providing the game judges (managed by the club, not scraped)
+    # Team providing the game judges (managed by the club, not scraped).
+    # Legacy free-text column `jteam` is kept for old databases; new code
+    # uses the `team` relationship.
     jteam: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"), nullable=True)
 
+    team: Mapped[Team | None] = relationship(back_populates="games")
     assignments: Mapped[list["Assignment"]] = relationship(
         back_populates="game", cascade="all, delete-orphan"
     )
+
+    @property
+    def judge_team_name(self) -> str | None:
+        """Display name of the responsible team (new relation or legacy text)."""
+        if self.team is not None:
+            return self.team.name
+        return self.jteam
 
     def assignment_by_role(self, role: str) -> "Assignment | None":
         for a in self.assignments:
@@ -245,6 +311,10 @@ def sync_games(session: Session, scraped: list[dict], season_year: int) -> SyncE
         events.removed_games.append(game_nr)
         logging.warning(f"Game {game_nr} not contained in online plan anymore")
 
+    # Teams mirror the scraped age classes ("ak") so they are always available
+    for ak in sorted({rec["ak"] for rec in scraped if rec["ak"]}):
+        get_or_create_team(session, ak)
+
     session.commit()
     logging.info(
         f"Sync completed: {len(events.new_games)} new, {len(events.shifts)} shifted, "
@@ -307,7 +377,11 @@ def get_or_create_person(session: Session, name: str, email: str | None = None,
 
 
 def get_all_persons(session: Session) -> list[Person]:
-    return list(session.scalars(select(Person).order_by(Person.name)))
+    return list(
+        session.scalars(
+            select(Person).order_by(Person.name)
+        )
+    )
 
 
 def set_role_assignments(session: Session, game: Game, role: str,

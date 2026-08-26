@@ -12,6 +12,7 @@
   <div class="nav-inner">
     <a href="{{ url_for('schedule') }}" {% if active_page == '/' %}class="active"{% endif %}>Heimspielplan</a>
     <a href="{{ url_for('persons') }}" {% if active_page == '/personen' %}class="active"{% endif %}>Helfer verwalten</a>
+    <a href="{{ url_for('statistics') }}" {% if active_page == '/statistik' %}class="active"{% endif %}>Statistik</a>
     <a href="https://www.handball-raubling.de" target="_blank" rel="noopener">Zur Vereinsseite &#8599;</a>
   </div>
   <div class="color-strip" aria-hidden="true">

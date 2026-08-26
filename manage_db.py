@@ -43,17 +43,45 @@ def cmd_init(args):
     print(f"Database initialized at {engine.url}")
 
 
+def _resolve_team(session, name: str) -> db.Team:
+    """Find an existing team by name; teams cannot be created manually."""
+    for team in db.get_all_teams(session):
+        if team.name.lower() == name.strip().lower():
+            return team
+    available = ", ".join(t.name for t in db.get_all_teams(session)) or "-"
+    raise SystemExit(
+        f"Unknown team '{name}'. Available: {available}. "
+        "Teams are derived from the scraped game plan."
+    )
+
+
 def cmd_add_person(args):
     session, _ = open_session(args)
+    team = _resolve_team(session, args.team) if args.team else None
     person = db.get_or_create_person(session, args.name, args.email, args.phone)
+    if team is not None:
+        person.team_id = team.id
+    elif person.team_id is None:
+        support = db.get_support_team(session)
+        if support is not None:
+            person.team_id = support.id
     session.commit()
-    print(f"Person saved: {person.name} (email={person.email}, phone={person.phone})")
+    team_name = person.team.name if person.team else "-"
+    print(f"Person saved: {person.name} (team={team_name}, email={person.email}, phone={person.phone})")
+
+
+def cmd_list_teams(args):
+    session, _ = open_session(args)
+    for t in db.get_all_teams(session):
+        suffix = " (Support)" if t.is_support else ""
+        print(f"{t.name}{suffix:<12} members={len(t.persons)} games={len(t.games)}")
 
 
 def cmd_list_persons(args):
     session, _ = open_session(args)
     for p in session.query(db.Person).order_by(db.Person.name):
-        print(f"{p.name:<30} email={p.email or '-':<35} phone={p.phone or '-'}")
+        team_name = p.team.name if p.team else "-"
+        print(f"{p.name:<30} team={team_name:<20} email={p.email or '-':<35} phone={p.phone or '-'}")
 
 
 def cmd_list_games(args):
@@ -101,9 +129,15 @@ def cmd_set_jteam(args):
     game = db.get_game(session, args.season, args.game_nr)
     if game is None:
         raise SystemExit(f"Game {args.game_nr} not found in season {args.season}")
-    game.jteam = args.team
+    if args.team:
+        team = _resolve_team(session, args.team)
+        game.team_id = team.id
+        game.jteam = None
+    else:
+        game.team_id = None
     session.commit()
-    print(f"Judge team of game {args.game_nr} set to '{args.team}'")
+    team_name = game.team.name if game.team else "-"
+    print(f"Responsible team of game {args.game_nr} set to '{team_name}'")
 
 
 def build_parser():
@@ -120,9 +154,12 @@ def build_parser():
 
     p = sub.add_parser("add-person", help="Create or update a person")
     p.add_argument("name")
+    p.add_argument("--team", help="Team name (created if unknown; default: support team)")
     p.add_argument("--email")
     p.add_argument("--phone")
     p.set_defaults(func=cmd_add_person)
+
+    sub.add_parser("list-teams").set_defaults(func=cmd_list_teams)
 
     sub.add_parser("list-persons").set_defaults(func=cmd_list_persons)
 

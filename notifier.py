@@ -124,7 +124,8 @@ class Notifier:
 
             # Notification to MV (team representative of the judge team)
             mv_assignment = game.assignment_by_role(db.ROLE_MV)
-            if mv_assignment is None or not game.jteam:
+            team_label = game.judge_team_name or ""
+            if mv_assignment is None or not team_label:
                 continue
             mv = mv_assignment.person
             judge_names = [
@@ -138,11 +139,11 @@ class Notifier:
                 self._person_receiver(mv, db.ROLE_MV),
                 subject=self.mailMVSubject,
                 mail_body=self.mailMV.format(
-                    mv.name, game.jteam, date, *judge_names,
+                    mv.name, team_label, date, *judge_names,
                     game.ak, game.home, game.guest, game.time,
                 ),
                 sms_body=self.textMV.format(
-                    mv.name, game.jteam, date, *judge_names, game.ak, game.time,
+                    mv.name, team_label, date, *judge_names, game.ak, game.time,
                 ),
                 game_nr=game.game_nr,
             )

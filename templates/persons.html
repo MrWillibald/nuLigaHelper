@@ -5,7 +5,7 @@
 <section class="section">
   <div class="section-header"><div class="section-icon">👥</div><h2>Helfer verwalten</h2></div>
   <p class="hint">
-    Hier werden Name und Kontaktdaten aller Helferinnen und Helfer gepflegt.
+    Hier werden Name, Kontaktdaten und Mannschaft aller Helferinnen und Helfer gepflegt.
     Die Personen erscheinen danach direkt in den Auswahllisten des Heimspielplans.
   </p>
 
@@ -16,21 +16,40 @@
   {% endwith %}
 
   <div class="persons-layout">
-    <form class="form-card person-form-card" method="post" action="{{ url_for('add_person') }}">
-      <h3>Neue Person anlegen</h3>
-      <p>Name ist Pflicht, mindestens ein Kontaktweg (E-Mail oder Telefon) wird für Benachrichtigungen empfohlen.</p>
-      <div class="form-grid">
-        <div class="form-field full"><label for="new-name">Name *</label>
-          <input id="new-name" name="name" required maxlength="120"></div>
-        <div class="form-field full"><label for="new-email">E-Mail</label>
-          <input id="new-email" name="email" type="email" maxlength="200"></div>
-        <div class="form-field full"><label for="new-phone">Telefon (z. B. +49170…)</label>
-          <input id="new-phone" name="phone" maxlength="60"></div>
-        <div class="form-field full">
-          <button class="submit-btn" type="submit">PERSON HINZUFÜGEN</button>
+    <div>
+      <form class="form-card person-form-card" method="post" action="{{ url_for('add_person') }}">
+        <h3>Neue Person anlegen</h3>
+        <p>Name und Mannschaft sind Pflicht. Mindestens ein Kontaktweg (E-Mail oder Telefon) wird für Benachrichtigungen empfohlen.</p>
+        <div class="form-grid">
+          <div class="form-field full"><label for="new-name">Name *</label>
+            <input id="new-name" name="name" required maxlength="120"></div>
+          <div class="form-field full"><label for="new-team">Mannschaft *</label>
+            <select id="new-team" name="team_id" required>
+              {% for t in teams %}
+              <option value="{{ t.id }}" {% if t.is_support %}selected{% endif %}>
+                {{ t.name }}{% if t.is_support %} (Support){% endif %}
+              </option>
+              {% endfor %}
+            </select></div>
+          <div class="form-field full"><label for="new-email">E-Mail</label>
+            <input id="new-email" name="email" type="email" maxlength="200"></div>
+          <div class="form-field full"><label for="new-phone">Telefon (z. B. +49170…)</label>
+            <input id="new-phone" name="phone" maxlength="60"></div>
+          <div class="form-field full">
+            <button class="submit-btn" type="submit">PERSON HINZUFÜGEN</button>
+          </div>
         </div>
+      </form>
+
+      <div class="team-admin-card">
+        <h3>Mannschaften</h3>
+        <p class="hint" style="margin-bottom:12px;">
+          Mannschaften werden automatisch aus dem Spielplan (Altersklasse) abgeleitet –
+          zusammen mit dem Support-Team gibt es hier nichts zu verwalten.
+          Die Zuordnung erfolgt bei den Personen und im Spielplan.
+        </p>
       </div>
-    </form>
+    </div>
 
     <div class="people-grid persons-grid">
       {% for p in persons %}
@@ -40,6 +59,14 @@
           <form method="post" action="{{ url_for('edit_person', person_id=p.id) }}" class="person-edit-form">
             <label>Name
               <input type="text" name="name" value="{{ p.name }}" required maxlength="120"></label>
+            <label>Mannschaft
+              <select name="team_id">
+                {% for t in teams %}
+                <option value="{{ t.id }}" {% if p.team_id == t.id %}selected{% endif %}>
+                  {{ t.name }}{% if t.is_support %} (Support){% endif %}
+                </option>
+                {% endfor %}
+              </select></label>
             <label>E-Mail
               <input type="email" name="email" value="{{ p.email }}" maxlength="200"></label>
             <label>Telefon

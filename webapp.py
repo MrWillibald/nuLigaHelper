@@ -1,9 +1,9 @@
 # ---------------------------------------------------------------
 #                          nuLigaHelper
 # ---------------------------------------------------------------
-# Web interface: home game schedule with inline task assignment
-# and helper (person) management. Designed to visually integrate
-# with www.handball-raubling.de
+# Web interface: home game schedule with inline task assignment,
+# helper/team management and statistics. Designed to visually
+# integrate with www.handball-raubling.de
 #
 # Run locally:  ./venv/bin/python webapp.py   (http://<pi-ip>:8080)
 # Optional env: NULIGAHELPER_DB=/path/to/nuliga_helper.db
@@ -12,6 +12,8 @@
 import os
 from datetime import datetime
 
+import common
+import db
 from flask import (
     Flask,
     flash,
@@ -22,9 +24,6 @@ from flask import (
     request,
     url_for,
 )
-
-import common
-import db
 
 MONATE = [
     "Januar", "Februar", "März", "April", "Mai", "Juni",
@@ -77,6 +76,10 @@ def parse_date(date_str: str | None):
         return None
 
 
+def _person_team(persons: list[dict], person_id: int) -> int | None:
+    return next((p["team_id"] for p in persons if p["id"] == person_id), None)
+
+
 def create_app() -> Flask:
     app = Flask(__name__)
     app.secret_key = os.environ.get("NULIGAHELPER_SECRET", "tus-raubling-nuligahelper")
@@ -98,6 +101,23 @@ def create_app() -> Flask:
     def inject_globals():
         return {"active_page": request.path}
 
+    def person_options(session) -> list[dict]:
+        return [
+            {
+                "id": p.id,
+                "name": p.name,
+                "team_id": p.team_id,
+                "team_name": p.team.name if p.team else "",
+            }
+            for p in db.get_all_persons(session)
+        ]
+
+    def team_options(session) -> list[dict]:
+        return [
+            {"id": t.id, "name": t.name, "is_support": t.is_support}
+            for t in db.get_all_teams(session)
+        ]
+
     # ------------------------------------------------------------------
     # Schedule overview
     # ------------------------------------------------------------------
@@ -109,25 +129,46 @@ def create_app() -> Flask:
         ).all()
         games.sort(key=db.game_sort_key)
 
-        persons = db.get_all_persons(session)
-        person_opts = [{"id": p.id, "name": p.name} for p in persons]
+        persons = person_options(session)
+        teams = team_options(session)
+        support = db.get_support_team(session)
+        support_id = support.id if support else None
+        playing_team_by_ak = {t["name"]: t["id"] for t in teams}
 
         def game_view(game):
             sales = game.assignments_by_role(db.ROLE_SALE)
+            responsible_team_id = game.team_id
+            # the age class of the game itself identifies the team that PLAYS
+            playing_team_id = playing_team_by_ak.get(game.ak or "")
             slots = []
             sale_idx = 0
             for label, role in SLOT_LABELS:
                 if role == db.ROLE_SALE:
-                    person_id = sales[sale_idx].person_id if sale_idx < len(sales) else None
+                    assignment = sales[sale_idx] if sale_idx < len(sales) else None
                     slot = sale_idx
                     sale_idx += 1
                 else:
                     assignment = game.assignment_by_role(role)
-                    person_id = assignment.person_id if assignment is not None else None
                     slot = 0
-                slots.append(
-                    {"label": label, "role": role, "slot": slot, "person_id": person_id}
-                )
+                person_id = assignment.person_id if assignment is not None else None
+
+                if person_id is None:
+                    status = "none"
+                elif playing_team_id and _person_team(persons, person_id) == playing_team_id:
+                    status = "playing"
+                elif (responsible_team_id is not None
+                      and _person_team(persons, person_id) not in (responsible_team_id, support_id)):
+                    status = "outside"
+                else:
+                    status = "ok"
+
+                slots.append({
+                    "label": label,
+                    "role": role,
+                    "slot": slot,
+                    "person_id": person_id,
+                    "status": status,
+                })
             d = parse_date(game.date)
             return {
                 "id": game.id,
@@ -140,7 +181,8 @@ def create_app() -> Flask:
                 "home": game.home or "",
                 "guest": game.guest or "",
                 "hall": game.hall,
-                "jteam": game.jteam or "",
+                "team_id": responsible_team_id,
+                "playing_team_id": playing_team_id,
                 "slots": slots,
                 "past": bool(d and d < today),
             }
@@ -177,7 +219,9 @@ def create_app() -> Flask:
         return {
             "upcoming": with_month_headers(upcoming),
             "past": with_month_headers(past),
-            "persons": person_opts,
+            "persons": persons,
+            "teams": teams,
+            "support_id": support_id,
         }
 
     @app.route("/")
@@ -190,7 +234,89 @@ def create_app() -> Flask:
             upcoming=data["upcoming"],
             past=data["past"],
             persons=data["persons"],
+            teams=data["teams"],
+            support_id=data["support_id"],
             season=f"{season_year}/{str(season_year + 1)[-2:]}",
+        )
+
+    # ------------------------------------------------------------------
+    # Statistics
+    # ------------------------------------------------------------------
+
+    @app.route("/statistik")
+    def statistics():
+        session = get_session()
+        season_year = common.season_year_for(common.effective_today())
+        today = common.effective_today()
+
+        games = session.query(db.Game).filter(
+            db.Game.season_year == season_year
+        ).all()
+        games.sort(key=db.game_sort_key)
+        total_games = len(games)
+
+        team_stats = []
+        for team in db.get_all_teams(session):
+            covered = sum(1 for gm in games if gm.team_id == team.id)
+            share = round(100 * covered / total_games) if total_games else 0
+            team_stats.append({
+                "name": team.name,
+                "is_support": team.is_support,
+                "covered": covered,
+                "share": share,
+                "bar_width": max(share, 6) if covered else 0,
+            })
+        team_stats.sort(key=lambda t: (-t["covered"], t["name"]))
+
+        season_game_ids = {gm.id for gm in games}
+        person_stats = []
+        for person in db.get_all_persons(session):
+            assignments = [
+                a for a in person.assignments if a.game_id in season_game_ids
+            ]
+            if not assignments:
+                continue
+            role_counts: dict[str, int] = {}
+            for a in assignments:
+                role_counts[a.role] = role_counts.get(a.role, 0) + 1
+            person_stats.append({
+                "name": person.name,
+                "team_name": person.team.name if person.team else "",
+                "jobs": len(assignments),
+                "roles": sorted(role_counts.items(), key=lambda kv: (-kv[1], kv[0])),
+            })
+        person_stats.sort(key=lambda p: (-p["jobs"], p["name"]))
+
+        gaps = []
+        for game in games:
+            d = parse_date(game.date)
+            if d is None or d < today:
+                continue
+            missing_roles: dict[str, int] = {}
+            for role, slots in ROLE_SLOT_COUNT.items():
+                filled = len(game.assignments_by_role(role))
+                missing = max(0, slots - filled)
+                if missing:
+                    missing_roles[role] = missing
+            if missing_roles:
+                gaps.append({
+                    "nr": game.game_nr,
+                    "date": game.date,
+                    "time": (game.time or "").split()[0],
+                    "teams": f"{game.home or '?'} – {game.guest or '?'}",
+                    "ak": game.ak or "",
+                    "color": ak_color(game.ak),
+                    "team_name": game.judge_team_name or "",
+                    "missing": list(missing_roles.items()),
+                })
+
+        return render_template(
+            "statistik.html",
+            season=f"{season_year}/{str(season_year + 1)[-2:]}",
+            total_games=total_games,
+            team_stats=team_stats,
+            person_stats=person_stats,
+            gaps=gaps,
         )
 
     # ------------------------------------------------------------------
@@ -201,10 +327,27 @@ def create_app() -> Flask:
     def persons():
         session = get_session()
         all_persons = [
-            {"id": p.id, "name": p.name, "email": p.email or "", "phone": p.phone or ""}
+            {
+                "id": p.id,
+                "name": p.name,
+                "email": p.email or "",
+                "phone": p.phone or "",
+                "team_id": p.team_id,
+            }
             for p in db.get_all_persons(session)
         ]
-        return render_template("persons.html", persons=all_persons)
+        return render_template(
+            "persons.html",
+            persons=all_persons,
+            teams=team_options(session),
+        )
+
+    def _form_team_id(session) -> int | None:
+        raw = request.form.get("team_id")
+        if not raw:
+            return None
+        team = session.get(db.Team, int(raw))
+        return team.id if team else None
 
     @app.post("/personen/add")
     def add_person():
@@ -219,9 +362,11 @@ def create_app() -> Flask:
         if existing is not None:
             existing.email = email or existing.email
             existing.phone = phone or existing.phone
+            existing.team_id = _form_team_id(session) or existing.team_id
             flash(f"Daten von '{name}' aktualisiert.", "ok")
         else:
-            db.get_or_create_person(session, name, email, phone)
+            person = db.get_or_create_person(session, name, email, phone)
+            person.team_id = _form_team_id(session) or person.team_id
             flash(f"'{name}' wurde angelegt.", "ok")
         session.commit()
         return redirect(url_for("persons"))
@@ -238,6 +383,9 @@ def create_app() -> Flask:
             person.name = name
         person.email = (request.form.get("email") or "").strip() or None
         person.phone = (request.form.get("phone") or "").strip() or None
+        team_id = _form_team_id(session)
+        if team_id is not None:
+            person.team_id = team_id
         session.commit()
         flash(f"Daten von '{person.name}' gespeichert.", "ok")
         return redirect(url_for("persons"))
@@ -296,14 +444,23 @@ def create_app() -> Flask:
         db.set_role_assignments(session, game, role, filled)
         return jsonify(ok=True)
 
-    @app.post("/api/games/<int:game_id>/jteam")
-    def api_jteam(game_id: int):
+    @app.post("/api/games/<int:game_id>/team")
+    def api_game_team(game_id: int):
         session = get_session()
         game = session.get(db.Game, game_id)
         if game is None:
             return api_error("Spiel nicht gefunden.", 404)
         data = request.get_json(silent=True) or {}
-        game.jteam = (data.get("value") or "").strip()[:120] or None
+        raw_team_id = data.get("team_id")
+        if raw_team_id:
+            team = session.get(db.Team, int(raw_team_id))
+            if team is None:
+                return api_error("Mannschaft nicht gefunden.", 404)
+            game.team_id = team.id
+            game.jteam = team.name
+        else:
+            game.team_id = None
+            game.jteam = None
         session.commit()
         return jsonify(ok=True)
 

@@ -38,29 +38,43 @@ document.querySelectorAll("select[data-role]").forEach((select) => {
     });
     if (result.ok) {
       flashCard(select.dataset.game);
-      showToast("Dienst gespeichert", true);
+      const option = select.selectedOptions[0];
+      if (option && option.classList.contains("option-playing")) {
+        showToast("Achtung: Person spielt selbst in diesem Spiel", false);
+        select.classList.add("select-warn");
+      } else if (option && option.classList.contains("foreign-option")) {
+        showToast("Hinweis: Person gehört nicht zum zugewiesenen Team", false);
+        select.classList.add("select-warn");
+      } else {
+        showToast("Dienst gespeichert", true);
+        select.classList.remove("select-warn");
+      }
     } else {
       showToast(result.error || "Fehler beim Speichern", false);
     }
   });
 });
 
-document.querySelectorAll(".jteam-input").forEach((input) => {
-  let timer = null;
-  input.addEventListener("input", () => {
-    clearTimeout(timer);
-    timer = setTimeout(async () => {
-      const result = await postJSON(`/api/games/${input.dataset.game}/jteam`, {
-        value: input.value,
-      });
-      if (result.ok) {
-        flashCard(input.dataset.game);
-        showToast("Kampfgericht-Team gespeichert", true);
-      } else {
-        showToast(result.error || "Fehler beim Speichern", false);
-      }
-    }, 500);
+document.querySelectorAll(".team-select").forEach((select) => {
+  select.addEventListener("change", async () => {
+    const gameId = select.dataset.game;
+    const result = await postJSON(`/api/games/${gameId}/team`, {
+      team_id: select.value ? Number(select.value) : null,
+    });
+    if (result.ok) {
+      flashCard(gameId);
+      showToast("Team gespeichert", true);
+      setTimeout(() => {
+        window.location.hash = "game-" + gameId;
+        window.location.reload();
+      }, 500);
+    } else {
+      showToast(result.error || "Fehler beim Speichern", false);
+      const previous = select.getAttribute("data-prev") || "";
+      select.value = previous;
+    }
   });
+  select.addEventListener("focus", () => select.setAttribute("data-prev", select.value));
 });
 
 document.querySelectorAll("[data-delete-person]").forEach((button) => {
