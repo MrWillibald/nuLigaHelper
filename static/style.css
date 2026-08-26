@@ -33,13 +33,14 @@ h3{color:var(--navy)}
 
 /* ---- schedule ---- */
 .month-title{color:var(--navy);margin:26px 0 14px;font-size:1.35rem;text-transform:uppercase;letter-spacing:.05em}
-.day-block{margin-bottom:30px}
-.day-title{background:var(--navy);color:#fff;padding:13px 18px;border-radius:16px 16px 0 0;
+.day-block{margin-bottom:30px;background:#fff;border:1px solid var(--line);
+  border-radius:18px;overflow:hidden}
+.day-title{background:var(--navy);color:#fff;padding:13px 18px;
   font-size:1.15rem;font-weight:900;letter-spacing:.04em;text-transform:uppercase}
 .day-block.past .day-title{background:#8a93ab}
 .game-card{display:grid;grid-template-columns:minmax(240px,340px) 1fr;gap:22px;
-  padding:20px;background:#fff;border:1px solid var(--line);border-top:none}
-.game-card:first-of-type{border-top:1px solid var(--line)}
+  padding:20px;background:#fff;border-bottom:1px solid var(--line)}
+.game-card:last-of-type{border-bottom:none}
 .day-block.past .game-card{opacity:.55}
 .game-info{display:flex;flex-direction:column;gap:7px}
 .game-time{font-size:1.5rem;font-weight:900;color:var(--navy)}
