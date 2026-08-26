@@ -10,7 +10,6 @@
 # ---------------------------------------------------------------
 
 import datetime
-import json
 import logging
 import os
 
@@ -20,11 +19,6 @@ import common
 import db
 from notifier import Notifier
 from scraper import fetch_home_games
-
-
-def load_config(path: str) -> dict:
-    with open(path, encoding="utf-8") as f:
-        return json.load(f)
 
 
 def backup_to_dropbox(token: str, folder: str, local_path: str):
@@ -57,7 +51,7 @@ def main():
     logging.info("nuLiga Helper start, version " + common.VERSION)
     logging.info("-------------------------------------------------")
 
-    config = load_config(os.path.join(os.path.dirname(__file__), "config.json"))
+    config = common.load_config()
     club_cfg = config["club"]
 
     today = common.effective_today()

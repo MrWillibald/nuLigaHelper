@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Heimspielplan{% endblock %} – TuS Raubling Handball</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body id="top">
+
+<nav class="nav-strip" aria-label="Seitennavigation">
+  <div class="nav-inner">
+    <a href="{{ url_for('schedule') }}" {% if active_page == '/' %}class="active"{% endif %}>Heimspielplan</a>
+    <a href="{{ url_for('persons') }}" {% if active_page == '/personen' %}class="active"{% endif %}>Helfer verwalten</a>
+    <a href="https://www.handball-raubling.de" target="_blank" rel="noopener">Zur Vereinsseite &#8599;</a>
+  </div>
+  <div class="color-strip" aria-hidden="true">
+    <span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+  </div>
+</nav>
+
+<main>
+  {% block content %}{% endblock %}
+</main>
+
+<footer class="footer">
+  <div>&copy; {{ self.title() }} &middot; TuS Raubling e.V. – Abteilung Handball</div>
+  <small>Heimspielplan-Verwaltung des TuS Raubling</small>
+</footer>
+
+<div id="toast" class="toast" role="status"></div>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

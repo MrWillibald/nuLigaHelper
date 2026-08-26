@@ -5,6 +5,15 @@
 # ---------------------------------------------------------------
 
 import datetime
+import json
+import os
+
+
+def load_config(filename: str = "config.json") -> dict:
+    """Load config.json located next to the project files."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), filename)
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
 
 # Version string
 VERSION = "0.29"

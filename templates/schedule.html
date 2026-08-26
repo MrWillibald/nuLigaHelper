@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Heimspielplan{% endblock %}
+
+{% macro game_card(g) %}
+<article class="game-card" id="game-{{ g.id }}">
+  <div class="game-info">
+    <div class="game-time">{{ g.time }}</div>
+    <div class="game-teams">
+      <span class="hex" style="background:{{ g.color }}"></span>
+      <span>{{ g.home }} &ndash; {{ g.guest }}</span>
+    </div>
+    <div class="game-meta">{{ g.ak }} &middot; Halle {{ g.hall }} &middot; Nr. {{ g.nr }}</div>
+  </div>
+  <div class="game-assign">
+    <label class="assign-field assign-jteam">
+      <span>Kampfgericht-Team</span>
+      <input type="text" class="jteam-input" value="{{ g.jteam }}"
+             data-game="{{ g.id }}" placeholder="z. B. Damen 1" maxlength="120">
+    </label>
+    {% for s in g.slots %}
+    <label class="assign-field">
+      <span>{{ s.label }}</span>
+      <select data-game="{{ g.id }}" data-role="{{ s.role }}" data-slot="{{ s.slot }}">
+        <option value="">&ndash; offen &ndash;</option>
+        {% for p in persons %}
+        <option value="{{ p.id }}" {% if p.id == s.person_id %}selected{% endif %}>{{ p.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    {% endfor %}
+  </div>
+</article>
+{% endmacro %}
+
+{% block content %}
+<section class="section">
+  <div class="section-header"><div class="section-icon">📅</div><h2>Heimspielplan {{ season }}</h2></div>
+  <p class="hint">
+    Alle Heimspiele des TuS Raubling mit den eingeteilten Helferinnen und Helfern.
+    Zum Eintragen einen Namen im jeweiligen Dienst auswählen – die Änderung wird sofort gespeichert.
+    Kontaktdaten werden hier bewusst nicht angezeigt.
+  </p>
+
+  {% if not upcoming and not past %}
+  <p class="hint">Noch keine Spiele vorhanden. Führe zuerst <code>main.py</code> aus, um den Spielplan zu laden.</p>
+  {% endif %}
+
+  {% for item in upcoming %}
+    {% if item.type == "month" %}
+      <h3 class="month-title">{{ item.label }}</h3>
+    {% else %}
+      <div class="day-block">
+        <div class="day-title">{{ item.day }} {{ item.date }}</div>
+        {% for g in item.games %}{{ game_card(g) }}{% endfor %}
+      </div>
+    {% endif %}
+  {% endfor %}
+
+  {% if past %}
+  <details class="past-details">
+    <summary>Vergangene Spieltage anzeigen ({{ past | selectattr("type", "equalto", "day") | list | length }})</summary>
+    {% for item in past %}
+      {% if item.type == "month" %}
+        <h3 class="month-title">{{ item.label }}</h3>
+      {% else %}
+        <div class="day-block past">
+          <div class="day-title">{{ item.day }} {{ item.date }}</div>
+          {% for g in item.games %}{{ game_card(g) }}{% endfor %}
+        </div>
+      {% endif %}
+    {% endfor %}
+  </details>
+  {% endif %}
+</section>
+{% endblock %}

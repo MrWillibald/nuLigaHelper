@@ -61,7 +61,8 @@ def cmd_list_games(args):
     query = session.query(db.Game).filter(db.Game.season_year == args.season)
     if args.date:
         query = query.filter(db.Game.date == args.date)
-    games = query.order_by(db.Game.date, db.Game.time).all()
+    games = query.all()
+    games.sort(key=db.game_sort_key)
     for g in games:
         assignments = ", ".join(f"{a.role}: {a.person.name}" for a in g.assignments) or "-"
         print(

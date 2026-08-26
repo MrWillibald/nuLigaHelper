@@ -1,0 +1,121 @@
+/* nuLigaHelper web UI – design tokens taken from www.handball-raubling.de */
+:root{
+  --navy:#0A1D4E; --navy-dark:#06143A; --bg:#F5F7FB; --card:#FFFFFF;
+  --text:#15213A; --muted:#667188; --line:#DDE3EC;
+  --men:#DDFF00; --male-ab:#C7E600; --male-cd:#6BB32C;
+  --women:#7CFFCB; --female-ab:#00C6D7; --female-cd:#FF3F8B; --kids:#FFA01F;
+  --ok-bg:#dff8e8; --ok-fg:#0f6b35; --err-bg:#ffe1e1; --err-fg:#8a1d1d;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:Arial,Helvetica,sans-serif;color:var(--text);
+  background:linear-gradient(180deg,#fff 0%,#f6f8fb 48%,#eef3f8 100%);padding-top:92px}
+
+/* ---- navigation (identical to parent site) ---- */
+.nav-strip{position:fixed;left:0;right:0;top:0;z-index:999;background:var(--navy);box-shadow:0 10px 24px rgba(10,29,78,.15)}
+.nav-inner{max-width:1180px;margin:0 auto;padding:0 18px;display:flex;justify-content:center;gap:6px;flex-wrap:wrap}
+.nav-inner a{color:#fff;text-decoration:none;padding:16px 14px;font-weight:900;letter-spacing:.03em;text-transform:uppercase;font-size:.95rem}
+.nav-inner a:hover,.nav-inner a.active{background:rgba(255,255,255,.12)}
+.color-strip{height:8px;display:grid;grid-template-columns:repeat(7,1fr)}
+.color-strip span:nth-child(1){background:var(--men)}.color-strip span:nth-child(2){background:var(--male-ab)}
+.color-strip span:nth-child(3){background:var(--male-cd)}.color-strip span:nth-child(4){background:var(--women)}
+.color-strip span:nth-child(5){background:var(--female-ab)}.color-strip span:nth-child(6){background:var(--female-cd)}
+.color-strip span:nth-child(7){background:var(--kids)}
+
+main{max-width:1180px;margin:0 auto;padding:42px 24px 0}
+.section{background:rgba(255,255,255,.94);border:1px solid rgba(10,29,78,.10);border-radius:24px;
+  box-shadow:0 12px 34px rgba(10,29,78,.07);padding:30px;margin-bottom:36px}
+.section-header{display:flex;align-items:center;gap:14px;margin-bottom:22px}
+.section-icon{width:48px;height:48px;border-radius:15px;background:var(--navy);color:#fff;display:grid;place-items:center;font-size:22px;flex:0 0 auto}
+h2{color:var(--navy);font-size:clamp(1.65rem,3vw,2.2rem);text-transform:uppercase;letter-spacing:.045em}
+h3{color:var(--navy)}
+.hint{margin:-8px 0 24px;color:var(--muted);line-height:1.6}
+.hint code{background:#eef3f8;border-radius:6px;padding:2px 6px}
+
+/* ---- schedule ---- */
+.month-title{color:var(--navy);margin:26px 0 14px;font-size:1.35rem;text-transform:uppercase;letter-spacing:.05em}
+.day-block{margin-bottom:30px}
+.day-title{background:var(--navy);color:#fff;padding:13px 18px;border-radius:16px 16px 0 0;
+  font-size:1.15rem;font-weight:900;letter-spacing:.04em;text-transform:uppercase}
+.day-block.past .day-title{background:#8a93ab}
+.game-card{display:grid;grid-template-columns:minmax(240px,340px) 1fr;gap:22px;
+  padding:20px;background:#fff;border:1px solid var(--line);border-top:none}
+.game-card:first-of-type{border-top:1px solid var(--line)}
+.day-block.past .game-card{opacity:.55}
+.game-info{display:flex;flex-direction:column;gap:7px}
+.game-time{font-size:1.5rem;font-weight:900;color:var(--navy)}
+.game-teams{display:flex;align-items:center;gap:9px;font-weight:900;line-height:1.35}
+.game-meta{color:var(--muted);font-size:.88rem}
+.hex{width:15px;height:15px;display:inline-block;flex:0 0 auto;
+  clip-path:polygon(25% 5%,75% 5%,100% 50%,75% 95%,25% 95%,0 50%)}
+
+.game-assign{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:11px}
+.assign-field{display:flex;flex-direction:column;gap:4px}
+.assign-field>span{font-size:.74rem;font-weight:800;color:var(--navy);text-transform:uppercase;letter-spacing:.05em}
+.assign-field select,.assign-field input,.form-field input{width:100%;border:1px solid var(--line);
+  border-radius:11px;padding:9px 10px;font-size:.94rem;font-family:inherit;color:var(--text);background:#fbfcfe}
+.assign-field select:focus,.assign-field input:focus{outline:2px solid var(--navy);outline-offset:1px}
+.assign-jteam{grid-column:1/-1}
+.game-card.saved{animation:savedflash .9s ease}
+@keyframes savedflash{0%{box-shadow:0 0 0 3px var(--women)}100%{box-shadow:none}}
+
+.past-details{margin-top:8px}
+.past-details summary{cursor:pointer;color:var(--navy);font-weight:800;padding:12px 16px;
+  border-radius:14px;background:#eef3f8;display:inline-block}
+.past-details[open] summary{margin-bottom:18px}
+
+/* ---- persons ---- */
+.persons-layout{display:grid;grid-template-columns:minmax(280px,380px) 1fr;gap:28px;align-items:start}
+.person-form-card{background:linear-gradient(135deg,var(--navy),var(--navy-dark));border-radius:24px;padding:24px;color:#fff}
+.person-form-card h3{color:#fff;font-size:1.45rem;margin-bottom:10px}
+.person-form-card p{color:#e7edf6;line-height:1.55;margin-bottom:16px;font-size:.95rem}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.form-field{display:flex;flex-direction:column;gap:6px}
+.form-field.full{grid-column:1/-1}
+.form-field label{font-size:.9rem;font-weight:800;color:#fff}
+.form-field input{border:none}
+.submit-btn{width:100%;border:none;border-radius:14px;background:var(--kids);color:var(--navy);
+  font-weight:900;padding:14px 18px;font-size:1rem;cursor:pointer;letter-spacing:.04em}
+.submit-btn:hover{filter:brightness(.96)}
+
+.people-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:20px}
+.person-edit-card{display:grid;grid-template-columns:52px 1fr;gap:16px;align-items:start;
+  padding:20px;border:1px solid rgba(10,29,78,.10);border-radius:22px;background:#fff;
+  box-shadow:0 8px 26px rgba(10,29,78,.055)}
+.person-icon{width:48px;height:48px;border-radius:50%;background:#eef3f8;color:var(--navy);
+  display:grid;place-items:center;font-size:22px;font-weight:900}
+.person-edit-form{display:flex;flex-direction:column;gap:9px}
+.person-edit-form label{font-size:.76rem;font-weight:800;color:var(--navy);
+  text-transform:uppercase;letter-spacing:.05em;display:flex;flex-direction:column;gap:4px}
+.person-edit-form input{border:1px solid var(--line);border-radius:10px;padding:8px 10px;
+  font-size:.94rem;font-family:inherit;color:var(--text)}
+
+.btn{border:none;border-radius:11px;padding:10px 16px;font-weight:900;font-size:.88rem;
+  cursor:pointer;font-family:inherit;letter-spacing:.02em;margin-right:8px}
+.btn-primary{background:var(--navy);color:#fff}
+.btn-primary:hover{background:var(--navy-dark)}
+.btn-danger{background:var(--err-bg);color:var(--err-fg)}
+.btn-danger:hover{filter:brightness(.95)}
+
+.form-message{margin-bottom:18px;padding:13px 15px;border-radius:13px;font-weight:800}
+.form-message.ok{background:var(--ok-bg);color:var(--ok-fg)}
+.form-message.error{background:var(--err-bg);color:var(--err-fg)}
+
+/* ---- toast + footer ---- */
+.toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(80px);
+  background:var(--navy);color:#fff;font-weight:800;padding:13px 22px;border-radius:14px;
+  box-shadow:0 10px 26px rgba(10,29,78,.3);opacity:0;transition:all .25s ease;z-index:2000;pointer-events:none}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.toast.error{background:var(--err-fg)}
+.footer{margin-top:46px;margin-bottom:22px;padding:24px;background:var(--navy);color:#fff;text-align:center}
+.footer small{display:block;margin-top:8px;color:#d4dbe8;font-size:.82rem}
+
+@media(max-width:900px){
+  .game-card{grid-template-columns:1fr}
+  .persons-layout{grid-template-columns:1fr}
+}
+@media(max-width:700px){
+  body{padding-top:126px}
+  main{padding:32px 16px 0}.section{padding:22px 16px}
+  .nav-inner a{font-size:.84rem;padding:14px 9px}
+  .form-grid{grid-template-columns:1fr}
+}

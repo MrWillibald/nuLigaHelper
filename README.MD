@@ -14,6 +14,18 @@ A helper class to organize home games with nuLiga Handball.
 - Notifications on missing referees are sent to specified persons
 - Unknown new games are reported to the admin
 - Notifications can be sent via Email or SMS (using Twilio account)
+- Web interface for viewing the home game schedule and managing helpers (Flask)
+
+# Web interface
+
+Start the web interface with `run_webapp.sh` (or `python3 webapp.py`). It is then reachable in the local network at `http://<device-ip>:8080`.
+
+- **Heimspielplan**: all home games of the current season grouped by day. Tasks (MV, Zeitnehmer, Sekretär, Verkauf, Ordnungsdienst, Reinigung) are assigned via dropdown directly in the schedule and saved instantly. The judge team ("Team Kampfgericht") is edited inline as well. Contact data is intentionally not shown on the overview.
+- **Helfer verwalten**: add, edit and delete persons incl. e-mail/phone.
+
+The interface is currently open (no authentication) and intended for local network use. User authentication and user rights are planned for a future step.
+
+Optional environment variables: `NULIGAHELPER_DB` (path to the SQLite file) and `NULIGAHELPER_SECRET` (Flask secret key).
 
 # Database schema
 

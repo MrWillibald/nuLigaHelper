@@ -7,6 +7,7 @@
 
 import logging
 from dataclasses import dataclass, field
+from datetime import date, datetime
 
 from sqlalchemy import Integer, String, ForeignKey, UniqueConstraint, create_engine, select
 from sqlalchemy.orm import (
@@ -270,6 +271,23 @@ def get_games_on_date(session: Session, date: str) -> list[Game]:
     )
 
 
+def game_sort_key(game: "Game") -> tuple:
+    """
+    Chronological sort key for games with German dd.mm.yyyy date strings
+    (plain string ordering would sort by day-of-month first).
+    """
+    try:
+        d = datetime.strptime(game.date or "", "%d.%m.%Y").date()
+    except ValueError:
+        d = date.max
+    time_parts = (game.time or "").split()[0].split(":")
+    if len(time_parts) == 2 and all(p.isdigit() for p in time_parts):
+        time_key = (int(time_parts[0]), int(time_parts[1]))
+    else:
+        time_key = (99, 99)
+    return (d, time_key, game.game_nr)
+
+
 def get_or_create_person(session: Session, name: str, email: str | None = None,
                          phone: str | None = None) -> Person:
     """Return the person with the given name, creating them if necessary."""
@@ -286,6 +304,31 @@ def get_or_create_person(session: Session, name: str, email: str | None = None,
         if phone is not None:
             person.phone = phone
     return person
+
+
+def get_all_persons(session: Session) -> list[Person]:
+    return list(session.scalars(select(Person).order_by(Person.name)))
+
+
+def set_role_assignments(session: Session, game: Game, role: str,
+                         person_ids: list[int]) -> None:
+    """Replace all assignments of `role` on `game` with the given slot order."""
+    for assignment in [a for a in game.assignments if a.role == role]:
+        game.assignments.remove(assignment)
+    session.flush()
+    for person_id in person_ids:
+        person = session.get(Person, person_id)
+        if person is not None:
+            game.assignments.append(Assignment(person=person, role=role))
+    session.commit()
+
+
+def delete_person(session: Session, person: Person) -> None:
+    """Delete a person together with all their assignments."""
+    for assignment in list(person.assignments):
+        session.delete(assignment)
+    session.delete(person)
+    session.commit()
 
 
 def assign_person(session: Session, game: Game, person: Person, role: str) -> Assignment:
