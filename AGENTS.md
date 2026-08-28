@@ -24,7 +24,7 @@ Language: code/comments in English, UI texts and notification templates in Germa
 
 | File                | Purpose                                                                 |
 |---------------------|-------------------------------------------------------------------------|
-| `common.py`         | VERSION, DEBUG_FLAG/CHANGE_DAY, season-year helper, `load_config()`     |
+| `common.py`         | VERSION, `DEBUG_FLAG`/`CHANGE_DAY`/`DEBUG_TODAY`, `effective_today()`, season-year helper, `load_config()` |
 | `db.py`             | Models (`Team`, `Person`, `Game`, `Assignment`), `init_db`, `sync_games`, query helpers |
 | `scraper.py`        | Scrapes nuLiga into plain dicts (keys see `GAME_FIELDS`)                 |
 | `notifier.py`       | All mail/SMS notifications; reads assignments from the DB               |
@@ -48,7 +48,14 @@ test/run_tests.sh                          # whole suite, must stay green
   lists every key the code reads. Notification texts are `str.format` templates —
   placeholder **order and count are part of the contract**, don't reorder lightly.
 - Env overrides: `NULIGAHELPER_DB` (SQLite path), `NULIGAHELPER_SECRET`.
-- `DEBUG_FLAG = True` (in `common.py`) disables all outbound mail/SMS.
+- Two independent debug switches in `common.py`, both `False` in the committed state:
+  - `DEBUG_FLAG = True` disables all outbound mail/SMS (`send_Mail`/`send_SMS` return
+    early) **and** pins "today" to `DEBUG_TODAY`.
+  - `CHANGE_DAY = True` only pins "today" to `DEBUG_TODAY` — messages are still sent,
+    so combine it with `DEBUG_FLAG` unless you really want real notifications.
+  Everything date-dependent must go through `common.effective_today()`, never
+  `datetime.date.today()`, or these switches stop working. Reset both to `False`
+  before committing.
 
 ## Domain rules (do not break silently)
 
