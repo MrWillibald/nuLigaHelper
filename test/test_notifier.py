@@ -4,10 +4,11 @@
 # Notification dispatch: channel selection, texts, receiver groups.
 # All sends run against a TextRecorder – nothing goes out for real.
 #
-# Scenario: game 1001 on 05.09.2026, responsible team "BL mD":
+# Scenario: game 1001 on 05.09.2026, responsible team "BL mD".
+# A person may only hold one task per game, so every slot has its own person:
 #   Zeitnehmer=Alice(mail)  Sekretär=Bob(sms)
-#   Verkauf=Alice(mail)     Verkauf=Bob(sms)
-#   Ordnungsdienst=Alice    Reinigung=Caro(no contact -> always skipped)
+#   Verkauf=Caro(mail)      Verkauf=Dora(sms)
+#   Ordnungsdienst=Ed(mail) Reinigung=Frida(sms, only when fully assigned)
 #   Frank is MV of "BL mD" and receives the MV notification by SMS
 #   as long as tasks of the game are still open.
 #
@@ -52,22 +53,21 @@ def _setup(fully_assigned: bool = False):
     game.jteam = "BL mD"
 
     alice = db.get_or_create_person(session, "Alice", email="alice@x.de")
-    alice.team_id = team.id
     bob = db.get_or_create_person(session, "Bob", phone="+491700000001")
-    caro = db.get_or_create_person(session, "Caro")
-    caro.team_id = db.get_support_team(session).id
+    caro = db.get_or_create_person(session, "Caro", email="caro@x.de")
     dora = db.get_or_create_person(session, "Dora", phone="+491700000003")
-    dora.team_id = caro.team_id
+    ed = db.get_or_create_person(session, "Ed", email="ed@x.de")
+    frida = db.get_or_create_person(session, "Frida", phone="+491700000004")
     frank = db.get_or_create_person(session, "Frank", phone="+491700000002")
     frank.team_id = team.id
     db.set_team_mv(session, team, frank)
 
     # an open task means: nobody assigned at all
-    cleaning = dora if fully_assigned else None
+    cleaning = frida if fully_assigned else None
     for role, person in [
         (db.ROLE_TIMEKEEPER, alice), (db.ROLE_SECRETARY, bob),
-        (db.ROLE_SALE, alice), (db.ROLE_SALE, bob),
-        (db.ROLE_SECURITY, alice), (db.ROLE_CLEANING, cleaning),
+        (db.ROLE_SALE, caro), (db.ROLE_SALE, dora),
+        (db.ROLE_SECURITY, ed), (db.ROLE_CLEANING, cleaning),
     ]:
         if person is not None:
             db.assign_person(session, game, person, role)

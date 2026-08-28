@@ -96,7 +96,7 @@ def cmd_list_games(args):
         print(
             f"Nr.{g.game_nr:<7} {g.date or '?'} {g.time or '?':<8} {g.ak or '?':<5} "
             f"{g.home or '?'} - {g.guest or '?'}\n"
-            f"         Kampfgericht-Team: {g.jteam or '-'} | {assignments}"
+            f"         Verantwortlich: {g.jteam or '-'} | {assignments}"
         )
 
 
@@ -106,7 +106,11 @@ def cmd_assign(args):
     if game is None:
         raise SystemExit(f"Game {args.game_nr} not found in season {args.season}")
     person = db.get_or_create_person(session, args.person, args.email, args.phone)
-    db.assign_person(session, game, person, args.role)
+    try:
+        db.assign_person(session, game, person, args.role)
+    except ValueError as exc:
+        session.rollback()
+        raise SystemExit(str(exc))
     session.commit()
     print(f"{person.name} assigned to game {args.game_nr} as {args.role}")
 

@@ -56,12 +56,18 @@ test/run_tests.sh                          # whole suite, must stay green
   e.g. "BL mD") plus exactly one seeded support team ("Supporter"). Users cannot
   create/edit/delete teams; the CLI only resolves existing ones.
 - **Games are never pre-assigned** to their own age-class team – that team is
-  busy playing. The responsible team ("Team Kampfgericht") is chosen per game
+  busy playing. The responsible team ("Verantwortlich") is chosen per game
   and may stay empty.
 - Dropdown highlighting per game: members of the *playing* team → greyed +
   "spielt selbst" hint; members of other teams → greyed when a responsible team
   is set; responsible/support members unmarked. Everything stays selectable;
   duplicates within a role are rejected server-side.
+- **One task per person per game**: a person already assigned to any task of a
+  game cannot be assigned to another task of the same game. Such persons are
+  removed from the dropdowns of the other tasks of that game (server-rendered
+  and kept in sync by `static/app.js`); enforced by the unique constraint
+  `(game_id, person_id)` on `assignments`, by `db.assign_person` (raises
+  `ValueError`) and by the web/CLI entry points.
 - Roles: `Zeitnehmer`, `Sekretär`, `Verkauf` (**2 slots**), `Ordnungsdienst`,
   `Reinigung` — see `db.ROLE_SLOT_COUNT`. Any aggregation over roles must iterate
   roles once (e.g. `ROLE_SLOT_COUNT.items()`), not `SLOT_LABELS` in `webapp.py`

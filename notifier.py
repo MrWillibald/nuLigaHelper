@@ -135,7 +135,7 @@ class Notifier:
                 )
             ]
             cnt += self._dispatch(
-                self._person_receiver(mv, "MV Kampfgericht"),
+                self._person_receiver(mv, "MV Verantwortlich"),
                 subject=self.mailMVSubject,
                 mail_body=self.mailMV.format(
                     mv.name, game.judge_team_name or "", date, *judge_names,

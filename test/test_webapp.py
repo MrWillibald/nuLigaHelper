@@ -93,6 +93,12 @@ def test_responsible_team_api_sets_and_clears_the_team():
 
 
 def test_playing_and_outside_helpers_are_greyed_but_selectable():
+    # Order-tolerant: drop leftover assignments of game 1001 so every pick
+    # below is the person's first (and only) task of that game.
+    with h.Session(h.app_db_engine()) as session:
+        game = session.get(db.Game, GAME_ID)
+        for role in db.ROLE_SLOT_COUNT:
+            db.set_role_assignments(session, game, role, [])
     client.post(f"/api/games/{GAME_ID}/team", json={"team_id": TEAM_RESPONSIBLE_ID})
     card = _card_html(client.get("/").get_data(as_text=True))
 
@@ -145,6 +151,56 @@ def test_assignment_api_fills_both_sale_slots_and_rejects_duplicates():
     r = client.post("/api/assignment", json={
         "game_id": GAME_ID, "role": "Unbekannt", "slot": 0, "person_id": None})
     assert r.status_code == 400
+
+
+def test_assignment_api_rejects_a_second_task_for_the_same_game():
+    # Dora still holds a Verkauf slot in game 1001 from the previous test;
+    # a second task of another role must be refused.
+    r = client.post("/api/assignment", json={
+        "game_id": GAME_ID, "role": "Sekretär", "slot": 0, "person_id": DORA_ID})
+    body = r.get_json()
+    assert body["ok"] is False, \
+        "a person with a task for a game may not get another one"
+    assert "bereits" in body["error"], body
+    with h.Session(h.app_db_engine()) as session:
+        game = session.get(db.Game, GAME_ID)
+        assert game.assignment_by_role("Sekretär") is None, \
+            "the rejected assignment must not be stored"
+
+
+def test_assigned_person_is_removed_from_other_task_dropdowns():
+    # Order-tolerant: start from a clean game 1001.
+    with h.Session(h.app_db_engine()) as session:
+        game = session.get(db.Game, GAME_ID)
+        for role in db.ROLE_SLOT_COUNT:
+            db.set_role_assignments(session, game, role, [])
+
+    def person_option_count(card, person_id):
+        # count only the six role dropdowns – the team dropdown has its own
+        # options and must not be included
+        blocks = re.findall(
+            r'<select[^>]*data-role="[^"]*"[^>]*>.*?</select>', card, re.S)
+        return sum(f'<option value="{person_id}"' in b for b in blocks)
+
+    r = client.post("/api/assignment", json={
+        "game_id": GAME_ID, "role": "Zeitnehmer", "slot": 0, "person_id": ALICE_ID})
+    assert r.get_json() == {"ok": True}
+
+    card = _card_html(client.get("/").get_data(as_text=True))
+    assert person_option_count(card, ALICE_ID) == 1, \
+        "an assigned person must only appear in the dropdown of her own task"
+    zeitnehmer = re.search(
+        r'<select[^>]*data-role="Zeitnehmer"[^>]*>.*?</select>', card, re.S)
+    assert zeitnehmer and f'<option value="{ALICE_ID}"' in zeitnehmer.group(0), \
+        "her own task dropdown must keep her option"
+
+    # freeing her brings the option back into the other dropdowns
+    r = client.post("/api/assignment", json={
+        "game_id": GAME_ID, "role": "Zeitnehmer", "slot": 0, "person_id": None})
+    assert r.get_json() == {"ok": True}
+    card = _card_html(client.get("/").get_data(as_text=True))
+    assert person_option_count(card, ALICE_ID) == 6, \
+        "a freed person must be selectable again in all task dropdowns"
 
 
 def test_person_management_crud():
@@ -206,6 +262,14 @@ def test_team_mv_can_be_assigned_to_members_only():
 
 
 def test_statistics_page_with_bars_and_aggregated_gaps():
+    # Order-tolerant: guarantee a visible person statistic and an open
+    # Verkauf slot for game 1001 regardless of earlier test order.
+    with h.Session(h.app_db_engine()) as session:
+        game = session.get(db.Game, GAME_ID)
+        db.set_role_assignments(session, game, db.ROLE_SALE, [])
+        alice = session.query(db.Person).filter_by(name="Alice Test").one()
+        if not any(a.person_id == alice.id for a in game.assignments):
+            db.set_role_assignments(session, game, db.ROLE_TIMEKEEPER, [alice.id])
     stats = client.get("/statistik").get_data(as_text=True)
     assert "Spiele pro Mannschaft" in stats and "Dienste pro Person" in stats
     assert "Offene Dienste" in stats

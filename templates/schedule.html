@@ -13,7 +13,7 @@
   </div>
   <div class="game-assign">
     <label class="assign-field assign-jteam">
-      <span>Team Kampfgericht</span>
+      <span>Verantwortlich</span>
       <select class="team-select" data-game="{{ g.id }}">
         <option value="">&ndash; offen &ndash;</option>
         {% for t in teams %}
@@ -30,6 +30,7 @@
               {% if s.status in ("playing", "outside") %}class="select-warn"{% endif %}>
         <option value="">&ndash; offen &ndash;</option>
         {% for p in persons %}
+        {% if not (p.id in g.taken_person_ids and p.id != s.person_id) %}
         {% set playing = p.team_id == g.playing_team_id %}
         {% set outside = g.team_id and p.team_id != g.team_id and p.team_id != support_id and not playing %}
         <option value="{{ p.id }}"
@@ -38,6 +39,7 @@
                 {% elif outside %}class="foreign-option" title="{{ p.name }} gehört zu {{ p.team_name or 'keinem Team im Spielplan' }}"{% endif %}>
           {{ p.name }}{% if playing %} &bull; spielt selbst{% elif outside %} &bull; {{ p.team_name or 'ohne Team' }}{% endif %}
         </option>
+        {% endif %}
         {% endfor %}
       </select>
     </label>
@@ -51,7 +53,7 @@
   <div class="section-header"><div class="section-icon">📅</div><h2>Heimspielplan {{ season }}</h2></div>
   <p class="hint">
     Alle Heimspiele des TuS Raubling mit den eingeteilten Helferinnen und Helfern.
-    Zum Eintragen ein Team für das Kampfgericht wählen und dann die Personen in den Diensten –
+    Zum Eintragen ein verantwortliches Team wählen und dann die Personen in den Diensten –
     die Änderung wird sofort gespeichert. Helfer anderer Mannschaften sowie die Spieler des
     eigenen Spiels sind grau dargestellt und können mit Hinweis trotzdem eingetragen werden.
     Kontaktdaten werden hier bewusst nicht angezeigt.

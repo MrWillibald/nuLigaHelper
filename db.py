@@ -226,8 +226,9 @@ class Assignment(Base):
     """A person assigned to a game for a specific task/role."""
 
     __tablename__ = "assignments"
+    # A person can hold at most one task per game, no matter the role.
     __table_args__ = (
-        UniqueConstraint("game_id", "person_id", "role", name="uq_game_person_role"),
+        UniqueConstraint("game_id", "person_id", name="uq_game_person"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -448,12 +449,23 @@ def missing_slots(game: Game) -> dict[str, int]:
 
 
 def assign_person(session: Session, game: Game, person: Person, role: str) -> Assignment:
-    """Assign a person to a game with the given role (idempotent)."""
+    """Assign a person to a game with the given role (idempotent).
+
+    A person may only ever hold one task per game – assigning them to
+    another role of the same game raises ValueError.
+    """
     existing = next(
         (a for a in game.assignments if a.person_id == person.id and a.role == role), None
     )
     if existing is not None:
         return existing
+    other = next(
+        (a for a in game.assignments if a.person_id == person.id and a.role != role), None
+    )
+    if other is not None:
+        raise ValueError(
+            f"{person.name} ist für dieses Spiel bereits als '{other.role}' eingeteilt."
+        )
     assignment = Assignment(game=game, person=person, role=role)
     session.add(assignment)
     session.flush()

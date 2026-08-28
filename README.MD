@@ -20,7 +20,7 @@ A helper class to organize home games with nuLiga Handball.
 
 Start the web interface with `run_webapp.sh` (or `python3 webapp.py`). It is then reachable in the local network at `http://<device-ip>:8080`.
 
-- **Heimspielplan**: all home games of the current season grouped by day. Each game gets a responsible team ("Team Kampfgericht") and tasks (Zeitnehmer, Sekretär, Verkauf, Ordnungsdienst, Reinigung) assigned via dropdown directly in the schedule; changes are saved instantly. If a team is assigned to a game, helpers of other teams are greyed out in the dropdowns but can still be chosen (with a hint). Contact data is intentionally not shown on the overview.
+- **Heimspielplan**: all home games of the current season grouped by day. Each game gets a responsible team ("Verantwortlich") and tasks (Zeitnehmer, Sekretär, Verkauf, Ordnungsdienst, Reinigung) assigned via dropdown directly in the schedule; changes are saved instantly. If a team is assigned to a game, helpers of other teams are greyed out in the dropdowns but can still be chosen (with a hint). A person can hold at most one task per game: once assigned, the person is removed from the dropdowns of the other tasks of that game. Contact data is intentionally not shown on the overview.
 - **Helfer verwalten**: add, edit and delete persons incl. e-mail, phone and team. Every person belongs to a team; persons without an active team belong to the support team (created automatically). Each team can have exactly one Mannschaftsverantwortlicher ("MV"), chosen among its members.
 - **Statistik**: games covered per team, jobs per person (incl. role breakdown) and a list of upcoming games with missing assignments.
 

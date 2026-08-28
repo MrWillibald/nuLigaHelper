@@ -133,5 +133,27 @@ def test_set_role_assignments_replaces_all_slots_of_a_role():
         assert names == ["Bob"], "removed slots must disappear completely"
 
 
+def test_assign_person_blocks_a_second_task_for_the_same_game():
+    engine = h.make_engine()
+    with h.Session(engine) as session:
+        games = h.sync_sample_games(session)
+        game = _game_by_nr(session, games[0]["game_nr"])
+        alice = db.get_or_create_person(session, "Alice")
+
+        db.assign_person(session, game, alice, db.ROLE_TIMEKEEPER)
+        session.commit()
+
+        try:
+            db.assign_person(session, game, alice, db.ROLE_SECRETARY)
+        except ValueError as exc:
+            assert db.ROLE_TIMEKEEPER in str(exc), \
+                "the error must name the role the person already holds"
+        else:
+            raise AssertionError("a second task for the same game must be rejected")
+
+        again = db.assign_person(session, game, alice, db.ROLE_TIMEKEEPER)
+        assert again.role == db.ROLE_TIMEKEEPER, "assigning the same role stays idempotent"
+
+
 if __name__ == "__main__":
     h.run_all(dict(globals()))

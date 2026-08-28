@@ -168,6 +168,9 @@ def create_app() -> Flask:
                     "person_id": person_id,
                     "status": status,
                 })
+            # Persons already assigned to a task of this game must not be
+            # offered for the other tasks of the same game.
+            taken_person_ids = {s["person_id"] for s in slots if s["person_id"] is not None}
             d = parse_date(game.date)
             return {
                 "id": game.id,
@@ -183,6 +186,7 @@ def create_app() -> Flask:
                 "team_id": responsible_team_id,
                 "playing_team_id": playing_team_id,
                 "slots": slots,
+                "taken_person_ids": taken_person_ids,
                 "past": bool(d and d < today),
             }
 
@@ -457,6 +461,10 @@ def create_app() -> Flask:
             person = session.get(db.Person, int(person_id))
             if person is None:
                 return api_error("Person nicht gefunden.", 404)
+            if any(a.person_id == person.id and a.role != role for a in game.assignments):
+                return api_error(
+                    "Diese Person ist für dieses Spiel bereits für einen anderen Dienst eingeteilt."
+                )
 
         current = [a.person_id for a in game.assignments_by_role(role)]
         desired = (current + [None] * slot_count)[:slot_count]
