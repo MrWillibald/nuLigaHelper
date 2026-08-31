@@ -9,6 +9,7 @@
 
 import helpers as h
 import db
+from datetime import datetime
 
 
 def _events_for(session, scraped):
@@ -153,6 +154,112 @@ def test_assign_person_blocks_a_second_task_for_the_same_game():
 
         again = db.assign_person(session, game, alice, db.ROLE_TIMEKEEPER)
         assert again.role == db.ROLE_TIMEKEEPER, "assigning the same role stays idempotent"
+
+
+def test_duplicate_names_are_valid_distinct_identities():
+    engine = h.make_engine()
+    with h.Session(engine) as session:
+        first = db.Person(name="Alex")
+        second = db.Person(name="Alex")
+        session.add_all([first, second])
+        session.commit()
+        assert first.id != second.id
+
+
+def test_registration_state_reaches_active_roster_membership():
+    engine = h.make_engine()
+    with h.Session(engine) as session:
+        team = db.get_or_create_team(session, "BL mD")
+        person = db.register_person(session, "Alex", team, email="alex@example.test")
+        assert person.account_status == db.ACCOUNT_REGISTERED
+        db.verify_person(session, person, datetime(2026, 8, 1, 12, 0))
+        assert person.account_status == db.ACCOUNT_VERIFIED and person.verified_at
+        db.approve_person(session, person, datetime(2026, 8, 2, 12, 0))
+        assert person.account_status == db.ACCOUNT_ACTIVE
+        assert person.team_id == team.id and person.approved_at
+
+
+def test_slot_claim_release_conflicts_and_audit_survives_person_deletion():
+    engine = h.make_engine()
+    with h.Session(engine) as session:
+        games = h.sync_sample_games(session)
+        game = _game_by_nr(session, games[0]["game_nr"])
+        person = db.get_or_create_person(session, "Alex")
+        db.claim_slot(session, game, db.ROLE_SALE, 0, None, person)
+        session.commit()
+        try:
+            db.claim_slot(session, game, db.ROLE_SALE, 0, None, person)
+        except db.SlotConflictError as exc:
+            assert exc.current_person_id == person.id
+        else:
+            raise AssertionError("claiming an occupied slot must conflict")
+
+        db.release_slot(session, game, db.ROLE_SALE, 0, person.id)
+        session.commit()
+        assert game.assignments_by_role(db.ROLE_SALE) == []
+        db.claim_slot(session, game, db.ROLE_SALE, 1, None, person)
+        session.commit()
+        db.delete_person(session, person)
+        entries = session.query(db.AssignmentAudit).all()
+        assert len(entries) == 4, "each successful mutation must have one audit row"
+        assert all(e.affected_person_name == "Alex" for e in entries)
+        assert all(e.affected_person_id is None for e in entries)
+
+
+def test_roster_queries_exclude_unapproved_and_inactive_people():
+    engine = h.make_engine()
+    with h.Session(engine) as session:
+        team = db.get_or_create_team(session, "BL mD")
+        active = db.Person(name="Active", team=team)
+        pending = db.Person(
+            name="Pending", desired_team=team, account_status=db.ACCOUNT_VERIFIED
+        )
+        inactive = db.Person(
+            name="Inactive", team=team, account_status=db.ACCOUNT_INACTIVE
+        )
+        session.add_all([active, pending, inactive])
+        session.commit()
+        assert db.get_all_persons(session) == [active]
+        assert db.get_team_members(session, team) == [active]
+        try:
+            db.set_team_mv(session, team, inactive)
+        except ValueError as exc:
+            assert "nicht aktiv" in str(exc)
+        else:
+            raise AssertionError("an inactive person must not become MV")
+
+
+def test_deactivation_keeps_past_and_audits_future_release():
+    engine = h.make_engine()
+    with h.Session(engine) as session:
+        team = db.get_or_create_team(session, "BL mD")
+        person = db.Person(name="Alex", team=team)
+        actor = db.Person(name="Admin", is_admin=True)
+        past = db.Game(
+            season_year=h.SEASON, game_nr=9001, date="01.01.2020"
+        )
+        future = db.Game(
+            season_year=h.SEASON, game_nr=9002, date="31.12.2099"
+        )
+        session.add_all([person, actor, past, future])
+        session.flush()
+        team.mv_person_id = person.id
+        db.assign_person(session, past, person, db.ROLE_TIMEKEEPER)
+        db.assign_person(session, future, person, db.ROLE_TIMEKEEPER)
+        session.commit()
+        before = session.query(db.AssignmentAudit).count()
+
+        db.deactivate_person(session, person, actor)
+        assert person.account_status == db.ACCOUNT_INACTIVE
+        assert team.mv_person_id is None
+        assert past.assignment_by_role(db.ROLE_TIMEKEEPER) is not None
+        assert future.assignment_by_role(db.ROLE_TIMEKEEPER) is None
+        assert session.query(db.AssignmentAudit).count() == before + 1
+        assert person not in db.get_all_persons(session)
+
+        db.reactivate_person(session, person)
+        assert person in db.get_all_persons(session)
+        assert future.assignment_by_role(db.ROLE_TIMEKEEPER) is None
 
 
 if __name__ == "__main__":

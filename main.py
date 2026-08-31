@@ -36,6 +36,8 @@ def backup_to_dropbox(token: str, folder: str, local_path: str):
 
 
 def main():
+    if not os.environ.get("NULIGAHELPER_SECRET"):
+        raise RuntimeError("NULIGAHELPER_SECRET muss gesetzt sein.")
     # Initialize logger
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(message)s",

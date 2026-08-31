@@ -11,10 +11,29 @@ async function postJSON(url, body) {
   try {
     const response = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRF-Token": document.querySelector('meta[name="csrf-token"]').content,
+      },
       body: JSON.stringify(body),
     });
-    return await response.json();
+    if (response.status === 401) {
+      return {
+        ok: false, loginRequired: true,
+        error: "Deine Sitzung ist abgelaufen. Bitte melde dich erneut an.",
+      };
+    }
+    if (response.status === 409) {
+      const conflict = await response.json();
+      return { ...conflict, conflict: true };
+    }
+    let data;
+    try {
+      data = await response.json();
+    } catch (err) {
+      data = { ok: false, error: `Serverfehler (${response.status})` };
+    }
+    return data;
   } catch (err) {
     return { ok: false, error: "Server nicht erreichbar" };
   }
@@ -70,15 +89,26 @@ document.querySelectorAll("select[data-role]").forEach((select) => {
     const previous = prevOptions.get(select);
     const previousId = previous && previous.value ? Number(previous.value) : null;
     const newId = select.value ? Number(select.value) : null;
-    const result = await postJSON("/api/assignment", {
-      game_id: Number(select.dataset.game),
-      role: select.dataset.role,
-      slot: select.dataset.slot === "" ? null : Number(select.dataset.slot),
-      person_id: newId,
-    });
+    const requestBody = {
+      game_id: Number(select.dataset.game), role: select.dataset.role,
+      slot: Number(select.dataset.slot), expected_person_id: previousId,
+    };
+    let result = { ok: true };
+    if (previousId !== null) {
+      result = await postJSON("/api/assignment/release", requestBody);
+    }
+    if (result.ok && newId !== null) {
+      result = await postJSON("/api/assignment/claim", {
+        ...requestBody, expected_person_id: null, person_id: newId,
+      });
+    }
     if (!result.ok) {
       select.value = previousId === null ? "" : String(previousId);
       showToast(result.error || "Fehler beim Speichern", false);
+      if (result.loginRequired) setTimeout(() => { window.location.href = "/login"; }, 1200);
+      if (result.conflict || previousId !== null) {
+        setTimeout(() => { window.location.reload(); }, 500);
+      }
       return;
     }
     flashCard(select.dataset.game);
@@ -143,14 +173,15 @@ document.querySelectorAll(".mv-select").forEach((select) => {
 document.querySelectorAll("[data-delete-person]").forEach((button) => {
   button.addEventListener("click", async () => {
     const name = button.dataset.name;
-    if (!confirm(`'${name}' wirklich löschen? Alle Diensteinträge werden mit entfernt.`)) {
+    if (!confirm(`'${name}' wirklich löschen? Alle Diensteinträge werden entfernt. Zum Ausscheiden bitte stattdessen deaktivieren.`)) {
       return;
     }
-    try {
-      await fetch(`/personen/${button.dataset.deletePerson}/delete`, { method: "POST" });
-      window.location.reload();
-    } catch (err) {
-      showToast("Server nicht erreichbar", false);
-    }
+    const form = document.createElement("form");
+    form.method = "POST";
+    form.action = `/personen/${button.dataset.deletePerson}/delete`;
+    const token = document.createElement("input");
+    token.type = "hidden"; token.name = "csrf_token";
+    token.value = document.querySelector('meta[name="csrf-token"]').content;
+    form.appendChild(token); document.body.appendChild(form); form.submit();
   });
 });

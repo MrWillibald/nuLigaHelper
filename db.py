@@ -11,7 +11,8 @@ import logging
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
-from sqlalchemy import Integer, String, ForeignKey, UniqueConstraint, create_engine, select
+from sqlalchemy import Boolean, DateTime, Integer, String, ForeignKey, UniqueConstraint, create_engine, delete, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import (
     DeclarativeBase,
     Mapped,
@@ -69,6 +70,19 @@ def make_engine(db_path: str = DEFAULT_DB_PATH):
 
 
 SUPPORT_TEAM_NAME = "Supporter"
+
+ACCOUNT_REGISTERED = "registered"
+ACCOUNT_VERIFIED = "verified"
+ACCOUNT_ACTIVE = "active"
+ACCOUNT_REJECTED = "rejected"
+ACCOUNT_INACTIVE = "inactive"
+ACCOUNT_STATUSES = {
+    ACCOUNT_REGISTERED,
+    ACCOUNT_VERIFIED,
+    ACCOUNT_ACTIVE,
+    ACCOUNT_REJECTED,
+    ACCOUNT_INACTIVE,
+}
 
 
 def init_db(engine) -> None:
@@ -149,14 +163,22 @@ class Person(Base):
     __tablename__ = "persons"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(120), unique=True)
-    email: Mapped[str | None] = mapped_column(String(200), nullable=True)
-    phone: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    name: Mapped[str] = mapped_column(String(120))
+    email: Mapped[str | None] = mapped_column(String(200), nullable=True, unique=True)
+    phone: Mapped[str | None] = mapped_column(String(60), nullable=True, unique=True)
     team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"), nullable=True)
+    desired_team_id: Mapped[int | None] = mapped_column(
+        ForeignKey("teams.id"), nullable=True
+    )
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+    account_status: Mapped[str] = mapped_column(String(20), default=ACCOUNT_ACTIVE)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     team: Mapped[Team | None] = relationship(
         back_populates="persons", foreign_keys=[team_id]
     )
+    desired_team: Mapped[Team | None] = relationship(foreign_keys=[desired_team_id])
     assignments: Mapped[list["Assignment"]] = relationship(back_populates="person")
 
     def __repr__(self):
@@ -207,7 +229,9 @@ class Game(Base):
         return None
 
     def assignments_by_role(self, role: str) -> list["Assignment"]:
-        return [a for a in self.assignments if a.role == role]
+        return sorted(
+            (a for a in self.assignments if a.role == role), key=lambda a: a.slot
+        )
 
     def receivers_for_roles(self, roles: list[str]) -> list[Person]:
         """Return persons for the given role sequence (duplicates included)."""
@@ -229,18 +253,63 @@ class Assignment(Base):
     # A person can hold at most one task per game, no matter the role.
     __table_args__ = (
         UniqueConstraint("game_id", "person_id", name="uq_game_person"),
+        UniqueConstraint("game_id", "role", "slot", name="uq_game_role_slot"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     game_id: Mapped[int] = mapped_column(ForeignKey("games.id"))
     person_id: Mapped[int] = mapped_column(ForeignKey("persons.id"))
     role: Mapped[str] = mapped_column(String(40))
+    slot: Mapped[int] = mapped_column(Integer, default=0)
 
     game: Mapped[Game] = relationship(back_populates="assignments")
     person: Mapped[Person] = relationship(back_populates="assignments")
 
     def __repr__(self):
-        return f"<Assignment game={self.game_id} person={self.person_id} role={self.role!r}>"
+        return (
+            f"<Assignment game={self.game_id} person={self.person_id} "
+            f"role={self.role!r} slot={self.slot}>"
+        )
+
+
+class AssignmentAudit(Base):
+    """Append-only snapshot of one assignment mutation."""
+
+    __tablename__ = "assignment_audit"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    changed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    actor_person_id: Mapped[int | None] = mapped_column(
+        ForeignKey("persons.id"), nullable=True
+    )
+    actor_tier: Mapped[str] = mapped_column(String(20))
+    action: Mapped[str] = mapped_column(String(20))
+    affected_person_id: Mapped[int | None] = mapped_column(
+        ForeignKey("persons.id"), nullable=True
+    )
+    game_id: Mapped[int | None] = mapped_column(ForeignKey("games.id"), nullable=True)
+    role: Mapped[str] = mapped_column(String(40))
+    slot: Mapped[int] = mapped_column(Integer)
+    actor_name: Mapped[str] = mapped_column(String(120))
+    affected_person_name: Mapped[str] = mapped_column(String(120))
+    game_snapshot: Mapped[str] = mapped_column(String(300))
+
+
+class AuthToken(Base):
+    """Single-use nonce backing a signed e-mail token or SMS code."""
+
+    __tablename__ = "auth_tokens"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    nonce: Mapped[str] = mapped_column(String(120), unique=True)
+    code: Mapped[str | None] = mapped_column(String(12), nullable=True)
+    purpose: Mapped[str] = mapped_column(String(30))
+    person_id: Mapped[int] = mapped_column(ForeignKey("persons.id"))
+    issued_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    person: Mapped[Person] = relationship()
 
 
 # ---------------------------------------------------------------------------
@@ -368,7 +437,8 @@ def game_sort_key(game: "Game") -> tuple:
         d = datetime.strptime(game.date or "", "%d.%m.%Y").date()
     except ValueError:
         d = date.max
-    time_parts = (game.time or "").split()[0].split(":")
+    raw_time = (game.time or "").split()
+    time_parts = raw_time[0].split(":") if raw_time else []
     if len(time_parts) == 2 and all(p.isdigit() for p in time_parts):
         time_key = (int(time_parts[0]), int(time_parts[1]))
     else:
@@ -378,7 +448,7 @@ def game_sort_key(game: "Game") -> tuple:
 
 def get_or_create_person(session: Session, name: str, email: str | None = None,
                          phone: str | None = None) -> Person:
-    """Return the person with the given name, creating them if necessary."""
+    """Seed a person by name; application identity must use ``Person.id``."""
     name = name.strip()
     person = session.scalars(select(Person).where(Person.name == name)).first()
     if person is None:
@@ -395,35 +465,309 @@ def get_or_create_person(session: Session, name: str, email: str | None = None,
 
 
 def get_all_persons(session: Session) -> list[Person]:
+    """Return approved, active roster members in display order."""
     return list(
         session.scalars(
-            select(Person).order_by(Person.name)
+            select(Person)
+            .where(Person.account_status == ACCOUNT_ACTIVE)
+            .order_by(Person.name, Person.id)
         )
     )
 
 
-def set_role_assignments(session: Session, game: Game, role: str,
-                         person_ids: list[int]) -> None:
-    """Replace all assignments of `role` on `game` with the given slot order."""
-    for assignment in [a for a in game.assignments if a.role == role]:
-        game.assignments.remove(assignment)
+def get_all_person_records(session: Session) -> list[Person]:
+    """Return every person, including registrations and inactive records."""
+    return list(session.scalars(select(Person).order_by(Person.name, Person.id)))
+
+
+def get_team_members(session: Session, team: Team) -> list[Person]:
+    """Return assignable members of one team."""
+    return list(
+        session.scalars(
+            select(Person)
+            .where(
+                Person.team_id == team.id,
+                Person.account_status == ACCOUNT_ACTIVE,
+            )
+            .order_by(Person.name, Person.id)
+        )
+    )
+
+
+def register_person(
+    session: Session,
+    name: str,
+    desired_team: Team,
+    email: str | None = None,
+    phone: str | None = None,
+) -> Person:
+    """Create an unverified registration with exactly one contact channel."""
+    if bool(email) == bool(phone):
+        raise ValueError("Genau eine Kontaktmöglichkeit ist erforderlich.")
+    person = Person(
+        name=name.strip(),
+        email=email,
+        phone=phone,
+        desired_team=desired_team,
+        account_status=ACCOUNT_REGISTERED,
+    )
+    session.add(person)
     session.flush()
-    for person_id in person_ids:
+    return person
+
+
+def verify_person(session: Session, person: Person, at: datetime | None = None) -> None:
+    if person.account_status != ACCOUNT_REGISTERED:
+        raise ValueError("Die Registrierung kann nicht verifiziert werden.")
+    person.account_status = ACCOUNT_VERIFIED
+    person.verified_at = at or datetime.now()
+    session.flush()
+
+
+def approve_person(session: Session, person: Person, at: datetime | None = None) -> None:
+    if person.account_status != ACCOUNT_VERIFIED or person.desired_team is None:
+        raise ValueError("Die Registrierung kann nicht freigegeben werden.")
+    person.team = person.desired_team
+    person.account_status = ACCOUNT_ACTIVE
+    person.approved_at = at or datetime.now()
+    session.flush()
+
+
+class SlotConflictError(ValueError):
+    def __init__(self, current_person_id: int | None):
+        super().__init__("Der Aufgabenplatz wurde zwischenzeitlich geändert.")
+        self.current_person_id = current_person_id
+
+
+def _validate_slot(role: str, slot: int) -> None:
+    if role not in ROLE_SLOT_COUNT or slot < 0 or slot >= ROLE_SLOT_COUNT[role]:
+        raise ValueError("Ungültiger Aufgabenplatz.")
+
+
+def _slot_assignment(game: Game, role: str, slot: int) -> Assignment | None:
+    return next(
+        (a for a in game.assignments if a.role == role and a.slot == slot), None
+    )
+
+
+def _game_snapshot(game: Game) -> str:
+    return (
+        f"{game.game_nr} | {game.date or ''} {game.time or ''} | "
+        f"{game.home or ''} - {game.guest or ''}"
+    )
+
+
+def _audit_assignment(
+    session: Session,
+    assignment: Assignment,
+    action: str,
+    actor: Person | None,
+    actor_tier: str,
+) -> None:
+    session.add(
+        AssignmentAudit(
+            actor_person_id=actor.id if actor else None,
+            actor_tier=actor_tier,
+            action=action,
+            affected_person_id=assignment.person_id,
+            game_id=assignment.game_id,
+            role=assignment.role,
+            slot=assignment.slot,
+            actor_name=actor.name if actor else "System",
+            affected_person_name=assignment.person.name,
+            game_snapshot=_game_snapshot(assignment.game),
+        )
+    )
+
+
+def claim_slot(
+    session: Session,
+    game: Game,
+    role: str,
+    slot: int,
+    expected_person_id: int | None,
+    person: Person,
+    actor: Person | None = None,
+    actor_tier: str = "system",
+) -> Assignment:
+    """Claim one slot if its current occupant matches the caller's expectation."""
+    _validate_slot(role, slot)
+    current = _slot_assignment(game, role, slot)
+    current_id = current.person_id if current else None
+    if current_id != expected_person_id:
+        raise SlotConflictError(current_id)
+    if current is not None:
+        if current.person_id == person.id:
+            return current
+        raise SlotConflictError(current.person_id)
+    if person.account_status != ACCOUNT_ACTIVE:
+        raise ValueError("Diese Person kann nicht eingeteilt werden.")
+    other = next((a for a in game.assignments if a.person_id == person.id), None)
+    if other is not None:
+        raise ValueError(
+            f"{person.name} ist für dieses Spiel bereits als '{other.role}' eingeteilt."
+        )
+    assignment = Assignment(game=game, person=person, role=role, slot=slot)
+    game_id = game.id
+    session.add(assignment)
+    try:
+        session.flush()
+    except IntegrityError:
+        session.rollback()
+        stored = session.scalars(
+            select(Assignment).where(
+                Assignment.game_id == game_id,
+                Assignment.role == role,
+                Assignment.slot == slot,
+            )
+        ).first()
+        raise SlotConflictError(stored.person_id if stored else None) from None
+    _audit_assignment(session, assignment, "claim", actor, actor_tier)
+    session.flush()
+    return assignment
+
+
+def release_slot(
+    session: Session,
+    game: Game,
+    role: str,
+    slot: int,
+    expected_person_id: int | None,
+    actor: Person | None = None,
+    actor_tier: str = "system",
+) -> Person | None:
+    """Release one slot if its occupant matches the caller's expectation."""
+    _validate_slot(role, slot)
+    current = _slot_assignment(game, role, slot)
+    current_id = current.person_id if current else None
+    if current_id != expected_person_id:
+        raise SlotConflictError(current_id)
+    if current is None:
+        return None
+    person = current.person
+    audit = AssignmentAudit(
+        actor_person_id=actor.id if actor else None,
+        actor_tier=actor_tier,
+        action="release",
+        affected_person_id=current.person_id,
+        game_id=current.game_id,
+        role=current.role,
+        slot=current.slot,
+        actor_name=actor.name if actor else "System",
+        affected_person_name=current.person.name,
+        game_snapshot=_game_snapshot(current.game),
+    )
+    result = session.execute(
+        delete(Assignment).where(
+            Assignment.id == current.id,
+            Assignment.game_id == game.id,
+            Assignment.role == role,
+            Assignment.slot == slot,
+            Assignment.person_id == expected_person_id,
+        )
+    )
+    if result.rowcount != 1:
+        session.expire(game, ["assignments"])
+        stored = _slot_assignment(game, role, slot)
+        raise SlotConflictError(stored.person_id if stored else None)
+    session.add(audit)
+    session.expire(game, ["assignments"])
+    session.flush()
+    return person
+
+
+def set_role_assignments(session: Session, game: Game, role: str,
+                          person_ids: list[int], actor: Person | None = None,
+                          actor_tier: str = "system") -> None:
+    """Replace all assignments of `role` on `game` with the given slot order."""
+    _validate_slot(role, 0)
+    if len(person_ids) > ROLE_SLOT_COUNT[role]:
+        raise ValueError("Zu viele Personen für diese Aufgabe.")
+    # Release changed slots first so moving a person between slots does not
+    # temporarily violate the one-task-per-game constraint.
+    for slot in range(ROLE_SLOT_COUNT[role]):
+        current = _slot_assignment(game, role, slot)
+        desired_id = person_ids[slot] if slot < len(person_ids) else None
+        if current is not None and current.person_id != desired_id:
+            release_slot(
+                session, game, role, slot, current.person_id, actor, actor_tier
+            )
+    for slot in range(ROLE_SLOT_COUNT[role]):
+        current = _slot_assignment(game, role, slot)
+        desired_id = person_ids[slot] if slot < len(person_ids) else None
+        if desired_id is None or (
+            current is not None and current.person_id == desired_id
+        ):
+            continue
+        person_id = desired_id
         person = session.get(Person, person_id)
         if person is not None:
-            game.assignments.append(Assignment(person=person, role=role))
+            claim_slot(session, game, role, slot, None, person, actor, actor_tier)
     session.commit()
 
 
-def delete_person(session: Session, person: Person) -> None:
+def delete_person(
+    session: Session,
+    person: Person,
+    actor: Person | None = None,
+    actor_tier: str = "system",
+) -> None:
     """Delete a person together with all their assignments and MV roles."""
     for team in session.scalars(
         select(Team).where(Team.mv_person_id == person.id)
     ):
         team.mv_person_id = None
     for assignment in list(person.assignments):
-        session.delete(assignment)
+        _audit_assignment(session, assignment, "unassign", actor, actor_tier)
+        assignment.game.assignments.remove(assignment)
+    session.flush()
+    for entry in session.scalars(
+        select(AssignmentAudit).where(AssignmentAudit.actor_person_id == person.id)
+    ):
+        entry.actor_person_id = None
+    for entry in session.scalars(
+        select(AssignmentAudit).where(AssignmentAudit.affected_person_id == person.id)
+    ):
+        entry.affected_person_id = None
     session.delete(person)
+    session.commit()
+
+
+def deactivate_person(
+    session: Session,
+    person: Person,
+    actor: Person | None = None,
+    actor_tier: str = "admin",
+) -> None:
+    """Deactivate a person, retaining history while freeing future assignments."""
+    import common
+
+    today = common.effective_today()
+    for team in session.scalars(select(Team).where(Team.mv_person_id == person.id)):
+        team.mv_person_id = None
+    for assignment in list(person.assignments):
+        try:
+            game_date = datetime.strptime(assignment.game.date or "", "%d.%m.%Y").date()
+        except ValueError:
+            game_date = date.max
+        if game_date >= today:
+            release_slot(
+                session,
+                assignment.game,
+                assignment.role,
+                assignment.slot,
+                person.id,
+                actor,
+                actor_tier,
+            )
+    person.account_status = ACCOUNT_INACTIVE
+    session.commit()
+
+
+def reactivate_person(session: Session, person: Person) -> None:
+    if person.account_status != ACCOUNT_INACTIVE:
+        raise ValueError("Die Person ist nicht deaktiviert.")
+    person.account_status = ACCOUNT_ACTIVE
     session.commit()
 
 
@@ -434,6 +778,8 @@ def set_team_mv(session: Session, team: Team, person: Person | None) -> None:
     """
     if person is not None and person.team_id != team.id:
         raise ValueError(f"{person.name} ist kein Mitglied von {team.name}")
+    if person is not None and person.account_status != ACCOUNT_ACTIVE:
+        raise ValueError(f"{person.name} ist nicht aktiv")
     team.mv_person_id = person.id if person is not None else None
     session.commit()
 
@@ -448,7 +794,14 @@ def missing_slots(game: Game) -> dict[str, int]:
     return result
 
 
-def assign_person(session: Session, game: Game, person: Person, role: str) -> Assignment:
+def assign_person(
+    session: Session,
+    game: Game,
+    person: Person,
+    role: str,
+    actor: Person | None = None,
+    actor_tier: str = "system",
+) -> Assignment:
     """Assign a person to a game with the given role (idempotent).
 
     A person may only ever hold one task per game – assigning them to
@@ -466,19 +819,34 @@ def assign_person(session: Session, game: Game, person: Person, role: str) -> As
         raise ValueError(
             f"{person.name} ist für dieses Spiel bereits als '{other.role}' eingeteilt."
         )
-    assignment = Assignment(game=game, person=person, role=role)
-    session.add(assignment)
-    session.flush()
-    return assignment
+    slot = next(
+        (
+            index
+            for index in range(ROLE_SLOT_COUNT.get(role, 0))
+            if _slot_assignment(game, role, index) is None
+        ),
+        None,
+    )
+    if slot is None:
+        raise ValueError("Für diese Aufgabe ist kein Platz mehr frei.")
+    return claim_slot(session, game, role, slot, None, person, actor, actor_tier)
 
 
-def unassign_person(session: Session, game: Game, person: Person, role: str) -> bool:
+def unassign_person(
+    session: Session,
+    game: Game,
+    person: Person,
+    role: str,
+    actor: Person | None = None,
+    actor_tier: str = "system",
+) -> bool:
     """Remove an assignment; returns True if something was removed."""
     assignment = next(
         (a for a in game.assignments if a.person_id == person.id and a.role == role), None
     )
     if assignment is None:
         return False
-    session.delete(assignment)
-    session.flush()
+    release_slot(
+        session, game, role, assignment.slot, person.id, actor, actor_tier
+    )
     return True

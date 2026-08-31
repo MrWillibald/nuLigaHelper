@@ -17,7 +17,9 @@
 
   <div class="persons-layout">
     <div>
+      {% if viewer_tier == 'admin' %}
       <form class="form-card person-form-card" method="post" action="{{ url_for('add_person') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <h3>Neue Person anlegen</h3>
         <p>Name und Mannschaft sind Pflicht. Mindestens ein Kontaktweg (E-Mail oder Telefon) wird für Benachrichtigungen empfohlen.</p>
         <div class="form-grid">
@@ -71,6 +73,19 @@
           {% endfor %}
         </div>
       </div>
+      {% endif %}
+
+      {% if pending %}
+      <div class="team-admin-card">
+        <h3>Offene Registrierungen</h3>
+        {% for p in pending %}
+        <div class="team-mv-row"><span>{{ p.name }} · {{ p.desired_team.name }}</span>
+          <form method="post" action="{{ url_for('decide_registration', person_id=p.id, decision='approve') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-primary">Freigeben</button></form>
+          <form method="post" action="{{ url_for('decide_registration', person_id=p.id, decision='reject') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-danger">Ablehnen</button></form>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
     </div>
 
     <div class="people-grid persons-grid">
@@ -78,25 +93,37 @@
       <article class="person-card person-edit-card">
         <div class="person-icon">{{ p.name[:1] | upper }}</div>
         <div>
+          {% if p.editable %}
           <form method="post" action="{{ url_for('edit_person', person_id=p.id) }}" class="person-edit-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <label>Name
               <input type="text" name="name" value="{{ p.name }}" required maxlength="120"></label>
-            <label>Mannschaft
+            {% if viewer_tier == 'admin' %}<label>Mannschaft
               <select name="team_id">
                 {% for t in teams %}
                 <option value="{{ t.id }}" {% if p.team_id == t.id %}selected{% endif %}>
                   {{ t.name }}{% if t.is_support %} (Support){% endif %}
                 </option>
                 {% endfor %}
-              </select></label>
+              </select></label>{% else %}<p>{{ p.team_name }}</p>{% endif %}
             <label>E-Mail
               <input type="email" name="email" value="{{ p.email }}" maxlength="200"></label>
             <label>Telefon
               <input type="text" name="phone" value="{{ p.phone }}" maxlength="60"></label>
             <button class="btn btn-primary" type="submit">Speichern</button>
           </form>
+          {% else %}
+          <h3>{{ p.name }}</h3><p>{{ p.team_name }}</p>
+          {% endif %}
+          {% if viewer_tier == 'admin' %}
+          {% if p.status == 'inactive' %}
+          <form method="post" action="{{ url_for('reactivate_person', person_id=p.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-primary">Reaktivieren</button></form>
+          {% else %}
+          <form method="post" action="{{ url_for('deactivate_person', person_id=p.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn">Deaktivieren</button></form>
+          {% endif %}
           <button class="btn btn-danger" data-delete-person="{{ p.id }}"
-                  data-name="{{ p.name }}">Löschen</button>
+                   data-name="{{ p.name }}">Löschen</button>
+          {% endif %}
         </div>
       </article>
       {% else %}

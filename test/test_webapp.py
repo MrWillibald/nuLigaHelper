@@ -1,309 +1,218 @@
-# ---------------------------------------------------------------
-#                          nuLigaHelper – tests
-# ---------------------------------------------------------------
-# Web interface regression scenario against the sample game plan:
-# schedule rendering, inline assignment API, person/team management
-# and the statistics page. Uses a throwaway database (see helpers).
-#
-# Run standalone:  python test/test_webapp.py
-# Or via pytest:   pytest test/test_webapp.py
-#
-# Note: the tests build on each other and run top to bottom.
-# ---------------------------------------------------------------
+"""Authenticated webapp click-through scenario against a throwaway database."""
 
 import re
+import os
+import tempfile
+from datetime import datetime, timedelta
 
 import helpers as h
-
 import db
 import webapp
 
-client = webapp.app.test_client()
+_previous_db = os.environ["NULIGAHELPER_DB"]
+_db_path = os.path.join(h._TEST_DIR, f"web-{next(tempfile._get_candidate_names())}.db")
+os.environ["NULIGAHELPER_DB"] = _db_path
+try:
+    app = webapp.create_app()
+finally:
+    os.environ["NULIGAHELPER_DB"] = _previous_db
+ENGINE = db.make_engine(_db_path)
+client = app.test_client()
 
-# ---------------------------------------------------------------------
-# Scenario data (see helpers.sample_games)
-# ---------------------------------------------------------------------
-
-with h.Session(h.app_db_engine()) as session:
+with h.Session(ENGINE) as session:
     games = h.sync_sample_games(session)
-
-    # Game 1001 is our scenario game; its own age class identifies the
-    # team that PLAYS it. Two further age classes serve as responsible
-    # resp. unrelated teams.
-    game_1001 = next(g for g in games if g["game_nr"] == 1001)
-    AK_PLAYING = game_1001["ak"]
-    AK_RESPONSIBLE = next(g["ak"] for g in games if g["ak"] != AK_PLAYING)
-    AK_UNRELATED = next(g["ak"] for g in games
-                        if g["ak"] not in (AK_PLAYING, AK_RESPONSIBLE))
-
+    game_data = next(game for game in games if game["game_nr"] == 1001)
+    playing = session.query(db.Team).filter_by(name=game_data["ak"]).one()
+    responsible = session.query(db.Team).filter(db.Team.id != playing.id).first()
+    unrelated = session.query(db.Team).filter(
+        db.Team.id.notin_([playing.id, responsible.id])
+    ).first()
     support = db.get_support_team(session)
-    team_playing = session.query(db.Team).filter_by(name=AK_PLAYING).one()
-    team_responsible = session.query(db.Team).filter_by(name=AK_RESPONSIBLE).one()
-    team_unrelated = session.query(db.Team).filter_by(name=AK_UNRELATED).one()
-
-    alice = db.get_or_create_person(session, "Alice Test", email="alice@x.de")
-    alice.team_id = team_playing.id               # plays in game 1001
-    bob = db.get_or_create_person(session, "Bob Test", phone="+491700000002")
-    bob.team_id = team_responsible.id             # member of responsible team
-    caro = db.get_or_create_person(session, "Caro Test")
-    caro.team_id = support.id                     # support helper
-    dora = db.get_or_create_person(session, "Dora Test", email="dora@x.de")
-    dora.team_id = team_unrelated.id              # unrelated team
+    admin = db.Person(
+        name="Admin Test", email="admin@example.test", team=support, is_admin=True
+    )
+    alice = db.Person(name="Alex Test", email="alex@example.test", team=playing)
+    duplicate = db.Person(name="Alex Test", phone="+491700000002", team=responsible)
+    outsider = db.Person(name="Outside Test", team=unrelated)
+    session.add_all([admin, alice, duplicate, outsider])
     session.commit()
+    game = session.query(db.Game).filter_by(game_nr=1001).one()
+    GAME_ID = game.id
+    ADMIN_ID, ALICE_ID, DUPLICATE_ID, OUTSIDER_ID = (
+        admin.id, alice.id, duplicate.id, outsider.id
+    )
+    RESPONSIBLE_ID, SUPPORT_ID = responsible.id, support.id
 
-    GAME_ID = session.query(db.Game).filter_by(game_nr=1001).one().id
-    ALICE_ID, BOB_ID, CARO_ID, DORA_ID = alice.id, bob.id, caro.id, dora.id
-    TEAM_PLAYING_ID, TEAM_RESPONSIBLE_ID = team_playing.id, team_responsible.id
-    SUPPORT_ID = support.id
-
-
-def _card_html(html: str) -> str:
-    start = html.find(f'id="game-{GAME_ID}"')
-    return html[start:html.find("</article>", start)]
+CSRF = h.sign_in(client, ADMIN_ID)
 
 
-# ---------------------------------------------------------------------
+def _json(url, body):
+    return client.post(url, json=body, headers=h.csrf_headers(CSRF))
 
 
-def test_schedule_renders_games_without_contact_data():
-    html = client.get("/").get_data(as_text=True)
-    assert html.count("<select") == len(games) * 7  # 6 role slots + team select
-    assert "TuS Raubling" in html
-    assert "alice@x.de" not in html and "+4917" not in html, \
-        "contact data must never appear on the overview"
+def _form(url, body=None, **kwargs):
+    return client.post(url, data=h.csrf_data(body, CSRF), **kwargs)
 
 
-def test_games_start_without_a_responsible_team():
-    with h.Session(h.app_db_engine()) as session:
-        unlinked = session.query(db.Game).filter(db.Game.team_id.is_(None)).count()
-        assert unlinked == len(games), "no team may be pre-assigned"
+def test_01_admin_sign_in_exposes_controls_without_contacts_on_schedule():
+    page = client.get("/").get_data(as_text=True)
+    assert page.count('class="team-select"') == len(games)
+    assert "admin@example.test" not in page and "+4917" not in page
+    assert "Alex Test ·" in page, "duplicate names must be qualified by team"
 
 
-def test_responsible_team_api_sets_and_clears_the_team():
-    r = client.post(f"/api/games/{GAME_ID}/team", json={"team_id": TEAM_RESPONSIBLE_ID})
-    assert r.get_json() == {"ok": True}
-    with h.Session(h.app_db_engine()) as session:
+def test_02_responsible_team_and_claim_release_flow():
+    response = _json(f"/api/games/{GAME_ID}/team", {"team_id": RESPONSIBLE_ID})
+    assert response.get_json() == {"ok": True}
+    claim = _json("/api/assignment/claim", {
+        "game_id": GAME_ID,
+        "role": db.ROLE_SALE,
+        "slot": 0,
+        "expected_person_id": None,
+        "person_id": ALICE_ID,
+    })
+    assert claim.status_code == 200 and claim.get_json()["ok"]
+    conflict = _json("/api/assignment/claim", {
+        "game_id": GAME_ID,
+        "role": db.ROLE_SALE,
+        "slot": 0,
+        "expected_person_id": None,
+        "person_id": DUPLICATE_ID,
+    })
+    assert conflict.status_code == 409
+    assert conflict.get_json()["current_person_id"] == ALICE_ID
+    release = _json("/api/assignment/release", {
+        "game_id": GAME_ID,
+        "role": db.ROLE_SALE,
+        "slot": 0,
+        "expected_person_id": ALICE_ID,
+    })
+    assert release.get_json() == {"ok": True}
+
+
+def test_03_existing_rules_and_advisory_warning_remain():
+    first = _json("/api/assignment/claim", {
+        "game_id": GAME_ID, "role": db.ROLE_TIMEKEEPER, "slot": 0,
+        "expected_person_id": None, "person_id": ALICE_ID,
+    })
+    assert first.get_json()["warning"] == "Person spielt selbst in diesem Spiel."
+    second = _json("/api/assignment/claim", {
+        "game_id": GAME_ID, "role": db.ROLE_SECRETARY, "slot": 0,
+        "expected_person_id": None, "person_id": ALICE_ID,
+    })
+    assert second.status_code == 400 and "bereits" in second.get_json()["error"]
+    outside = _json("/api/assignment/claim", {
+        "game_id": GAME_ID, "role": db.ROLE_SECURITY, "slot": 0,
+        "expected_person_id": None, "person_id": OUTSIDER_ID,
+    })
+    assert outside.get_json()["warning"] == "Person gehört nicht zum verantwortlichen Team."
+
+
+def test_03_sparse_sale_slot_keeps_its_stored_position():
+    response = _json("/api/assignment/claim", {
+        "game_id": GAME_ID, "role": db.ROLE_SALE, "slot": 1,
+        "expected_person_id": None, "person_id": DUPLICATE_ID,
+    })
+    assert response.status_code == 200
+    page = client.get("/").get_data(as_text=True)
+    card_start = page.index(f'id="game-{GAME_ID}"')
+    card = page[card_start:page.index("</article>", card_start)]
+    sales = re.findall(
+        r'<select[^>]*data-role="Verkauf"[^>]*>.*?</select>', card, re.S
+    )
+    assert len(sales) == 2
+    selected = rf'<option value="{DUPLICATE_ID}"[^>]*selected'
+    assert not re.search(selected, sales[0])
+    assert re.search(selected, sales[1])
+
+
+def test_04_person_crud_uses_internal_identity():
+    response = _form("/personen/add", {
+        "name": "Alex Test", "team_id": SUPPORT_ID, "email": "third@example.test"
+    }, follow_redirects=True)
+    assert response.status_code == 200
+    with h.Session(ENGINE) as session:
+        matches = session.query(db.Person).filter_by(name="Alex Test").all()
+        assert len(matches) == 3
+        created = next(person for person in matches if person.email == "third@example.test")
+        created_id = created.id
+    _form(f"/personen/{created_id}/edit", {
+        "name": "Renamed Test", "team_id": SUPPORT_ID, "phone": "+49170999"
+    })
+    with h.Session(ENGINE) as session:
+        person = session.get(db.Person, created_id)
+        assert person.name == "Renamed Test" and person.phone == "+49170999"
+
+
+def test_05_team_mv_and_statistics_are_available_to_admin():
+    response = _json(f"/api/teams/{RESPONSIBLE_ID}/mv", {
+        "person_id": DUPLICATE_ID
+    })
+    assert response.get_json() == {"ok": True}
+    assert client.get("/statistik").status_code == 200
+    assert "Offene Dienste" in client.get("/statistik").get_data(as_text=True)
+
+
+def test_06_audit_is_newest_first_and_read_only():
+    with h.Session(ENGINE) as session:
         game = session.get(db.Game, GAME_ID)
-        assert game.judge_team_name == AK_RESPONSIBLE
-
-    r = client.post(f"/api/games/{GAME_ID}/team", json={"team_id": None})
-    assert r.get_json() == {"ok": True}
-    with h.Session(h.app_db_engine()) as session:
-        assert session.get(db.Game, GAME_ID).judge_team_name is None
-
-
-def test_playing_and_outside_helpers_are_greyed_but_selectable():
-    # Order-tolerant: drop leftover assignments of game 1001 so every pick
-    # below is the person's first (and only) task of that game.
-    with h.Session(h.app_db_engine()) as session:
-        game = session.get(db.Game, GAME_ID)
-        for role in db.ROLE_SLOT_COUNT:
-            db.set_role_assignments(session, game, role, [])
-    client.post(f"/api/games/{GAME_ID}/team", json={"team_id": TEAM_RESPONSIBLE_ID})
-    card = _card_html(client.get("/").get_data(as_text=True))
-
-    assert card.count('class="option-playing"') == 6, \
-        "Alice belongs to the playing team and must be marked in all slots"
-    assert "spielt in diesem Spiel selbst" in card, \
-        "the play-hint tooltip must be present"
-
-    assert card.count('class="foreign-option"') == 6, \
-        "Dora belongs to an unrelated team and must be greyed in all slots"
-    assert f"gehört zu {AK_UNRELATED}" in card
-
-    # members of the responsible team / support team appear without marks;
-    # only the person's own <option> tag is inspected
-    for name in ("Bob Test", "Caro Test"):
-        if f">{name}<" not in card:
-            continue  # may already have been deleted by an earlier test
-        pos = card.find(f">{name}<")
-        tag_start = card.rfind("<option", 0, pos)
-        tag = card[tag_start:card.find(">", tag_start)]
-        assert "option-playing" not in tag and "foreign-option" not in tag, \
-            f"{name} must not be marked"
-
-    # all categories remain selectable
-    for pid, label in ((ALICE_ID, "playing"), (CARO_ID, "support"), (DORA_ID, "outside")):
-        r = client.post("/api/assignment", json={
-            "game_id": GAME_ID, "role": "Zeitnehmer", "slot": 0, "person_id": pid})
-        assert r.get_json() == {"ok": True}, f"{label} pick must be allowed"
-    client.post("/api/assignment", json={
-        "game_id": GAME_ID, "role": "Zeitnehmer", "slot": 0, "person_id": None})
+        now = datetime.now()
+        common = dict(
+            actor_person_id=ADMIN_ID, actor_tier="admin", action="claim",
+            affected_person_id=ALICE_ID, game_id=GAME_ID,
+            role=db.ROLE_SALE, slot=0, affected_person_name="Alex Test",
+            game_snapshot=f"{game.game_nr} marker",
+        )
+        session.add_all([
+            db.AssignmentAudit(changed_at=now - timedelta(minutes=1), actor_name="Older Marker", **common),
+            db.AssignmentAudit(changed_at=now, actor_name="Newer Marker", **common),
+        ])
+        session.commit()
+    page = client.get("/audit").get_data(as_text=True)
+    assert "Änderungsprotokoll" in page and "Alex Test" in page
+    assert page.index("Newer Marker") < page.index("Older Marker")
+    assert "1001 marker" in client.get(
+        f"/audit?game_id={GAME_ID}"
+    ).get_data(as_text=True)
+    assert "Alex Test" in client.get(
+        f"/audit?person_id={ALICE_ID}"
+    ).get_data(as_text=True)
+    assert client.post("/audit/1/delete", headers=h.csrf_headers(CSRF)).status_code == 404
 
 
-def test_assignment_api_fills_both_sale_slots_and_rejects_duplicates():
-    r = client.post("/api/assignment", json={
-        "game_id": GAME_ID, "role": "Verkauf", "slot": 0, "person_id": ALICE_ID})
-    assert r.get_json() == {"ok": True}
-    r = client.post("/api/assignment", json={
-        "game_id": GAME_ID, "role": "Verkauf", "slot": 1, "person_id": DORA_ID})
-    assert r.get_json() == {"ok": True}
-
-    with h.Session(h.app_db_engine()) as session:
-        sales = [a.person.name
-                 for a in session.get(db.Game, GAME_ID).assignments_by_role("Verkauf")]
-        assert sales == ["Alice Test", "Dora Test"], sales
-
-    r = client.post("/api/assignment", json={
-        "game_id": GAME_ID, "role": "Verkauf", "slot": 1, "person_id": ALICE_ID})
-    assert r.get_json()["ok"] is False, "duplicates must be rejected"
-
-    r = client.post("/api/assignment", json={
-        "game_id": GAME_ID, "role": "Unbekannt", "slot": 0, "person_id": None})
-    assert r.status_code == 400
+def test_07_guest_schedule_has_no_roster_payload():
+    guest = app.test_client()
+    page = guest.get("/").get_data(as_text=True)
+    assert 'data-role="' not in page and 'class="team-select"' not in page
+    assert "third@example.test" not in page and "+4917" not in page
+    assert "Renamed Test" not in page, "unassigned roster members must not leak"
+    assert "Alex Test" in page, "assigned helper names remain public"
 
 
-def test_assignment_api_rejects_a_second_task_for_the_same_game():
-    # Dora still holds a Verkauf slot in game 1001 from the previous test;
-    # a second task of another role must be refused.
-    r = client.post("/api/assignment", json={
-        "game_id": GAME_ID, "role": "Sekretär", "slot": 0, "person_id": DORA_ID})
-    body = r.get_json()
-    assert body["ok"] is False, \
-        "a person with a task for a game may not get another one"
-    assert "bereits" in body["error"], body
-    with h.Session(h.app_db_engine()) as session:
-        game = session.get(db.Game, GAME_ID)
-        assert game.assignment_by_role("Sekretär") is None, \
-            "the rejected assignment must not be stored"
+def test_08_csrf_is_required_for_json_and_forms():
+    assert client.post(
+        f"/api/games/{GAME_ID}/team", json={"team_id": None}
+    ).status_code == 403
+    assert client.post(
+        "/personen/add", data={"name": "Forged", "team_id": SUPPORT_ID}
+    ).status_code == 403
+    with open(h.PROJECT_DIR + "/static/app.js", encoding="utf-8") as source:
+        javascript = source.read()
+    assert "response.status === 401" in javascript
+    assert "response.status === 409" in javascript
+    assert "Deine Sitzung ist abgelaufen" in javascript
 
 
-def test_assigned_person_is_removed_from_other_task_dropdowns():
-    # Order-tolerant: start from a clean game 1001.
-    with h.Session(h.app_db_engine()) as session:
-        game = session.get(db.Game, GAME_ID)
-        for role in db.ROLE_SLOT_COUNT:
-            db.set_role_assignments(session, game, role, [])
-
-    def person_option_count(card, person_id):
-        # count only the six role dropdowns – the team dropdown has its own
-        # options and must not be included
-        blocks = re.findall(
-            r'<select[^>]*data-role="[^"]*"[^>]*>.*?</select>', card, re.S)
-        return sum(f'<option value="{person_id}"' in b for b in blocks)
-
-    r = client.post("/api/assignment", json={
-        "game_id": GAME_ID, "role": "Zeitnehmer", "slot": 0, "person_id": ALICE_ID})
-    assert r.get_json() == {"ok": True}
-
-    card = _card_html(client.get("/").get_data(as_text=True))
-    assert person_option_count(card, ALICE_ID) == 1, \
-        "an assigned person must only appear in the dropdown of her own task"
-    zeitnehmer = re.search(
-        r'<select[^>]*data-role="Zeitnehmer"[^>]*>.*?</select>', card, re.S)
-    assert zeitnehmer and f'<option value="{ALICE_ID}"' in zeitnehmer.group(0), \
-        "her own task dropdown must keep her option"
-
-    # freeing her brings the option back into the other dropdowns
-    r = client.post("/api/assignment", json={
-        "game_id": GAME_ID, "role": "Zeitnehmer", "slot": 0, "person_id": None})
-    assert r.get_json() == {"ok": True}
-    card = _card_html(client.get("/").get_data(as_text=True))
-    assert person_option_count(card, ALICE_ID) == 6, \
-        "a freed person must be selectable again in all task dropdowns"
-
-
-def test_person_management_crud():
-    r = client.get("/personen")
-    assert r.status_code == 200
-    page = r.get_data(as_text=True)
-    assert "Mannschaft" in page and "Support-Team" in page
-
-    r = client.post("/personen/add", data={
-        "name": "Ela Test", "email": "ela@x.de", "team_id": SUPPORT_ID},
-        follow_redirects=True)
-    assert "Ela Test" in r.get_data(as_text=True)
-    with h.Session(h.app_db_engine()) as session:
-        ela = session.query(db.Person).filter_by(name="Ela Test").one()
-        ela_id = ela.id
-        assert ela.team_id == SUPPORT_ID
-
-    r = client.post(f"/personen/{ela_id}/edit", data={
-        "name": "Ela Test", "email": "", "phone": "+49170999",
-        "team_id": SUPPORT_ID}, follow_redirects=True)
-    with h.Session(h.app_db_engine()) as session:
-        ela = session.get(db.Person, ela_id)
-        assert ela.phone == "+49170999" and ela.email is None
-        assert ela.team_id == SUPPORT_ID
-
-
-def test_team_editing_is_completely_disabled():
-    with h.Session(h.app_db_engine()) as session:
-        any_team = session.query(db.Team).first().id
-    assert client.post(f"/teams/{any_team}/delete").status_code == 404
-    assert client.post("/teams/add", data={"name": "Neues Team"}).status_code == 404
-
-
-def test_team_mv_can_be_assigned_to_members_only():
-    # UI offers an MV select per team
+def test_09_delete_warns_about_deactivation_and_cascades_with_audit():
     page = client.get("/personen").get_data(as_text=True)
-    assert "Mannschaftsverantwortlicher" in page
-    assert 'class="mv-select"' in page
-
-    # a member can become MV; the selection is reflected in the page
-    r = client.post(f"/api/teams/{TEAM_PLAYING_ID}/mv", json={"person_id": ALICE_ID})
-    assert r.get_json() == {"ok": True}
-    page = client.get("/personen").get_data(as_text=True)
-    row = re.search(
-        r'team-mv-row[^>]*>\s*<span[^>]*>\s*BL mD.*?selected', page, re.S)
-    assert row, "Alice must appear as selected MV of her team"
-
-    # a person of another team is rejected
-    r = client.post(f"/api/teams/{TEAM_PLAYING_ID}/mv", json={"person_id": DORA_ID})
-    body = r.get_json()
-    assert body["ok"] is False and "kein Mitglied" in body["error"]
-
-    # clearing works
-    r = client.post(f"/api/teams/{TEAM_PLAYING_ID}/mv", json={"person_id": None})
-    assert r.get_json() == {"ok": True}
-    with h.Session(h.app_db_engine()) as session:
-        team = session.get(db.Team, TEAM_PLAYING_ID)
-        assert team.mv_person_id is None
-
-
-def test_statistics_page_with_bars_and_aggregated_gaps():
-    # Order-tolerant: guarantee a visible person statistic and an open
-    # Verkauf slot for game 1001 regardless of earlier test order.
-    with h.Session(h.app_db_engine()) as session:
-        game = session.get(db.Game, GAME_ID)
-        db.set_role_assignments(session, game, db.ROLE_SALE, [])
-        alice = session.query(db.Person).filter_by(name="Alice Test").one()
-        if not any(a.person_id == alice.id for a in game.assignments):
-            db.set_role_assignments(session, game, db.ROLE_TIMEKEEPER, [alice.id])
-    stats = client.get("/statistik").get_data(as_text=True)
-    assert "Spiele pro Mannschaft" in stats and "Dienste pro Person" in stats
-    assert "Offene Dienste" in stats
-
-    # one bar per team
-    with h.Session(h.app_db_engine()) as session:
-        n_teams = session.query(db.Team).count()
-        total = session.query(db.Game).filter_by(season_year=h.SEASON).count()
-    assert stats.count('class="bar-track"') == n_teams
-    assert f"{total} Spielen" in stats
-
-    # gaps aggregate both sale slots into a single chip
-    assert 'chip-gap">Verkauf' in stats
-    assert ">Verkauf 1<" not in stats and ">Verkauf 2<" not in stats
-
-    with h.Session(h.app_db_engine()) as session:
-        game = session.get(db.Game, GAME_ID)
-        missing_sales = 2 - len(game.assignments_by_role("Verkauf"))
-    if missing_sales > 0:
-        assert f"Verkauf ({missing_sales}×)" in stats, "gap chip must show the count"
-
-
-def test_deleting_a_person_removes_their_assignments():
-    # give Bob a task first so the deletion has something to cascade
-    r = client.post("/api/assignment", json={
-        "game_id": GAME_ID, "role": "Sekretär", "slot": 0, "person_id": BOB_ID})
-    assert r.get_json() == {"ok": True}
-
-    r = client.post(f"/personen/{BOB_ID}/delete", follow_redirects=True)
-    with h.Session(h.app_db_engine()) as session:
-        assert session.get(db.Person, BOB_ID) is None
-        game = session.get(db.Game, GAME_ID)
-        assert game.assignment_by_role("Sekretär") is None, \
-            "the deleted person's assignment must be removed as well"
+    assert "Deaktivieren" in page
+    assert "stattdessen deaktivieren" in open(
+        h.PROJECT_DIR + "/static/app.js", encoding="utf-8"
+    ).read()
+    _form(f"/personen/{DUPLICATE_ID}/delete", follow_redirects=True)
+    with h.Session(ENGINE) as session:
+        assert session.get(db.Person, DUPLICATE_ID) is None
+        assert session.query(db.AssignmentAudit).count() >= 3
 
 
 if __name__ == "__main__":

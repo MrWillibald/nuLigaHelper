@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Code bestätigen{% endblock %}
+{% block content %}
+<section class="section">
+  <div class="section-header"><h2>SMS-Code bestätigen</h2></div>
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}<div class="form-message {{ category }}">{{ message }}</div>{% endfor %}
+  {% endwith %}
+  <form class="form-card" method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="form-field"><label for="contact">Telefonnummer</label><input id="contact" name="contact" required></div>
+    <div class="form-field"><label for="code">Sechsstelliger Code</label><input id="code" name="code" inputmode="numeric" pattern="[0-9]{6}" required></div>
+    <button class="submit-btn" type="submit">CODE BESTÄTIGEN</button>
+  </form>
+</section>
+{% endblock %}

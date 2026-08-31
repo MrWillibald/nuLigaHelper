@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Anmelden{% endblock %}
+{% block content %}
+<section class="section">
+  <div class="section-header"><h2>Anmelden</h2></div>
+  <form class="form-card" method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <p>Gib deine hinterlegte E-Mail-Adresse oder Telefonnummer ein.</p>
+    <div class="form-field"><label for="contact">E-Mail oder Telefon</label>
+      <input id="contact" name="contact" required autocomplete="username"></div>
+    <button class="submit-btn" type="submit">ANMELDELINK ANFORDERN</button>
+    <p><a href="{{ url_for('login_code') }}">SMS-Code eingeben</a></p>
+  </form>
+</section>
+{% endblock %}

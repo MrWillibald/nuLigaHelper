@@ -14,6 +14,7 @@
   <div class="game-assign">
     <label class="assign-field assign-jteam">
       <span>Verantwortlich</span>
+      {% if viewer_tier == 'admin' %}
       <select class="team-select" data-game="{{ g.id }}">
         <option value="">&ndash; offen &ndash;</option>
         {% for t in teams %}
@@ -22,14 +23,15 @@
         </option>
         {% endfor %}
       </select>
+      {% else %}<strong>{{ teams | selectattr('id', 'equalto', g.team_id) | map(attribute='name') | first | default('– offen –', true) }}</strong>{% endif %}
     </label>
     {% for s in g.slots %}
     <label class="assign-field">
       <span>{{ s.label }}</span>
-      <select data-game="{{ g.id }}" data-role="{{ s.role }}" data-slot="{{ s.slot }}"
+      {% if s.editable %}<select data-game="{{ g.id }}" data-role="{{ s.role }}" data-slot="{{ s.slot }}"
               {% if s.status in ("playing", "outside") %}class="select-warn"{% endif %}>
         <option value="">&ndash; offen &ndash;</option>
-        {% for p in persons %}
+        {% for p in s.options %}
         {% if not (p.id in g.taken_person_ids and p.id != s.person_id) %}
         {% set playing = p.team_id == g.playing_team_id %}
         {% set outside = g.team_id and p.team_id != g.team_id and p.team_id != support_id and not playing %}
@@ -37,11 +39,12 @@
                 {% if p.id == s.person_id %}selected{% endif %}
                 {% if playing %}class="option-playing" title="{{ p.name }} spielt in diesem Spiel selbst"
                 {% elif outside %}class="foreign-option" title="{{ p.name }} gehört zu {{ p.team_name or 'keinem Team im Spielplan' }}"{% endif %}>
-          {{ p.name }}{% if playing %} &bull; spielt selbst{% elif outside %} &bull; {{ p.team_name or 'ohne Team' }}{% endif %}
+          {{ p.name }} · {{ p.team_name or 'ohne Team' }}{% if playing %} &bull; spielt selbst{% elif outside %} &bull; außerhalb{% endif %}
         </option>
         {% endif %}
         {% endfor %}
       </select>
+      {% else %}<strong>{{ s.person_name or '– offen –' }}{% if s.person_name %} · {{ s.person_team_name or 'ohne Team' }}{% endif %}</strong>{% endif %}
     </label>
     {% endfor %}
   </div>
@@ -53,9 +56,9 @@
   <div class="section-header"><div class="section-icon">📅</div><h2>Heimspielplan {{ season }}</h2></div>
   <p class="hint">
     Alle Heimspiele des TuS Raubling mit den eingeteilten Helferinnen und Helfern.
-    Zum Eintragen ein verantwortliches Team wählen und dann die Personen in den Diensten –
-    die Änderung wird sofort gespeichert. Helfer anderer Mannschaften sowie die Spieler des
-    eigenen Spiels sind grau dargestellt und können mit Hinweis trotzdem eingetragen werden.
+    {% if viewer %}Freigegebene Dienste können direkt eingetragen oder freigegeben werden.
+    Helfer anderer Mannschaften sowie die Spieler des eigenen Spiels werden mit Hinweis markiert.{% else %}
+    Melde dich an, um freie Dienste zu übernehmen.{% endif %}
     Kontaktdaten werden hier bewusst nicht angezeigt.
   </p>
 

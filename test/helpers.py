@@ -20,6 +20,7 @@ if PROJECT_DIR not in sys.path:
 
 _TEST_DIR = tempfile.mkdtemp(prefix="nuligahelper-test-")
 os.environ["NULIGAHELPER_DB"] = os.path.join(_TEST_DIR, "webapp.db")
+os.environ["NULIGAHELPER_SECRET"] = "test-only-secret-not-for-production"
 
 SEASON = 2026
 
@@ -45,6 +46,23 @@ def app_db_engine():
     """Engine for the database the webapp uses (NULIGAHELPER_DB target)."""
     from sqlalchemy import create_engine
     return create_engine(f"sqlite:///{os.environ['NULIGAHELPER_DB']}")
+
+
+def sign_in(client, person_id: int, csrf_token: str = "test-csrf-token") -> str:
+    """Create an authenticated test session and return its CSRF token."""
+    with client.session_transaction() as browser_session:
+        browser_session["person_id"] = person_id
+        browser_session["csrf_token"] = csrf_token
+        browser_session.permanent = True
+    return csrf_token
+
+
+def csrf_headers(token: str = "test-csrf-token") -> dict:
+    return {"X-CSRF-Token": token}
+
+
+def csrf_data(data: dict | None = None, token: str = "test-csrf-token") -> dict:
+    return {**(data or {}), "csrf_token": token}
 
 
 def load_club_config() -> dict:

@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Registrieren{% endblock %}
+{% block content %}
+<section class="section">
+  <div class="section-header"><h2>Registrieren</h2></div>
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}<div class="form-message {{ category }}">{{ message }}</div>{% endfor %}
+  {% endwith %}
+  <form class="form-card" method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="form-field"><label for="name">Name</label><input id="name" name="name" required maxlength="120"></div>
+    <div class="form-field"><label for="email">E-Mail</label><input id="email" name="email" type="email" maxlength="200"></div>
+    <div class="form-field"><label for="phone">Telefon</label><input id="phone" name="phone" maxlength="60"></div>
+    <div class="form-field"><label for="team">Gewünschte Mannschaft</label>
+      <select id="team" name="team_id" required>{% for team in teams %}<option value="{{ team.id }}">{{ team.name }}</option>{% endfor %}</select>
+    </div>
+    <label><input type="checkbox" name="consent" value="yes" required> Ich stimme zu, dass mein Name bei einer Diensteinteilung im öffentlichen Spielplan erscheint.</label>
+    <button class="submit-btn" type="submit">REGISTRIERUNG SENDEN</button>
+    <p><a href="{{ url_for('registration_code') }}">SMS-Code eingeben</a></p>
+  </form>
+</section>
+{% endblock %}

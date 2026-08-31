@@ -110,6 +110,22 @@ class Notifier:
         """Build a receiver dict from a Person instance."""
         return {"name": person.name, "email": person.email, "phone": person.phone, "task": task}
 
+    def send_account_message(
+        self,
+        person: db.Person,
+        subject: str,
+        mail_body: str,
+        sms_body: str,
+    ) -> int:
+        """Send an account message using the established channel preference."""
+        return self._dispatch(
+            self._person_receiver(person, "Anmeldung"),
+            subject,
+            mail_body,
+            sms_body,
+            game_nr=0,
+        )
+
     # ---------------------------------------------------------------------------
     # Game-day notifications (judges, shop, security, cleaning + MV)
     # ---------------------------------------------------------------------------
