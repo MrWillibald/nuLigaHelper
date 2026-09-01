@@ -1111,10 +1111,37 @@ def create_app() -> Flask:
     @app.route("/personen")
     def persons():
         session = get_session()
+        teams = team_options(session)
         visible_people = [
             person for person in db.get_all_person_records(session)
             if person.account_status in (db.ACCOUNT_ACTIVE, db.ACCOUNT_INACTIVE)
         ] if g.tier == "admin" else db.get_all_persons(session)
+
+        name_filter = (request.args.get("name") or "").strip()
+        team_filter = request.args.get("team_id", type=int)
+        status_filter = (request.args.get("status") or "").strip()
+        if g.tier != "admin" or status_filter not in {
+            db.ACCOUNT_ACTIVE,
+            db.ACCOUNT_INACTIVE,
+        }:
+            status_filter = ""
+        if name_filter:
+            folded_name = name_filter.casefold()
+            visible_people = [
+                person for person in visible_people
+                if folded_name in person.name.casefold()
+            ]
+        if team_filter is not None:
+            visible_people = [
+                person for person in visible_people
+                if person.team_id == team_filter
+            ]
+        if status_filter:
+            visible_people = [
+                person for person in visible_people
+                if person.account_status == status_filter
+            ]
+
         all_persons = [
             {
                 "id": p.id,
@@ -1131,13 +1158,28 @@ def create_app() -> Flask:
         pending = [
             p for p in db.get_all_person_records(session)
             if p.account_status == db.ACCOUNT_VERIFIED
-            and (g.tier == "admin" or p.desired_team_id in g.mv_team_ids)
+            and (
+                g.tier == "admin"
+                or (
+                    g.tier == "mv"
+                    and p.desired_team_id in g.mv_team_ids
+                    and p.desired_team is not None
+                    and not p.desired_team.is_support
+                )
+            )
+        ]
+        creation_teams = teams if g.tier == "admin" else [
+            team for team in teams if team["id"] in g.mv_team_ids
         ]
         return render_template(
             "persons.html",
             persons=all_persons,
-            teams=team_options(session),
+            teams=teams,
+            creation_teams=creation_teams,
             pending=pending,
+            name_filter=name_filter,
+            team_filter=team_filter,
+            status_filter=status_filter,
         )
 
     def _form_team_id(session) -> int | None:
@@ -1149,17 +1191,26 @@ def create_app() -> Flask:
 
     @app.post("/personen/add")
     def add_person():
-        if g.tier != "admin":
+        if g.tier not in {"admin", "mv"}:
             return api_error("Keine Berechtigung.", 403)
         name = (request.form.get("name") or "").strip()
         if not name:
             flash("Bitte einen Namen angeben.", "error")
             return redirect(url_for("persons"))
+        session = get_session()
+        try:
+            team_id = _form_team_id(session)
+        except (TypeError, ValueError):
+            team_id = None
+        if team_id is None:
+            flash("Bitte eine gültige Mannschaft auswählen.", "error")
+            return redirect(url_for("persons"))
+        if g.tier == "mv" and team_id not in g.mv_team_ids:
+            return api_error("Keine Berechtigung.", 403)
         email, phone, errors = _normalized_person_contacts()
         if errors:
             flash(next(iter(errors.values())), "error")
             return redirect(url_for("persons"))
-        session = get_session()
         if (
             _contact_in_use("email", email)
             or _contact_in_use("sms", phone)
@@ -1169,8 +1220,7 @@ def create_app() -> Flask:
                 "error",
             )
             return redirect(url_for("persons"))
-        person = db.Person(name=name, email=email, phone=phone)
-        person.team_id = _form_team_id(session)
+        person = db.Person(name=name, email=email, phone=phone, team_id=team_id)
         session.add(person)
         try:
             session.commit()

@@ -161,8 +161,12 @@ def test_05_team_mv_and_statistics_are_available_to_admin():
         "person_id": DUPLICATE_ID
     })
     assert response.get_json() == {"ok": True}
-    assert client.get("/statistik").status_code == 200
-    assert "Offene Dienste" in client.get("/statistik").get_data(as_text=True)
+    statistics = client.get("/statistik")
+    assert statistics.status_code == 200
+    statistics_page = statistics.get_data(as_text=True)
+    assert "Offene Dienste" in statistics_page
+    assert 'class="data-table responsive-table stat-table' in statistics_page
+    assert 'data-label="Person"' in statistics_page
 
 
 def test_06_audit_is_newest_first_and_read_only():
@@ -182,6 +186,15 @@ def test_06_audit_is_newest_first_and_read_only():
         session.commit()
     page = client.get("/audit").get_data(as_text=True)
     assert "Änderungsprotokoll" in page and "Alex Test" in page
+    assert 'class="audit-filter-card"' in page
+    assert 'class="data-table responsive-table audit-table"' in page
+    for label in ("Zeit", "Akteur", "Aktion", "Person", "Spiel", "Dienst"):
+        assert f'data-label="{label}"' in page
+    audit_table = page[
+        page.index('<table class="data-table responsive-table audit-table"'):
+        page.index("</table>")
+    ]
+    assert "<form" not in audit_table and "data-delete" not in audit_table
     assert page.index("Newer Marker") < page.index("Older Marker")
     assert "15:00 · BL mD · TuS Raubling – SBC Traunstein" in page
     assert "16:30 · BL mD · TuS Raubling – Duplicate Tournament Team" in page

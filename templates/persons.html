@@ -2,7 +2,7 @@
 {% block title %}Helfer verwalten{% endblock %}
 
 {% block content %}
-<section class="section">
+<section class="section management-section">
   <div class="section-header"><div class="section-icon">👥</div><h2>Helfer verwalten</h2></div>
   <p class="hint">
     Hier werden Name, Kontaktdaten und Mannschaft aller Helferinnen und Helfer gepflegt.
@@ -15,121 +15,180 @@
     {% endfor %}
   {% endwith %}
 
-  <div class="persons-layout">
+  <div class="roster-heading">
     <div>
-      {% if viewer_tier == 'admin' %}
-      <form class="form-card person-form-card" method="post" action="{{ url_for('add_person') }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <h3>Neue Person anlegen</h3>
-        <p>Name und Mannschaft sind Pflicht. Mindestens ein Kontaktweg (E-Mail oder Telefon) wird für Benachrichtigungen empfohlen.</p>
-        <div class="form-grid">
-          <div class="form-field full"><label for="new-name">Name *</label>
-            <input id="new-name" name="name" required maxlength="120"></div>
-          <div class="form-field full"><label for="new-team">Mannschaft *</label>
-            <select id="new-team" name="team_id" required>
+      <p class="section-eyebrow">Helferteam</p>
+      <h3>Mitglieder</h3>
+    </div>
+    <span class="roster-count">{{ persons | length }} angezeigt</span>
+  </div>
+
+  <form class="roster-filter-card" method="get" action="{{ url_for('persons') }}">
+    <div class="filter-field filter-name">
+      <label for="person-name-filter">Name</label>
+      <input id="person-name-filter" name="name" type="search" value="{{ name_filter }}"
+             placeholder="Namen suchen">
+    </div>
+    <div class="filter-field">
+      <label for="person-team-filter">Mannschaft</label>
+      <select id="person-team-filter" name="team_id">
+        <option value="">Alle Mannschaften</option>
+        {% for t in teams %}
+        <option value="{{ t.id }}" {% if team_filter == t.id %}selected{% endif %}>
+          {{ t.name }}{% if t.is_support %} (Support){% endif %}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    {% if viewer_tier == 'admin' %}
+    <div class="filter-field">
+      <label for="person-status-filter">Status</label>
+      <select id="person-status-filter" name="status">
+        <option value="">Aktiv und inaktiv</option>
+        <option value="active" {% if status_filter == 'active' %}selected{% endif %}>Aktiv</option>
+        <option value="inactive" {% if status_filter == 'inactive' %}selected{% endif %}>Inaktiv</option>
+      </select>
+    </div>
+    {% endif %}
+    <div class="filter-actions">
+      <button class="btn btn-primary" type="submit">Filtern</button>
+      <a class="btn btn-secondary" href="{{ url_for('persons') }}">Zurücksetzen</a>
+    </div>
+  </form>
+
+  <div class="people-grid persons-grid">
+    {% for p in persons %}
+    <article class="person-card person-edit-card">
+      <div class="person-icon">{{ p.name[:1] | upper }}</div>
+      <div class="person-card-body">
+        {% if p.editable %}
+        <form method="post" action="{{ url_for('edit_person', person_id=p.id) }}" class="person-edit-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <label>Name
+            <input type="text" name="name" value="{{ p.name }}" required maxlength="120"></label>
+          {% if viewer_tier == 'admin' %}
+          <label>Mannschaft
+            <select name="team_id">
               {% for t in teams %}
-              <option value="{{ t.id }}" {% if t.is_support %}selected{% endif %}>
+              <option value="{{ t.id }}" {% if p.team_id == t.id %}selected{% endif %}>
                 {{ t.name }}{% if t.is_support %} (Support){% endif %}
               </option>
               {% endfor %}
-            </select></div>
-          <div class="form-field full"><label for="new-email">E-Mail</label>
-            <input id="new-email" name="email" type="email" maxlength="200"></div>
-          <div class="form-field full"><label for="new-phone">Telefon (z. B. +49170…)</label>
-            <input id="new-phone" name="phone" maxlength="60"></div>
-          <div class="form-field full">
-            <button class="submit-btn" type="submit">PERSON HINZUFÜGEN</button>
-          </div>
-        </div>
-      </form>
-
-      <div class="team-admin-card">
-        <h3>Mannschaften</h3>
-        <p class="hint" style="margin-bottom:12px;">
-          Mannschaften werden automatisch aus dem Spielplan (Altersklasse) abgeleitet –
-          zusammen mit dem Support-Team gibt es hier nichts zu verwalten.
-          Pro Mannschaft kann genau ein Mitglied als Mannschaftsverantwortlicher
-          (MV) hinterlegt werden. Dieser wird benachrichtigt, wenn bei einem Spiel
-          seiner Mannschaft noch Dienste offen sind.
-        </p>
-        <div class="team-mv-list">
-          {% for t in teams %}
-          <div class="team-mv-row">
-            <span class="team-mv-name">
-              {{ t.name }}{% if t.is_support %} <em>(Support)</em>{% endif %}
-            </span>
-            <select class="mv-select" data-team="{{ t.id }}"
-                    {% if not t.members %}disabled title="Keine Mitglieder"{% endif %}>
-              <option value="">&ndash; kein MV &ndash;</option>
-              {% for m in t.members %}
-              <option value="{{ m.id }}" {% if m.id == t.mv_person_id %}selected{% endif %}>
-                {{ m.name }}
-              </option>
-              {% endfor %}
             </select>
-          </div>
+          </label>
           {% else %}
-          <em>Noch keine Mannschaften vorhanden.</em>
-          {% endfor %}
+          <p class="person-team">{{ p.team_name }}</p>
+          {% endif %}
+          <label>E-Mail
+            <input type="email" name="email" value="{{ p.email }}" maxlength="200"></label>
+          <label>Telefon
+            <input type="text" name="phone" value="{{ p.phone }}" maxlength="60"></label>
+          <button class="btn btn-primary" type="submit">Speichern</button>
+        </form>
+        {% else %}
+        <h3>{{ p.name }}</h3><p class="person-team">{{ p.team_name }}</p>
+        {% endif %}
+        {% if viewer_tier == 'admin' %}
+        <span class="status-badge status-{{ p.status }}">
+          {{ 'Inaktiv' if p.status == 'inactive' else 'Aktiv' }}
+        </span>
+        <div class="person-admin-actions">
+          {% if p.status == 'inactive' %}
+          <form method="post" action="{{ url_for('reactivate_person', person_id=p.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-primary" type="submit">Reaktivieren</button></form>
+          {% else %}
+          <form method="post" action="{{ url_for('deactivate_person', person_id=p.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn" type="submit">Deaktivieren</button></form>
+          {% endif %}
+          <button class="btn btn-danger" type="button" data-delete-person="{{ p.id }}"
+                  data-name="{{ p.name }}">Löschen</button>
+        </div>
+        {% endif %}
+      </div>
+    </article>
+    {% else %}
+    <p class="hint empty-roster">Keine passenden Personen gefunden.</p>
+    {% endfor %}
+  </div>
+
+  {% if viewer_tier in ('admin', 'mv') %}
+  <div class="management-divider">
+    <p class="section-eyebrow">Verwaltung</p>
+    <h3>Team organisieren</h3>
+  </div>
+  <div class="management-card-grid">
+    <form id="new-user-card" class="management-card person-form-card" method="post"
+          action="{{ url_for('add_person') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <h3>Neue Benutzer</h3>
+      <p>Neue Einträge sind sofort aktiv. E-Mail und Telefon bleiben optional, werden aber für Anmeldung und Benachrichtigungen benötigt.</p>
+      <div class="form-grid">
+        <div class="form-field full"><label for="new-name">Name *</label>
+          <input id="new-name" name="name" required maxlength="120"></div>
+        <div class="form-field full"><label for="new-team">Mannschaft *</label>
+          <select id="new-team" name="team_id" required>
+            {% for t in creation_teams %}
+            <option value="{{ t.id }}" {% if t.is_support %}selected{% endif %}>
+              {{ t.name }}{% if t.is_support %} (Support){% endif %}
+            </option>
+            {% endfor %}
+          </select></div>
+        <div class="form-field full"><label for="new-email">E-Mail</label>
+          <input id="new-email" name="email" type="email" maxlength="200"></div>
+        <div class="form-field full"><label for="new-phone">Telefon (z. B. +49170…)</label>
+          <input id="new-phone" name="phone" maxlength="60"></div>
+        <div class="form-field full">
+          <button class="submit-btn" type="submit">BENUTZER HINZUFÜGEN</button>
         </div>
       </div>
-      {% endif %}
+    </form>
 
-      {% if pending %}
-      <div class="team-admin-card">
-        <h3>Offene Registrierungen</h3>
+    <div id="pending-registration-card" class="management-card team-admin-card">
+      <h3>Offene Registrierungen</h3>
+      <p class="card-intro">Geprüfte Kontaktdaten, die noch auf Freigabe für eine Mannschaft warten.</p>
+      <div class="registration-list">
         {% for p in pending %}
-        <div class="team-mv-row"><span>{{ p.name }} · {{ p.desired_team.name }}</span>
-          <form method="post" action="{{ url_for('decide_registration', person_id=p.id, decision='approve') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-primary">Freigeben</button></form>
-          <form method="post" action="{{ url_for('decide_registration', person_id=p.id, decision='reject') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-danger">Ablehnen</button></form>
+        <div class="registration-row">
+          <span><strong>{{ p.name }}</strong><small>{{ p.desired_team.name }}</small></span>
+          <div class="registration-actions">
+            <form method="post" action="{{ url_for('decide_registration', person_id=p.id, decision='approve') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-primary" type="submit">Freigeben</button></form>
+            <form method="post" action="{{ url_for('decide_registration', person_id=p.id, decision='reject') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-danger" type="submit">Ablehnen</button></form>
+          </div>
         </div>
+        {% else %}
+        <p class="empty-state">Keine offenen Registrierungen.</p>
         {% endfor %}
       </div>
-      {% endif %}
     </div>
 
-    <div class="people-grid persons-grid">
-      {% for p in persons %}
-      <article class="person-card person-edit-card">
-        <div class="person-icon">{{ p.name[:1] | upper }}</div>
-        <div>
-          {% if p.editable %}
-          <form method="post" action="{{ url_for('edit_person', person_id=p.id) }}" class="person-edit-form">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <label>Name
-              <input type="text" name="name" value="{{ p.name }}" required maxlength="120"></label>
-            {% if viewer_tier == 'admin' %}<label>Mannschaft
-              <select name="team_id">
-                {% for t in teams %}
-                <option value="{{ t.id }}" {% if p.team_id == t.id %}selected{% endif %}>
-                  {{ t.name }}{% if t.is_support %} (Support){% endif %}
-                </option>
-                {% endfor %}
-              </select></label>{% else %}<p>{{ p.team_name }}</p>{% endif %}
-            <label>E-Mail
-              <input type="email" name="email" value="{{ p.email }}" maxlength="200"></label>
-            <label>Telefon
-              <input type="text" name="phone" value="{{ p.phone }}" maxlength="60"></label>
-            <button class="btn btn-primary" type="submit">Speichern</button>
-          </form>
-          {% else %}
-          <h3>{{ p.name }}</h3><p>{{ p.team_name }}</p>
-          {% endif %}
-          {% if viewer_tier == 'admin' %}
-          {% if p.status == 'inactive' %}
-          <form method="post" action="{{ url_for('reactivate_person', person_id=p.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-primary">Reaktivieren</button></form>
-          {% else %}
-          <form method="post" action="{{ url_for('deactivate_person', person_id=p.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn">Deaktivieren</button></form>
-          {% endif %}
-          <button class="btn btn-danger" data-delete-person="{{ p.id }}"
-                   data-name="{{ p.name }}">Löschen</button>
-          {% endif %}
+    {% if viewer_tier == 'admin' %}
+    <div id="mv-assignment-card" class="management-card team-admin-card">
+      <h3>Mannschaftsverantwortliche</h3>
+      <p class="card-intro">
+        Mannschaften stammen automatisch aus dem Spielplan. Pro Mannschaft kann genau ein
+        Mitglied als MV hinterlegt werden.
+      </p>
+      <div class="team-mv-list">
+        {% for t in teams %}
+        <div class="team-mv-row">
+          <span class="team-mv-name">
+            {{ t.name }}{% if t.is_support %} <em>(Support)</em>{% endif %}
+          </span>
+          <select class="mv-select" data-team="{{ t.id }}"
+                  {% if not t.members %}disabled title="Keine Mitglieder"{% endif %}>
+            <option value="">&ndash; kein MV &ndash;</option>
+            {% for m in t.members %}
+            <option value="{{ m.id }}" {% if m.id == t.mv_person_id %}selected{% endif %}>
+              {{ m.name }}
+            </option>
+            {% endfor %}
+          </select>
         </div>
-      </article>
-      {% else %}
-      <p class="hint">Noch keine Personen angelegt.</p>
-      {% endfor %}
+        {% else %}
+        <em>Noch keine Mannschaften vorhanden.</em>
+        {% endfor %}
+      </div>
     </div>
+    {% endif %}
   </div>
+  {% endif %}
 </section>
 {% endblock %}
