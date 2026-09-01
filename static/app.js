@@ -188,39 +188,85 @@ document.querySelectorAll("[data-delete-person]").forEach((button) => {
 
 document.querySelectorAll("[data-auth-form]").forEach((form) => {
   const channelInputs = Array.from(form.querySelectorAll('input[name="channel"]'));
+  const emailInput = form.querySelector('input[name="email"]');
+  const phoneInput = form.querySelector('input[name="phone"]');
   const countrySelect = form.querySelector('[name="country_code"]');
   const customCountry = form.querySelector("[data-custom-country]");
+  const customCountryInput = form.querySelector('[name="custom_country_code"]');
+  const requestButton = form.querySelector('button[value="request_code"]');
+  const availability = form.querySelector(".auth-route-availability");
   const locked = form.dataset.authLocked === "true";
 
-  function updateContactFields() {
-    const selected = channelInputs.find((input) => input.checked);
-    if (!selected) return;
+  function emailIsValid() {
+    return Boolean(emailInput?.value.trim() && emailInput.checkValidity());
+  }
+
+  function phoneIsValid() {
+    const candidate = phoneInput?.value.trim() || "";
+    if (!candidate || !/^[+\d][\d\s()./-]*$/.test(candidate)) return false;
+    const callingCode = countrySelect?.value === "custom"
+      ? customCountryInput?.value.trim() || ""
+      : countrySelect?.value || "";
+    if (!/^\+?[1-9]\d{0,2}$/.test(callingCode)) return false;
+    const digits = candidate.replace(/\D/g, "");
+    const prefixDigits = callingCode.replace(/\D/g, "");
+    const internationalDigits = digits.replace(/^00/, "");
+    const explicitInternational = candidate.startsWith("+") || candidate.startsWith("00");
+    if (explicitInternational && !internationalDigits.startsWith(prefixDigits)) {
+      return false;
+    }
+    const totalDigits = explicitInternational
+      ? internationalDigits.length
+      : prefixDigits.length + digits.length;
+    return digits.length >= 6 && totalDigits <= 15;
+  }
+
+  function updateRouteAvailability() {
+    if (!channelInputs.length) return;
     form.classList.add("auth-enhanced");
-    form.querySelectorAll("[data-contact-panel]").forEach((panel) => {
-      const active = panel.dataset.contactPanel === selected.value;
-      panel.hidden = !active;
-      panel.querySelectorAll("input, select").forEach((control) => {
-        if (!control.closest("[data-custom-country]")) {
-          control.disabled = locked || !active;
-        }
-      });
+    const validRoutes = { email: emailIsValid(), sms: phoneIsValid() };
+    channelInputs.forEach((input) => {
+      input.disabled = locked || !validRoutes[input.value];
+      if (input.disabled) input.checked = false;
     });
+    const availableRoutes = channelInputs.filter((input) => !input.disabled);
+    if (!channelInputs.some((input) => input.checked) && availableRoutes.length === 1) {
+      availableRoutes[0].checked = true;
+    }
+
+    const invalidSupplied = Boolean(
+      (emailInput?.value.trim() && !validRoutes.email)
+      || (phoneInput?.value.trim() && !validRoutes.sms)
+    );
+    const selected = channelInputs.some((input) => input.checked && !input.disabled);
+    if (requestButton) {
+      requestButton.disabled = locked || invalidSupplied || !selected;
+    }
+    if (availability) {
+      availability.textContent = invalidSupplied
+        ? "Bitte korrigiere oder leere ungültige Kontaktangaben."
+        : availableRoutes.length
+          ? "Wähle einen der verfügbaren Kontaktwege."
+          : "Gib zuerst eine gültige E-Mail-Adresse oder Mobilnummer ein.";
+    }
     updateCustomCountry();
   }
 
   function updateCustomCountry() {
     if (!countrySelect || !customCountry) return;
-    const smsSelected = form.querySelector('input[name="channel"][value="sms"]')?.checked;
-    const active = smsSelected && countrySelect.value === "custom";
+    const active = countrySelect.value === "custom";
     customCountry.hidden = !active;
     customCountry.querySelectorAll("input").forEach((input) => {
       input.disabled = locked || !active;
     });
   }
 
-  channelInputs.forEach((input) => input.addEventListener("change", updateContactFields));
-  if (countrySelect) countrySelect.addEventListener("change", updateCustomCountry);
-  updateContactFields();
+  channelInputs.forEach((input) => input.addEventListener("change", updateRouteAvailability));
+  [emailInput, phoneInput, customCountryInput].forEach((input) => {
+    if (input) input.addEventListener("input", updateRouteAvailability);
+  });
+  if (countrySelect) countrySelect.addEventListener("change", updateRouteAvailability);
+  updateRouteAvailability();
 
   const invalid = form.querySelector('[aria-invalid="true"]:not(:disabled)');
   const code = form.querySelector('input[name="code"]:not(:disabled)');

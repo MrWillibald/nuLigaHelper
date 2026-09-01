@@ -87,6 +87,24 @@ def test_notify_game_day_prefers_mail_then_sms_and_skips_missing_contacts():
     assert n.notify_game_day(GAME_DATE) == 6
 
 
+def test_automatic_account_messages_prefer_mail_with_sms_as_fallback():
+    session, game, n, rec = _setup()
+    both = db.Person(
+        name="Both", email="both@example.test", phone="+491709999998"
+    )
+    phone_only = db.Person(name="Phone Only", phone="+491709999999")
+    session.add_all([both, phone_only])
+    session.commit()
+
+    assert n.send_account_message(both, "Subject", "Mail body", "SMS body") == 1
+    assert n.send_account_message(
+        phone_only, "Subject", "Mail body", "SMS body"
+    ) == 1
+    assert len(rec.mails) == 1
+    assert "both@example.test" in rec.mails[0][0]
+    assert rec.smss == [("+491709999999", "SMS body")]
+
+
 def test_mv_notification_only_while_tasks_are_open():
     session, game, n, rec = _setup(fully_assigned=True)
     assert not db.missing_slots(game), "scenario must be complete"

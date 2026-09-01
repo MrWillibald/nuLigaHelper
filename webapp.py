@@ -238,7 +238,7 @@ def create_app() -> Flask:
     def _auth_values() -> dict[str, str]:
         country_code = (request.form.get("country_code") or "+49").strip()
         return {
-            "channel": (request.form.get("channel") or "email").strip(),
+            "channel": (request.form.get("channel") or "").strip(),
             "email": (request.form.get("email") or "").strip(),
             "phone": (request.form.get("phone") or "").strip(),
             "country_code": country_code,
@@ -276,6 +276,46 @@ def create_app() -> Flask:
             }
         except contacts.ContactValidationError as exc:
             return channel, None, {exc.field_name: exc.message}
+
+    def _validated_registration_contacts(
+        values: dict[str, str],
+    ) -> tuple[
+        str | None,
+        str | None,
+        str | None,
+        str | None,
+        dict[str, str],
+    ]:
+        errors: dict[str, str] = {}
+        email = phone = None
+        try:
+            email = contacts.normalize_email(values["email"])
+        except contacts.ContactValidationError as exc:
+            errors[exc.field_name] = exc.message
+
+        calling_code = (
+            values["custom_country_code"]
+            if values["country_code"] == "custom"
+            else values["country_code"]
+        )
+        try:
+            phone = contacts.normalize_phone(values["phone"], calling_code)
+        except contacts.ContactValidationError as exc:
+            errors[exc.field_name] = exc.message
+
+        channel = values["channel"]
+        if not email and not phone and not errors:
+            errors["channel"] = "Bitte gib eine E-Mail-Adresse oder Mobilnummer ein."
+        elif channel not in {"email", "sms"}:
+            errors["channel"] = "Bitte wähle E-Mail oder SMS als Kontaktweg."
+        elif (
+            (channel == "email" and not email)
+            or (channel == "sms" and not phone)
+        ):
+            errors["channel"] = "Bitte wähle einen gültigen vorhandenen Kontaktweg."
+
+        destination = {"email": email, "sms": phone}.get(channel)
+        return email, phone, channel, destination, errors
 
     def _normalized_person_contacts() -> tuple[str | None, str | None, dict[str, str]]:
         errors: dict[str, str] = {}
@@ -724,7 +764,9 @@ def create_app() -> Flask:
             team = get_session().get(db.Team, team_id)
         if team is None:
             errors["team_id"] = "Bitte wähle eine gültige Mannschaft."
-        channel, destination, contact_errors = _validated_auth_contact(values)
+        email, phone, channel, destination, contact_errors = (
+            _validated_registration_contacts(values)
+        )
         errors.update(contact_errors)
         if errors:
             return _render_register(values=values, errors=errors)
@@ -733,11 +775,16 @@ def create_app() -> Flask:
         client_allowed = _rate_allowed(
             f"register-client:{request.remote_addr or 'unknown'}", 5
         )
-        existing = _contact_person(channel, destination)
+        email_person = _contact_person("email", email) if email else None
+        phone_person = _contact_person("sms", phone) if phone else None
+        selected_person = email_person if channel == "email" else phone_person
+        conflicting_people = {
+            person.id: person
+            for person in (email_person, phone_person)
+            if person is not None
+        }
         challenge = None
-        if existing is None and client_allowed:
-            email = destination if channel == "email" else None
-            phone = destination if channel == "sms" else None
+        if not conflicting_people and client_allowed:
             try:
                 person = db.register_person(
                     get_session(), values["name"], team, email, phone
@@ -749,18 +796,25 @@ def create_app() -> Flask:
                 challenge = _send_challenge(
                     person, "verify", channel, destination
                 )
-        elif existing is not None and client_allowed:
+        elif (
+            selected_person is not None
+            and len(conflicting_people) == 1
+            and client_allowed
+        ):
             person_limit = 2 if channel == "sms" else 3
             person_allowed = _rate_allowed(
-                f"register-person:{existing.id}:{channel}", person_limit
+                f"register-person:{selected_person.id}:{channel}", person_limit
             )
-            if person_allowed and existing.account_status == db.ACCOUNT_REGISTERED:
+            if (
+                person_allowed
+                and selected_person.account_status == db.ACCOUNT_REGISTERED
+            ):
                 challenge = _send_challenge(
-                    existing, "verify", channel, destination
+                    selected_person, "verify", channel, destination
                 )
             elif person_allowed:
                 _safe_account_message_via(
-                    existing,
+                    selected_person,
                     channel,
                     "Registrierung nuLigaHelper",
                     (

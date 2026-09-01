@@ -241,18 +241,30 @@ def test_selected_channel_controls_delivery_for_people_with_both_or_one():
         sms_response = _request_login(
             sms_client, csrf, channel="sms", contact="0170 1234567"
         )
-        assert _challenge(sms_response)
+        sms_challenge = _challenge(sms_response)
         assert messages[-1]["person_id"] == both_id
         assert messages[-1]["channel"] == "sms"
+        sms_login = _confirm_login(
+            sms_client, csrf, sms_challenge, _code(messages[-1])
+        )
+        assert sms_login.status_code == 302
+        with sms_client.session_transaction() as browser_session:
+            assert browser_session["person_id"] == both_id
 
         mail_client = app.test_client()
         csrf = _csrf(mail_client)
         mail_response = _request_login(
             mail_client, csrf, contact="BOTH@example.test"
         )
-        assert _challenge(mail_response)
+        mail_challenge = _challenge(mail_response)
         assert messages[-1]["person_id"] == both_id
         assert messages[-1]["channel"] == "email"
+        mail_login = _confirm_login(
+            mail_client, csrf, mail_challenge, _code(messages[-1])
+        )
+        assert mail_login.status_code == 302
+        with mail_client.session_transaction() as browser_session:
+            assert browser_session["person_id"] == both_id
 
         unknown_client = app.test_client()
         csrf = _csrf(unknown_client)
@@ -459,6 +471,162 @@ def test_registration_rejects_invalid_or_unconsented_writes_and_duplicate_accoun
         _restore_messages(originals)
 
 
+def test_registration_validates_and_stores_every_supplied_contact():
+    app, engine = _new_app()
+    with h.Session(engine) as session:
+        team = db.get_or_create_team(session, "BL mD")
+        session.commit()
+        team_id = team.id
+    messages, originals = _capture_messages()
+    try:
+        client = app.test_client()
+        csrf = _csrf(client, "/registrieren")
+        base = {
+            "action": "request_code",
+            "team_id": team_id,
+            "consent": "yes",
+            "country_code": "+49",
+            "csrf_token": csrf,
+        }
+
+        empty = client.post("/registrieren", data={
+            **base, "name": "Empty", "channel": "email",
+        })
+        invalid_phone = client.post("/registrieren", data={
+            **base,
+            "name": "Invalid Phone",
+            "channel": "email",
+            "email": "valid@example.test",
+            "phone": "123",
+        })
+        invalid_email = client.post("/registrieren", data={
+            **base,
+            "name": "Invalid Mail",
+            "channel": "sms",
+            "email": "invalid",
+            "phone": "0170 1234567",
+        })
+        mismatched_prefix = client.post("/registrieren", data={
+            **base,
+            "name": "Wrong Prefix",
+            "channel": "sms",
+            "phone": "+43 664 1234567",
+        })
+        assert "E-Mail-Adresse oder Mobilnummer" in empty.get_data(as_text=True)
+        assert "gültige Telefonnummer" in invalid_phone.get_data(as_text=True)
+        assert "gültige E-Mail-Adresse" in invalid_email.get_data(as_text=True)
+        assert "passt nicht zur gewählten Ländervorwahl" in (
+            mismatched_prefix.get_data(as_text=True)
+        )
+        invalid_phone_body = invalid_phone.get_data(as_text=True)
+        assert 'value="valid@example.test"' in invalid_phone_body
+        assert 'value="123"' in invalid_phone_body
+        assert re.search(r'id="phone"[^>]*aria-invalid="true"', invalid_phone_body)
+        assert not messages
+        with h.Session(engine) as session:
+            assert session.query(db.Person).count() == 0
+
+        email_only = client.post("/registrieren", data={
+            **base,
+            "name": "Mail Only",
+            "channel": "email",
+            "email": " Mail.Only@Example.Test ",
+        })
+        phone_only = client.post("/registrieren", data={
+            **base,
+            "name": "Phone Only",
+            "channel": "sms",
+            "phone": "0170 2345678",
+        })
+        both = client.post("/registrieren", data={
+            **base,
+            "name": "Both",
+            "channel": "email",
+            "email": " Both@Example.Test ",
+            "phone": "0170 3456789",
+        })
+        assert all(_challenge(response) for response in (email_only, phone_only, both))
+        assert [message["channel"] for message in messages] == [
+            "email", "sms", "email",
+        ]
+        with h.Session(engine) as session:
+            people = {
+                person.name: person for person in session.query(db.Person).all()
+            }
+            assert people["Mail Only"].email == "mail.only@example.test"
+            assert people["Mail Only"].phone is None
+            assert people["Phone Only"].email is None
+            assert people["Phone Only"].phone == "+491702345678"
+            assert people["Both"].email == "both@example.test"
+            assert people["Both"].phone == "+491703456789"
+    finally:
+        _restore_messages(originals)
+
+
+def test_registration_contact_conflicts_are_atomic_and_generic():
+    app, engine = _new_app()
+    with h.Session(engine) as session:
+        team = db.get_or_create_team(session, "BL mD")
+        email_owner = db.Person(
+            name="Mail Owner", email="owner@example.test", team=team
+        )
+        phone_owner = db.Person(
+            name="Phone Owner", phone="+491701234567", team=team
+        )
+        session.add_all([email_owner, phone_owner])
+        session.commit()
+        team_id = team.id
+        email_owner_id = email_owner.id
+    messages, originals = _capture_messages()
+    try:
+        client = app.test_client()
+        csrf = _csrf(client, "/registrieren")
+        base = {
+            "action": "request_code",
+            "name": "Must Not Exist",
+            "team_id": team_id,
+            "consent": "yes",
+            "country_code": "+49",
+            "csrf_token": csrf,
+        }
+        responses = [
+            client.post("/registrieren", data={
+                **base,
+                "channel": "sms",
+                "email": "owner@example.test",
+                "phone": "0170 9999999",
+            }),
+            client.post("/registrieren", data={
+                **base,
+                "channel": "email",
+                "email": "owner@example.test",
+                "phone": "0170 1234567",
+            }),
+            client.post("/registrieren", data={
+                **base,
+                "channel": "email",
+                "email": "owner@example.test",
+                "phone": "0170 8888888",
+            }),
+        ]
+        for response in responses:
+            body = response.get_data(as_text=True)
+            assert _challenge(response)
+            assert "Falls die Angaben verwendet werden können" in body
+            assert "Mail Owner" not in body and "Phone Owner" not in body
+        assert len(messages) == 1
+        assert messages[0]["person_id"] == email_owner_id
+        assert messages[0]["channel"] == "email"
+        assert "bereits ein Konto" in messages[0]["body"]
+        with h.Session(engine) as session:
+            assert session.query(db.Person).count() == 2
+            email_owner = session.get(db.Person, email_owner_id)
+            assert email_owner.email == "owner@example.test"
+            assert email_owner.phone is None
+    finally:
+        _restore_messages(originals)
+
+
 def test_active_and_verified_login_redirects_are_explicit():
     app, engine = _new_app()
     with h.Session(engine) as session:
@@ -562,6 +730,9 @@ def test_auth_markup_is_labelled_ordered_and_works_without_javascript():
         assert "<legend>Kontaktweg</legend>" in page
         assert 'for="email"' in page and 'id="email-help"' in page
         assert 'for="phone"' in page and 'id="phone-help"' in page
+        assert 'for="country-code">Ländervorwahl</label>' in page
+        assert page.index('id="email"') < page.index('id="phone"')
+        assert page.index('id="phone"') < page.index("<legend>Kontaktweg")
         assert 'name="action" value="request_code"' in page
         assert 'name="action" value="confirm_code"' in page
         assert "auth-button-secondary" in page
@@ -570,12 +741,31 @@ def test_auth_markup_is_labelled_ordered_and_works_without_javascript():
     assert login.index("CODE ANFORDERN") < login.index("ANMELDEN")
     assert register.index('id="name"') < register.index('id="team"')
     assert register.index('id="team"') < register.index('id="consent"')
-    assert register.index('id="consent"') < register.index("<legend>Kontaktweg")
+    assert register.index('id="consent"') < register.index('id="email"')
     assert register.index("CODE ANFORDERN") < register.index(
         "REGISTRIERUNG ABSCHLIESSEN"
     )
     assert "SMS-Code eingeben" not in login
     assert "<script" in login, "JavaScript may enhance but must not own submission"
+
+
+def test_auth_progressive_enhancement_and_responsive_css_contract():
+    with open(h.PROJECT_DIR + "/static/app.js", encoding="utf-8") as source:
+        javascript = source.read()
+    assert "function updateRouteAvailability()" in javascript
+    assert "emailInput.checkValidity()" in javascript
+    assert "input.disabled = locked || !validRoutes[input.value]" in javascript
+    assert "invalidSupplied || !selected" in javascript
+    assert "addEventListener(\"input\", updateRouteAvailability)" in javascript
+    assert "countrySelect.addEventListener(\"change\", updateRouteAvailability)" in javascript
+    assert "panel.hidden" not in javascript
+
+    with open(h.PROJECT_DIR + "/static/style.css", encoding="utf-8") as source:
+        css = source.read()
+    assert ".auth-card{width:min(100%,620px)" in css
+    assert ".auth-radio:has(input:disabled)" in css
+    assert "@media(max-width:700px)" in css
+    assert ".auth-radio-group,.auth-phone-group{grid-template-columns:1fr}" in css
 
 
 def test_person_contact_writes_validate_atomically_and_use_canonical_uniqueness():

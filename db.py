@@ -535,11 +535,11 @@ def register_person(
     email: str | None = None,
     phone: str | None = None,
 ) -> Person:
-    """Create an unverified registration with exactly one canonical contact."""
+    """Create an unverified registration with one or two canonical contacts."""
     email = contacts.normalize_email(email)
     phone = contacts.normalize_phone(phone)
-    if bool(email) == bool(phone):
-        raise ValueError("Genau eine Kontaktmöglichkeit ist erforderlich.")
+    if not email and not phone:
+        raise ValueError("Mindestens eine Kontaktmöglichkeit ist erforderlich.")
     person = Person(
         name=name.strip(),
         email=email,

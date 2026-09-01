@@ -251,10 +251,15 @@ def test_registration_state_reaches_active_roster_membership():
     with h.Session(engine) as session:
         team = db.get_or_create_team(session, "BL mD")
         person = db.register_person(
-            session, "Alex", team, email=" ALEX@Example.Test "
+            session,
+            "Alex",
+            team,
+            email=" ALEX@Example.Test ",
+            phone="+49 170 1234567",
         )
         assert person.account_status == db.ACCOUNT_REGISTERED
         assert person.email == "alex@example.test"
+        assert person.phone == "+491701234567"
         db.verify_person(session, person, datetime(2026, 8, 1, 12, 0))
         assert person.account_status == db.ACCOUNT_VERIFIED and person.verified_at
         db.approve_person(session, person, datetime(2026, 8, 2, 12, 0))
