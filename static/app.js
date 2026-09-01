@@ -185,3 +185,45 @@ document.querySelectorAll("[data-delete-person]").forEach((button) => {
     form.appendChild(token); document.body.appendChild(form); form.submit();
   });
 });
+
+document.querySelectorAll("[data-auth-form]").forEach((form) => {
+  const channelInputs = Array.from(form.querySelectorAll('input[name="channel"]'));
+  const countrySelect = form.querySelector('[name="country_code"]');
+  const customCountry = form.querySelector("[data-custom-country]");
+  const locked = form.dataset.authLocked === "true";
+
+  function updateContactFields() {
+    const selected = channelInputs.find((input) => input.checked);
+    if (!selected) return;
+    form.classList.add("auth-enhanced");
+    form.querySelectorAll("[data-contact-panel]").forEach((panel) => {
+      const active = panel.dataset.contactPanel === selected.value;
+      panel.hidden = !active;
+      panel.querySelectorAll("input, select").forEach((control) => {
+        if (!control.closest("[data-custom-country]")) {
+          control.disabled = locked || !active;
+        }
+      });
+    });
+    updateCustomCountry();
+  }
+
+  function updateCustomCountry() {
+    if (!countrySelect || !customCountry) return;
+    const smsSelected = form.querySelector('input[name="channel"][value="sms"]')?.checked;
+    const active = smsSelected && countrySelect.value === "custom";
+    customCountry.hidden = !active;
+    customCountry.querySelectorAll("input").forEach((input) => {
+      input.disabled = locked || !active;
+    });
+  }
+
+  channelInputs.forEach((input) => input.addEventListener("change", updateContactFields));
+  if (countrySelect) countrySelect.addEventListener("change", updateCustomCountry);
+  updateContactFields();
+
+  const invalid = form.querySelector('[aria-invalid="true"]:not(:disabled)');
+  const code = form.querySelector('input[name="code"]:not(:disabled)');
+  if (invalid) invalid.focus();
+  else if (code) code.focus();
+});

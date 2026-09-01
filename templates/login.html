@@ -1,15 +1,34 @@
 {% extends "base.html" %}
+{% from "_auth_fields.html" import contact_fields, challenge_step %}
 {% block title %}Anmelden{% endblock %}
 {% block content %}
-<section class="section">
-  <div class="section-header"><h2>Anmelden</h2></div>
-  <form class="form-card" method="post">
+<section class="section auth-shell">
+  <form class="auth-card auth-form" method="post" data-auth-form data-auth-locked="{{ 'true' if challenge else 'false' }}" novalidate>
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <p>Gib deine hinterlegte E-Mail-Adresse oder Telefonnummer ein.</p>
-    <div class="form-field"><label for="contact">E-Mail oder Telefon</label>
-      <input id="contact" name="contact" required autocomplete="username"></div>
-    <button class="submit-btn" type="submit">ANMELDELINK ANFORDERN</button>
-    <p><a href="{{ url_for('login_code') }}">SMS-Code eingeben</a></p>
+    <header class="auth-header">
+      <p class="auth-eyebrow">nuLigaHelper</p>
+      <h2>Anmelden</h2>
+      <p>Fordere einen Code über deinen hinterlegten Kontaktweg an.</p>
+    </header>
+
+    {% if request_message %}<div class="auth-message" role="status">{{ request_message }}</div>{% endif %}
+
+    <section class="auth-step {% if not challenge %}is-active{% endif %}" aria-labelledby="auth-step-one">
+      <div class="auth-step-heading">
+        <span class="auth-step-number">1</span>
+        <h3 id="auth-step-one">Kontakt bestätigen</h3>
+      </div>
+      {% if challenge %}
+      <p class="auth-help">Deine Kontaktangabe wurde angenommen. Im nächsten Schritt wird nur noch der signierte Vorgang verwendet.</p>
+      <a class="auth-change-link" href="{{ url_for('login') }}">Angaben ändern</a>
+      {% else %}
+      {{ contact_fields(values, errors, country_codes) }}
+      <button class="auth-button auth-button-secondary" type="submit"
+              name="action" value="request_code">CODE ANFORDERN</button>
+      {% endif %}
+    </section>
+
+    {{ challenge_step(challenge, masked_destination, errors, "ANMELDEN") }}
   </form>
 </section>
 {% endblock %}

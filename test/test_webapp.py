@@ -20,7 +20,15 @@ ENGINE = db.make_engine(_db_path)
 client = app.test_client()
 
 with h.Session(ENGINE) as session:
-    games = h.sync_sample_games(session)
+    games = h.sample_games()
+    original_1001 = next(game for game in games if game["game_nr"] == 1001)
+    games.append({
+        **original_1001,
+        "source_key": "test:1001-duplicate",
+        "time": "16:30",
+        "guest": "Duplicate Tournament Team",
+    })
+    db.sync_games(session, games, h.SEASON)
     game_data = next(game for game in games if game["game_nr"] == 1001)
     playing = session.query(db.Team).filter_by(name=game_data["ak"]).one()
     responsible = session.query(db.Team).filter(db.Team.id != playing.id).first()
@@ -36,8 +44,12 @@ with h.Session(ENGINE) as session:
     outsider = db.Person(name="Outside Test", team=unrelated)
     session.add_all([admin, alice, duplicate, outsider])
     session.commit()
-    game = session.query(db.Game).filter_by(game_nr=1001).one()
+    game = session.query(db.Game).filter_by(source_key="test:1001").one()
+    duplicate_game = session.query(db.Game).filter_by(
+        source_key="test:1001-duplicate"
+    ).one()
     GAME_ID = game.id
+    DUPLICATE_GAME_ID = duplicate_game.id
     ADMIN_ID, ALICE_ID, DUPLICATE_ID, OUTSIDER_ID = (
         admin.id, alice.id, duplicate.id, outsider.id
     )
@@ -137,11 +149,11 @@ def test_04_person_crud_uses_internal_identity():
         created = next(person for person in matches if person.email == "third@example.test")
         created_id = created.id
     _form(f"/personen/{created_id}/edit", {
-        "name": "Renamed Test", "team_id": SUPPORT_ID, "phone": "+49170999"
+        "name": "Renamed Test", "team_id": SUPPORT_ID, "phone": "+491701234568"
     })
     with h.Session(ENGINE) as session:
         person = session.get(db.Person, created_id)
-        assert person.name == "Renamed Test" and person.phone == "+49170999"
+        assert person.name == "Renamed Test" and person.phone == "+491701234568"
 
 
 def test_05_team_mv_and_statistics_are_available_to_admin():
@@ -171,6 +183,8 @@ def test_06_audit_is_newest_first_and_read_only():
     page = client.get("/audit").get_data(as_text=True)
     assert "Änderungsprotokoll" in page and "Alex Test" in page
     assert page.index("Newer Marker") < page.index("Older Marker")
+    assert "15:00 · BL mD · TuS Raubling – SBC Traunstein" in page
+    assert "16:30 · BL mD · TuS Raubling – Duplicate Tournament Team" in page
     assert "1001 marker" in client.get(
         f"/audit?game_id={GAME_ID}"
     ).get_data(as_text=True)
@@ -187,6 +201,8 @@ def test_07_guest_schedule_has_no_roster_payload():
     assert "third@example.test" not in page and "+4917" not in page
     assert "Renamed Test" not in page, "unassigned roster members must not leak"
     assert "Alex Test" in page, "assigned helper names remain public"
+    assert f'id="game-{GAME_ID}"' not in page
+    assert f'id="game-{DUPLICATE_GAME_ID}"' not in page
 
 
 def test_08_csrf_is_required_for_json_and_forms():

@@ -8,6 +8,8 @@
 from __future__ import annotations
 
 import logging
+
+import contact_validation as contacts
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
@@ -189,10 +191,13 @@ class Game(Base):
     """A single home game as scraped from nuLiga."""
 
     __tablename__ = "games"
-    __table_args__ = (UniqueConstraint("season_year", "game_nr", name="uq_season_gamenr"),)
+    __table_args__ = (
+        UniqueConstraint("season_year", "source_key", name="uq_season_source_key"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     season_year: Mapped[int] = mapped_column(Integer)
+    source_key: Mapped[str] = mapped_column(String(200))
     game_nr: Mapped[int] = mapped_column(Integer)
 
     day: Mapped[str | None] = mapped_column(String(20), nullable=True)
@@ -296,7 +301,7 @@ class AssignmentAudit(Base):
 
 
 class AuthToken(Base):
-    """Single-use nonce backing a signed e-mail token or SMS code."""
+    """Single-use nonce backing an auth code or a transitional legacy link."""
 
     __tablename__ = "auth_tokens"
 
@@ -319,6 +324,7 @@ class AuthToken(Base):
 
 @dataclass
 class ShiftEvent:
+    game_id: int
     game_nr: int
     old_date: str
     old_time: str
@@ -328,17 +334,26 @@ class ShiftEvent:
 
 @dataclass
 class RefereeEvent:
+    game_id: int
     game_nr: int
     date: str
     time: str
 
 
 @dataclass
+class GameEvent:
+    game_id: int
+    game_nr: int
+    source_key: str
+    ak: str
+
+
+@dataclass
 class SyncEvents:
     shifts: list[ShiftEvent] = field(default_factory=list)
     referee_alerts: list[RefereeEvent] = field(default_factory=list)
-    new_games: list[int] = field(default_factory=list)
-    removed_games: list[int] = field(default_factory=list)
+    new_games: list[GameEvent] = field(default_factory=list)
+    removed_games: list[GameEvent] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -356,28 +371,40 @@ def sync_games(session: Session, scraped: list[dict], season_year: int) -> SyncE
     - Games no longer present in the scrape stay untouched but are logged.
 
     `scraped` items must be dicts with keys:
-    day, date, time, hall, game_nr, ak, home, guest, score
+    source_key, day, date, time, hall, game_nr, ak, home, guest, score
     """
     events = SyncEvents()
+    source_keys = [rec.get("source_key") for rec in scraped]
+    if any(not key for key in source_keys):
+        raise ValueError("Jedes Spiel benötigt eine source_key.")
+    duplicate_keys = sorted({key for key in source_keys if source_keys.count(key) > 1})
+    if duplicate_keys:
+        conflicts = [rec for rec in scraped if rec.get("source_key") in duplicate_keys]
+        raise ValueError(
+            f"Mehrdeutige Spielidentität {duplicate_keys}: {conflicts!r}"
+        )
     existing = {
-        g.game_nr: g
+        g.source_key: g
         for g in session.scalars(select(Game).where(Game.season_year == season_year))
     }
+    new_games: list[Game] = []
 
     for rec in scraped:
+        source_key = rec["source_key"]
         game_nr = rec["game_nr"]
-        game = existing.get(game_nr)
+        game = existing.get(source_key)
 
         if game is None:
             game = Game(season_year=season_year, **rec)
             session.add(game)
-            events.new_games.append(game_nr)
+            new_games.append(game)
             logging.info(f"New game {game_nr} added to database")
             continue
 
         if (game.date != rec["date"]) or (game.time != rec["time"]):
             events.shifts.append(
                 ShiftEvent(
+                    game_id=game.id,
                     game_nr=game_nr,
                     old_date=game.date or "",
                     old_time=game.time or "",
@@ -387,21 +414,34 @@ def sync_games(session: Session, scraped: list[dict], season_year: int) -> SyncE
             )
         if ("§77" in rec["score"]) and ("§77" not in (game.score or "")):
             events.referee_alerts.append(
-                RefereeEvent(game_nr=game_nr, date=rec["date"], time=rec["time"])
+                RefereeEvent(
+                    game_id=game.id,
+                    game_nr=game_nr,
+                    date=rec["date"],
+                    time=rec["time"],
+                )
             )
 
         for f in ("day", "date", "time", "hall", "ak", "home", "guest", "score"):
             setattr(game, f, rec[f])
 
-    scraped_nrs = {rec["game_nr"] for rec in scraped}
-    for game_nr in sorted(set(existing) - scraped_nrs):
-        events.removed_games.append(game_nr)
-        logging.warning(f"Game {game_nr} not contained in online plan anymore")
+    scraped_keys = set(source_keys)
+    for source_key in sorted(set(existing) - scraped_keys):
+        game = existing[source_key]
+        events.removed_games.append(
+            GameEvent(game.id, game.game_nr, game.source_key, game.ak or "")
+        )
+        logging.warning(f"Game {game.game_nr} not contained in online plan anymore")
 
     # Teams mirror the scraped age classes ("ak") so they are always available
     for ak in sorted({rec["ak"] for rec in scraped if rec["ak"]}):
         get_or_create_team(session, ak)
 
+    session.flush()
+    events.new_games.extend(
+        GameEvent(game.id, game.game_nr, game.source_key, game.ak or "")
+        for game in new_games
+    )
     session.commit()
     logging.info(
         f"Sync completed: {len(events.new_games)} new, {len(events.shifts)} shifted, "
@@ -413,12 +453,6 @@ def sync_games(session: Session, scraped: list[dict], season_year: int) -> SyncE
 # ---------------------------------------------------------------------------
 # Query helpers
 # ---------------------------------------------------------------------------
-
-
-def get_game(session: Session, season_year: int, game_nr: int) -> Game | None:
-    return session.scalars(
-        select(Game).where(Game.season_year == season_year, Game.game_nr == game_nr)
-    ).first()
 
 
 def get_games_on_date(session: Session, date: str) -> list[Game]:
@@ -443,7 +477,7 @@ def game_sort_key(game: "Game") -> tuple:
         time_key = (int(time_parts[0]), int(time_parts[1]))
     else:
         time_key = (99, 99)
-    return (d, time_key, game.game_nr)
+    return (d, time_key, game.game_nr, game.id or 0)
 
 
 def get_or_create_person(session: Session, name: str, email: str | None = None,
@@ -501,7 +535,9 @@ def register_person(
     email: str | None = None,
     phone: str | None = None,
 ) -> Person:
-    """Create an unverified registration with exactly one contact channel."""
+    """Create an unverified registration with exactly one canonical contact."""
+    email = contacts.normalize_email(email)
+    phone = contacts.normalize_phone(phone)
     if bool(email) == bool(phone):
         raise ValueError("Genau eine Kontaktmöglichkeit ist erforderlich.")
     person = Person(

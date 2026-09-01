@@ -29,19 +29,41 @@ def test_duplicate_names_are_discovered_and_selected_by_id():
         team = db.get_support_team(session)
         first = db.Person(name="Same Name", team=team)
         second = db.Person(name="Same Name", team=team)
-        game = db.Game(
-            season_year=h.SEASON, game_nr=1234, date="31.12.2099"
+        first_game = db.Game(
+            season_year=h.SEASON, source_key="meeting:101", game_nr=1234,
+            date="30.12.2099", time="10:00", ak="GE", home="Home", guest="Team A",
         )
-        session.add_all([first, second, game])
+        second_game = db.Game(
+            season_year=h.SEASON, source_key="meeting:102", game_nr=1234,
+            date="31.12.2099", time="11:00", ak="GE", home="Home", guest="Team B",
+        )
+        session.add_all([first, second, first_game, second_game])
         session.commit()
         first_id, second_id = first.id, second.id
+        first_game_id, second_game_id = first_game.id, second_game.id
 
     listing = _run(path, "search-person", "Same")
     assert f"ID {first_id}" in listing and f"ID {second_id}" in listing
-    _run(path, "--season", h.SEASON, "assign", 1234, db.ROLE_TIMEKEEPER, second_id)
+    games = _run(path, "--season", h.SEASON, "list-games", "--number", 1234)
+    assert f"ID {first_game_id}" in games and f"ID {second_game_id}" in games
+    assert "Team A" in games and "Team B" in games
+    _run(
+        path, "--season", h.SEASON, "assign", second_game_id,
+        db.ROLE_TIMEKEEPER, second_id,
+    )
     with h.Session(engine) as session:
         assignment = session.query(db.Assignment).one()
-        assert assignment.person_id == second_id
+        assert assignment.person_id == second_id and assignment.game_id == second_game_id
+    _run(path, "--season", h.SEASON, "set-jteam", first_game_id, "Supporter")
+    with h.Session(engine) as session:
+        assert session.get(db.Game, first_game_id).team_id is not None
+        assert session.get(db.Game, second_game_id).team_id is None
+    _run(
+        path, "--season", h.SEASON, "unassign", second_game_id,
+        db.ROLE_TIMEKEEPER, second_id,
+    )
+    with h.Session(engine) as session:
+        assert session.query(db.Assignment).count() == 0
 
 
 def test_grant_admin_changes_the_derived_account_fact():
@@ -65,6 +87,35 @@ def test_grant_admin_changes_the_derived_account_fact():
     client = app.test_client()
     h.sign_in(client, person_id)
     assert client.get("/audit").status_code == 200
+
+
+def test_contact_preflight_reports_issues_without_writing():
+    path = os.path.join(h._TEST_DIR, f"cli-{next(tempfile._get_candidate_names())}.db")
+    engine = db.make_engine(path)
+    db.init_db(engine)
+    with h.Session(engine) as session:
+        session.add_all([
+            db.Person(name="Changed", email=" HELPER@Example.Test "),
+            db.Person(name="Collision", email="helper@example.test"),
+            db.Person(name="Invalid", phone="not-a-number"),
+        ])
+        session.commit()
+        before = [
+            (person.id, person.email, person.phone)
+            for person in session.query(db.Person).order_by(db.Person.id)
+        ]
+
+    output = _run(path, "contact-preflight")
+    assert "CHANGED" in output
+    assert "COLLISION" in output
+    assert "INVALID" in output
+
+    with h.Session(engine) as session:
+        after = [
+            (person.id, person.email, person.phone)
+            for person in session.query(db.Person).order_by(db.Person.id)
+        ]
+    assert after == before, "preflight must never canonicalize or mutate records"
 
 
 def test_launchers_validate_the_mandatory_secret():

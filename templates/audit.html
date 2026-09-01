@@ -4,7 +4,7 @@
 <section class="section">
   <div class="section-header"><h2>Änderungsprotokoll</h2></div>
   <form method="get" class="form-card">
-    <label>Spiel <select name="game_id"><option value="">Alle</option>{% for game in games %}<option value="{{ game.id }}" {% if selected_game == game.id %}selected{% endif %}>{{ game.game_nr }} · {{ game.date }}</option>{% endfor %}</select></label>
+    <label>Spiel <select name="game_id"><option value="">Alle</option>{% for game in games %}<option value="{{ game.id }}" {% if selected_game == game.id %}selected{% endif %}>{{ game.game_nr }} · {{ game.date }} {{ game.time or '' }} · {{ game.ak or '?' }} · {{ game.home or '?' }} – {{ game.guest or '?' }}</option>{% endfor %}</select></label>
     <label>Person <select name="person_id"><option value="">Alle</option>{% for person in persons %}<option value="{{ person.id }}" {% if selected_person == person.id %}selected{% endif %}>{{ person.name }} · {{ person.team.name if person.team else 'ohne Team' }}</option>{% endfor %}</select></label>
     <button class="btn btn-primary">Filtern</button>
   </form>

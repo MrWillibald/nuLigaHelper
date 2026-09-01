@@ -47,7 +47,7 @@ def _setup(fully_assigned: bool = False):
     session = h.Session(engine)
     h.sync_sample_games(session)
 
-    game = session.query(db.Game).filter_by(game_nr=1001).one()
+    game = session.query(db.Game).filter_by(source_key="test:1001").one()
     team = session.query(db.Team).filter_by(name="BL mD").one()  # own ak team
     game.team_id = team.id
     game.jteam = "BL mD"
@@ -122,7 +122,8 @@ def test_pre_notifications_skip_sale_roles_of_the_first_game():
 
 def test_shift_notifications_reach_all_assigned_helpers_except_missing_contacts():
     session, game, n, rec = _setup()
-    shifts = [db.ShiftEvent(game_nr=1001, old_date="04.09.2026", old_time="15:00",
+    shifts = [db.ShiftEvent(game_id=game.id, game_nr=1001,
+                            old_date="04.09.2026", old_time="15:00",
                             new_date="06.09.2026", new_time="18:00")]
     # helper roles only (no MV): 5 valid contacts, Caro has none
     assert n.notify_shifts(shifts) == 5
@@ -130,10 +131,66 @@ def test_shift_notifications_reach_all_assigned_helpers_except_missing_contacts(
 
 def test_referee_alert_targets_support_mail_and_sms():
     session, game, n, rec = _setup()
-    event = db.RefereeEvent(game_nr=1001, date=GAME_DATE, time="15:00")
+    event = db.RefereeEvent(
+        game_id=game.id, game_nr=1001, date=GAME_DATE, time="15:00"
+    )
     # config defines two targets (one phone, one e-mail); the MV only
     # has a phone number and is therefore not appended to the mail targets
     assert n.notify_referee_alert(event) == 2
+
+
+def test_duplicate_number_events_notify_only_the_exact_game():
+    engine = h.make_engine()
+    session = h.Session(engine)
+    rows = [
+        {
+            "source_key": "meeting:101", "day": "Sa", "date": GAME_DATE,
+            "time": "10:00", "hall": 280340, "game_nr": 555, "ak": "BL mD",
+            "home": "TuS Raubling", "guest": "Team A", "score": "",
+        },
+        {
+            "source_key": "meeting:102", "day": "Sa", "date": GAME_DATE,
+            "time": "11:00", "hall": 280340, "game_nr": 555, "ak": "BL mC",
+            "home": "TuS Raubling", "guest": "Team B", "score": "",
+        },
+    ]
+    db.sync_games(session, rows, h.SEASON)
+    first = session.query(db.Game).filter_by(source_key="meeting:101").one()
+    second = session.query(db.Game).filter_by(source_key="meeting:102").one()
+    first_helper = db.Person(name="First Helper", email="first@x.de")
+    second_helper = db.Person(name="Second Helper", email="second@x.de")
+    first_team = db.get_or_create_team(session, "First Team")
+    second_team = db.get_or_create_team(session, "Second Team")
+    first_mv = db.Person(name="First MV", email="first-mv@x.de", team=first_team)
+    second_mv = db.Person(name="Second MV", email="second-mv@x.de", team=second_team)
+    session.add_all([first_helper, second_helper, first_mv, second_mv])
+    session.flush()
+    first.team, second.team = first_team, second_team
+    db.set_team_mv(session, first_team, first_mv)
+    db.set_team_mv(session, second_team, second_mv)
+    db.assign_person(session, first, first_helper, db.ROLE_TIMEKEEPER)
+    db.assign_person(session, second, second_helper, db.ROLE_TIMEKEEPER)
+    session.commit()
+
+    n = notifier.Notifier(h.load_club_config(), session, h.SEASON)
+    recorder = TextRecorder()
+    n.send_Mail, n.send_SMS = recorder.mail, recorder.sms
+    shift = db.ShiftEvent(
+        game_id=first.id, game_nr=555, old_date=GAME_DATE, old_time="10:00",
+        new_date="06.09.2026", new_time="12:00",
+    )
+    assert n.notify_shifts([shift]) == 1
+    assert "First Helper" in recorder.all_text()
+    assert "Second Helper" not in recorder.all_text()
+
+    recorder = TextRecorder()
+    n.send_Mail, n.send_SMS = recorder.mail, recorder.sms
+    alert = db.RefereeEvent(
+        game_id=second.id, game_nr=555, date=GAME_DATE, time="11:00"
+    )
+    assert n.notify_referee_alert(alert) == 3
+    recipients = " ".join(address for address, _, _ in recorder.mails)
+    assert "Second MV" in recipients and "First MV" not in recipients
 
 
 if __name__ == "__main__":

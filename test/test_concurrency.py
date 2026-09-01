@@ -8,7 +8,7 @@ def test_two_stale_claims_keep_the_first_winner():
     engine = h.make_engine()
     with h.Session(engine) as setup:
         games = h.sync_sample_games(setup)
-        game = setup.query(db.Game).filter_by(game_nr=games[0]["game_nr"]).one()
+        game = setup.query(db.Game).filter_by(source_key=games[0]["source_key"]).one()
         first = db.Person(name="First")
         second = db.Person(name="Second")
         setup.add_all([first, second])
@@ -51,7 +51,7 @@ def test_stale_release_does_not_remove_replacement_or_write_audit():
     engine = h.make_engine()
     with h.Session(engine) as setup:
         games = h.sync_sample_games(setup)
-        game = setup.query(db.Game).filter_by(game_nr=games[0]["game_nr"]).one()
+        game = setup.query(db.Game).filter_by(source_key=games[0]["source_key"]).one()
         first = db.Person(name="First")
         second = db.Person(name="Second")
         setup.add_all([first, second])

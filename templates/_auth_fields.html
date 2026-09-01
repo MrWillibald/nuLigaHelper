@@ -1,0 +1,93 @@
+{% macro field_error(field, errors) -%}
+  {% if errors.get(field) %}
+  <span class="auth-error" id="{{ field }}-error" role="alert">{{ errors[field] }}</span>
+  {% endif %}
+{%- endmacro %}
+
+{% macro contact_fields(values, errors, country_codes, locked=false) %}
+<fieldset class="auth-contact" aria-describedby="channel-help{% if errors.get('channel') %} channel-error{% endif %}">
+  <legend>Kontaktweg</legend>
+  <p class="auth-help" id="channel-help">Wähle aus, wohin wir deinen sechsstelligen Code senden sollen.</p>
+  <div class="auth-radio-group">
+    <label class="auth-radio" for="channel-email">
+      <input id="channel-email" name="channel" type="radio" value="email"
+             {% if values.channel != 'sms' %}checked{% endif %} {% if locked %}disabled{% endif %}>
+      <span><strong>E-Mail</strong><small>Code per E-Mail erhalten</small></span>
+    </label>
+    <label class="auth-radio" for="channel-sms">
+      <input id="channel-sms" name="channel" type="radio" value="sms"
+             {% if values.channel == 'sms' %}checked{% endif %} {% if locked %}disabled{% endif %}>
+      <span><strong>SMS</strong><small>Code per SMS erhalten</small></span>
+    </label>
+  </div>
+  {{ field_error('channel', errors) }}
+</fieldset>
+
+<div class="auth-field" data-contact-panel="email">
+  <label for="email">E-Mail-Adresse</label>
+  <p class="auth-help" id="email-help">Zum Beispiel name@beispiel.de.</p>
+  <input id="email" name="email" type="email" maxlength="200"
+         autocomplete="email" value="{{ values.email }}"
+         aria-describedby="email-help{% if errors.get('email') %} email-error{% endif %}"
+         {% if errors.get('email') %}aria-invalid="true"{% endif %}
+         {% if locked %}disabled{% endif %}>
+  {{ field_error('email', errors) }}
+</div>
+
+<div class="auth-field" data-contact-panel="sms">
+  <label for="phone">Mobilnummer</label>
+  <p class="auth-help" id="phone-help">Wähle die Ländervorwahl und gib deine nationale Nummer ein.</p>
+  <div class="auth-phone-group">
+    <select id="country-code" name="country_code" aria-label="Ländervorwahl"
+            {% if locked %}disabled{% endif %}>
+      {% for code, label in country_codes %}
+      <option value="{{ code }}" {% if values.country_code == code %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <input id="phone" name="phone" type="tel" maxlength="60"
+           autocomplete="tel-national" inputmode="tel" value="{{ values.phone }}"
+           aria-describedby="phone-help{% if errors.get('phone') %} phone-error{% endif %}"
+           {% if errors.get('phone') %}aria-invalid="true"{% endif %}
+           {% if locked %}disabled{% endif %}>
+  </div>
+  <div class="auth-custom-prefix" data-custom-country>
+    <label for="custom-country-code">Andere Ländervorwahl</label>
+    <input id="custom-country-code" name="custom_country_code" inputmode="tel"
+           placeholder="+…" value="{{ values.custom_country_code }}"
+           aria-describedby="{% if errors.get('country_code') %}country_code-error{% endif %}"
+           {% if errors.get('country_code') %}aria-invalid="true"{% endif %}
+           {% if locked %}disabled{% endif %}>
+  </div>
+  {{ field_error('country_code', errors) }}
+  {{ field_error('phone', errors) }}
+</div>
+{% endmacro %}
+
+{% macro challenge_step(challenge, masked_destination, errors, completion_label) %}
+<section class="auth-step {% if challenge %}is-active{% endif %}" aria-labelledby="auth-step-two">
+  <div class="auth-step-heading">
+    <span class="auth-step-number">2</span>
+    <h3 id="auth-step-two">Code bestätigen</h3>
+  </div>
+  {% if challenge %}
+  <p class="auth-help">Gib den Code ein, den wir an <strong>{{ masked_destination }}</strong> gesendet haben.</p>
+  <input type="hidden" name="challenge" value="{{ challenge }}">
+  {% else %}
+  <p class="auth-help">Fordere zuerst einen Code an. Danach kannst du ihn hier eingeben.</p>
+  {% endif %}
+  <div class="auth-field">
+    <label for="code">Sechsstelliger Code</label>
+    <p class="auth-help" id="code-help">Der Code ist 15 Minuten gültig und kann nur einmal verwendet werden.</p>
+    <input id="code" name="code" inputmode="numeric" autocomplete="one-time-code"
+           pattern="[0-9]{6}" maxlength="6"
+           aria-describedby="code-help{% if errors.get('code') %} code-error{% endif %}"
+           {% if errors.get('code') %}aria-invalid="true"{% endif %}
+           {% if not challenge %}disabled{% else %}required autofocus{% endif %}>
+    {{ field_error('code', errors) }}
+  </div>
+  <button class="auth-button auth-button-primary" type="submit"
+          name="action" value="confirm_code" {% if not challenge %}disabled{% endif %}>
+    {{ completion_label }}
+  </button>
+</section>
+{% endmacro %}

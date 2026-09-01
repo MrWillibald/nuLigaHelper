@@ -1,8 +1,25 @@
 {% extends "base.html" %}
 {% block title %}Konto{% endblock %}
 {% block content %}
-<section class="section">
-  <div class="section-header"><h2>nuLigaHelper</h2></div>
-  <div class="form-card"><p>{{ message }}</p><p><a href="{{ url_for('schedule') }}">Zum Heimspielplan</a></p></div>
+<section class="section auth-shell">
+  <article class="auth-card auth-status-card">
+    <header class="auth-header">
+      <p class="auth-eyebrow">nuLigaHelper</p>
+      <h2>Kontostatus</h2>
+      <p>Information zu deiner Anmeldung oder Registrierung.</p>
+    </header>
+    <div class="auth-status-body">
+      <div class="auth-status-icon" aria-hidden="true">i</div>
+      <p class="auth-status-message" role="status">{{ message }}</p>
+      {% if viewer and viewer.account_status == 'verified' %}
+      <form method="post" action="{{ url_for('logout') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button class="auth-button auth-button-secondary" type="submit">Abmelden</button>
+      </form>
+      {% else %}
+      <a class="auth-button auth-button-secondary auth-status-action" href="{{ url_for('schedule') }}">Zum Heimspielplan</a>
+      {% endif %}
+    </div>
+  </article>
 </section>
 {% endblock %}

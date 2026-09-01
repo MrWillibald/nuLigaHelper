@@ -16,6 +16,7 @@ from collections import defaultdict, deque
 from datetime import datetime, timedelta
 
 import common
+import contact_validation as contacts
 import db
 import notifier
 from flask import (
@@ -45,6 +46,16 @@ SLOT_LABELS = [
     ("Verkauf 2", db.ROLE_SALE),
     ("Ordnungsdienst", db.ROLE_SECURITY),
     ("Reinigung", db.ROLE_CLEANING),
+]
+
+COUNTRY_CODES = [
+    ("+49", "Deutschland (+49)"),
+    ("+43", "Österreich (+43)"),
+    ("+41", "Schweiz (+41)"),
+    ("+39", "Italien (+39)"),
+    ("+33", "Frankreich (+33)"),
+    ("+420", "Tschechien (+420)"),
+    ("custom", "Andere Ländervorwahl"),
 ]
 
 
@@ -203,19 +214,81 @@ def create_app() -> Flask:
             "csrf_token": session["csrf_token"],
         }
 
-    def _contact_person(contact: str, statuses: tuple[str, ...] | None = None):
-        query = get_session().query(db.Person).filter(
-            or_(db.Person.email == contact, db.Person.phone == contact)
-        )
+    def _contact_person(
+        channel: str,
+        contact: str,
+        statuses: tuple[str, ...] | None = None,
+    ) -> db.Person | None:
+        column = db.Person.email if channel == "email" else db.Person.phone
+        query = get_session().query(db.Person).filter(column == contact)
         if statuses:
             query = query.filter(db.Person.account_status.in_(statuses))
         return query.order_by(db.Person.id).first()
 
-    def _contact_in_use(contact: str | None, exclude_person_id: int | None = None) -> bool:
+    def _contact_in_use(
+        channel: str,
+        contact: str | None,
+        exclude_person_id: int | None = None,
+    ) -> bool:
         if not contact:
             return False
-        person = _contact_person(contact)
+        person = _contact_person(channel, contact)
         return person is not None and person.id != exclude_person_id
+
+    def _auth_values() -> dict[str, str]:
+        country_code = (request.form.get("country_code") or "+49").strip()
+        return {
+            "channel": (request.form.get("channel") or "email").strip(),
+            "email": (request.form.get("email") or "").strip(),
+            "phone": (request.form.get("phone") or "").strip(),
+            "country_code": country_code,
+            "custom_country_code": (
+                request.form.get("custom_country_code") or ""
+            ).strip(),
+        }
+
+    def _validated_auth_contact(
+        values: dict[str, str],
+    ) -> tuple[str | None, str | None, dict[str, str]]:
+        channel = values["channel"]
+        try:
+            if channel == "email":
+                return (
+                    channel,
+                    contacts.normalize_email(values["email"], required=True),
+                    {},
+                )
+            if channel == "sms":
+                calling_code = (
+                    values["custom_country_code"]
+                    if values["country_code"] == "custom"
+                    else values["country_code"]
+                )
+                return (
+                    channel,
+                    contacts.normalize_phone(
+                        values["phone"], calling_code, required=True
+                    ),
+                    {},
+                )
+            return None, None, {
+                "channel": "Bitte wähle E-Mail oder SMS als Kontaktweg."
+            }
+        except contacts.ContactValidationError as exc:
+            return channel, None, {exc.field_name: exc.message}
+
+    def _normalized_person_contacts() -> tuple[str | None, str | None, dict[str, str]]:
+        errors: dict[str, str] = {}
+        email = phone = None
+        try:
+            email = contacts.normalize_email(request.form.get("email"))
+        except contacts.ContactValidationError as exc:
+            errors[exc.field_name] = exc.message
+        try:
+            phone = contacts.normalize_phone(request.form.get("phone"))
+        except contacts.ContactValidationError as exc:
+            errors[exc.field_name] = exc.message
+        return email, phone, errors
 
     def _rate_allowed(key: str, limit: int, window_minutes: int = 15) -> bool:
         now = datetime.now()
@@ -236,50 +309,131 @@ def create_app() -> Flask:
             common.season_year_for(common.effective_today()),
         )
 
-    def _issue_token(person: db.Person, purpose: str) -> tuple[str, str | None]:
+    def _challenge_payload(
+        nonce: str, purpose: str, channel: str, masked_destination: str
+    ) -> str:
+        return serializer.dumps({
+            "nonce": nonce,
+            "purpose": purpose,
+            "channel": channel,
+            "masked_destination": masked_destination,
+        })
+
+    def _decode_challenge(
+        signed_challenge: str | None, purpose: str
+    ) -> dict | None:
+        if not signed_challenge:
+            return None
+        try:
+            payload = serializer.loads(signed_challenge, max_age=15 * 60)
+        except (BadSignature, SignatureExpired):
+            return None
+        if (
+            payload.get("purpose") != purpose
+            or not isinstance(payload.get("nonce"), str)
+            or payload.get("channel") not in {"email", "sms"}
+        ):
+            return None
+        return payload
+
+    def _issue_challenge(
+        person: db.Person, purpose: str, channel: str, destination: str
+    ) -> tuple[str, str]:
         now = datetime.now()
+        get_session().query(db.AuthToken).filter(
+            db.AuthToken.person_id == person.id,
+            db.AuthToken.purpose == purpose,
+            db.AuthToken.used_at.is_(None),
+        ).update({db.AuthToken.used_at: now}, synchronize_session=False)
         nonce = secrets.token_urlsafe(24)
-        code = f"{secrets.randbelow(1_000_000):06d}" if not person.email else None
-        record = db.AuthToken(
+        code = f"{secrets.randbelow(1_000_000):06d}"
+        get_session().add(db.AuthToken(
             nonce=nonce,
             code=code,
             purpose=purpose,
             person=person,
             issued_at=now,
             expires_at=now + timedelta(minutes=15),
-        )
-        get_session().add(record)
+        ))
         get_session().commit()
-        return serializer.dumps({"nonce": nonce, "purpose": purpose}), code
+        return (
+            _challenge_payload(
+                nonce, purpose, channel, contacts.mask_contact(channel, destination)
+            ),
+            code,
+        )
 
-    def _consume_token(
-        purpose: str,
-        signed_token: str | None = None,
-        code: str | None = None,
-        person: db.Person | None = None,
-    ) -> db.Person | None:
-        nonce = None
-        if signed_token:
-            try:
-                payload = serializer.loads(signed_token, max_age=15 * 60)
-            except (BadSignature, SignatureExpired):
-                return None
-            if payload.get("purpose") != purpose:
-                return None
-            nonce = payload.get("nonce")
-        query = get_session().query(db.AuthToken).filter(
+    def _dummy_challenge(
+        purpose: str, channel: str, destination: str
+    ) -> str:
+        return _challenge_payload(
+            secrets.token_urlsafe(24),
+            purpose,
+            channel,
+            contacts.mask_contact(channel, destination),
+        )
+
+    def _challenge_record(
+        purpose: str, signed_challenge: str | None
+    ) -> tuple[dict | None, db.AuthToken | None]:
+        payload = _decode_challenge(signed_challenge, purpose)
+        if payload is None:
+            return None, None
+        record = get_session().query(db.AuthToken).filter(
+            db.AuthToken.nonce == payload["nonce"],
             db.AuthToken.purpose == purpose,
             db.AuthToken.used_at.is_(None),
-        )
-        if nonce:
-            query = query.filter(db.AuthToken.nonce == nonce)
-        else:
-            if not code or person is None:
-                return None
-            query = query.filter(
-                db.AuthToken.code == code, db.AuthToken.person_id == person.id
+        ).first()
+        return payload, record
+
+    def _consume_challenge(
+        purpose: str, signed_challenge: str | None, code: str | None
+    ) -> db.Person | None:
+        if not code or len(code) != 6 or not code.isdigit():
+            return None
+        _, record = _challenge_record(purpose, signed_challenge)
+        now = datetime.now()
+        if (
+            record is None
+            or record.code != code
+            or record.expires_at < now
+        ):
+            return None
+        person_id = record.person_id
+        consumed = get_session().execute(
+            update(db.AuthToken)
+            .where(
+                db.AuthToken.id == record.id,
+                db.AuthToken.used_at.is_(None),
+                db.AuthToken.expires_at >= now,
+                db.AuthToken.code == code,
             )
-        record = query.first()
+            .values(used_at=now)
+        )
+        if consumed.rowcount != 1:
+            get_session().rollback()
+            return None
+        get_session().commit()
+        return get_session().get(db.Person, person_id)
+
+    def _consume_legacy_link(
+        purpose: str, signed_token: str
+    ) -> db.Person | None:
+        try:
+            payload = serializer.loads(signed_token, max_age=15 * 60)
+        except (BadSignature, SignatureExpired):
+            return None
+        if (
+            payload.get("purpose") != purpose
+            or not isinstance(payload.get("nonce"), str)
+        ):
+            return None
+        record = get_session().query(db.AuthToken).filter(
+            db.AuthToken.nonce == payload["nonce"],
+            db.AuthToken.purpose == purpose,
+            db.AuthToken.code.is_(None),
+            db.AuthToken.used_at.is_(None),
+        ).first()
         now = datetime.now()
         if record is None or record.expires_at < now:
             return None
@@ -288,6 +442,7 @@ def create_app() -> Flask:
             update(db.AuthToken)
             .where(
                 db.AuthToken.id == record.id,
+                db.AuthToken.code.is_(None),
                 db.AuthToken.used_at.is_(None),
                 db.AuthToken.expires_at >= now,
             )
@@ -298,23 +453,6 @@ def create_app() -> Flask:
             return None
         get_session().commit()
         return get_session().get(db.Person, person_id)
-
-    def _send_token(person: db.Person, purpose: str) -> bool:
-        token, code = _issue_token(person, purpose)
-        if person.email:
-            endpoint = "verify_registration" if purpose == "verify" else "login_token"
-            link = url_for(endpoint, token=token, _external=True)
-            mail_body = f"Hallo {person.name},\n\nöffne innerhalb von 15 Minuten diesen Link:\n{link}"
-            sms_body = ""
-        else:
-            mail_body = ""
-            sms_body = f"Dein nuLigaHelper-Code lautet {code}. Er gilt 15 Minuten."
-        return _safe_account_message(
-            person,
-            "Anmeldung nuLigaHelper",
-            mail_body,
-            sms_body,
-        )
 
     def _safe_account_message(
         person: db.Person, subject: str, mail_body: str, sms_body: str
@@ -329,75 +467,200 @@ def create_app() -> Flask:
             logging.exception("Account message delivery failed for person ID %s", person.id)
             return False
 
-    def _generic_sent_response():
-        return render_template("message.html", message=(
-            "Falls die Angaben bekannt sind, wurde eine Nachricht versendet."
-        ))
+    def _safe_account_message_via(
+        person: db.Person, channel: str, subject: str, body: str
+    ) -> bool:
+        try:
+            return bool(
+                _account_notifier().send_account_message_via(
+                    person, channel, subject, body
+                )
+            )
+        except Exception:
+            logging.exception(
+                "Account message delivery failed for person ID %s via %s",
+                person.id,
+                channel,
+            )
+            return False
+
+    def _send_challenge(
+        person: db.Person,
+        purpose: str,
+        channel: str,
+        destination: str,
+    ) -> str:
+        signed_challenge, code = _issue_challenge(
+            person, purpose, channel, destination
+        )
+        action = "Registrierung" if purpose == "verify" else "Anmeldung"
+        body = (
+            f"Hallo {person.name},\n\n"
+            f"dein Code für die {action} bei nuLigaHelper lautet {code}. "
+            "Er gilt 15 Minuten."
+        )
+        _safe_account_message_via(
+            person, channel, f"{action} nuLigaHelper", body
+        )
+        return signed_challenge
+
+    def _render_login(
+        *,
+        values: dict[str, str] | None = None,
+        errors: dict[str, str] | None = None,
+        challenge: str | None = None,
+        message: str | None = None,
+    ):
+        payload = _decode_challenge(challenge, "login")
+        return render_template(
+            "login.html",
+            values=values or {
+                "channel": "email",
+                "email": "",
+                "phone": "",
+                "country_code": "+49",
+                "custom_country_code": "",
+            },
+            errors=errors or {},
+            challenge=challenge if payload else None,
+            masked_destination=(
+                payload.get("masked_destination") if payload else None
+            ),
+            request_message=message,
+            country_codes=COUNTRY_CODES,
+        )
+
+    def _render_register(
+        *,
+        values: dict[str, str] | None = None,
+        errors: dict[str, str] | None = None,
+        challenge: str | None = None,
+        message: str | None = None,
+    ):
+        payload = _decode_challenge(challenge, "verify")
+        initial = {
+            "name": "",
+            "team_id": "",
+            "consent": "",
+            "channel": "email",
+            "email": "",
+            "phone": "",
+            "country_code": "+49",
+            "custom_country_code": "",
+        }
+        return render_template(
+            "register.html",
+            teams=db.get_all_teams(get_session()),
+            values=values or initial,
+            errors=errors or {},
+            challenge=challenge if payload else None,
+            masked_destination=(
+                payload.get("masked_destination") if payload else None
+            ),
+            request_message=message,
+            country_codes=COUNTRY_CODES,
+        )
+
+    def _establish_session(person: db.Person):
+        session.clear()
+        session["person_id"] = person.id
+        session.permanent = True
 
     @app.route("/login", methods=["GET", "POST"])
     def login():
         if request.method == "GET":
-            return render_template("login.html")
-        contact = (request.form.get("contact") or "").strip()
-        client_key = f"client:{request.remote_addr or 'unknown'}"
-        client_allowed = _rate_allowed(client_key, 10)
-        person = _contact_person(
-            contact, (db.ACCOUNT_VERIFIED, db.ACCOUNT_ACTIVE)
+            return _render_login()
+        action = request.form.get("action") or "request_code"
+        if action == "reset":
+            return redirect(url_for("login"))
+        if action == "confirm_code":
+            signed_challenge = request.form.get("challenge")
+            _, record = _challenge_record("login", signed_challenge)
+            client_allowed = _rate_allowed(
+                f"confirm-client:{request.remote_addr or 'unknown'}", 10
+            )
+            person_allowed = record is not None and _rate_allowed(
+                f"confirm-person:{record.person_id}", 5
+            )
+            person = (
+                _consume_challenge(
+                    "login",
+                    signed_challenge,
+                    (request.form.get("code") or "").strip(),
+                )
+                if client_allowed and person_allowed
+                else None
+            )
+            if person is None or person.account_status not in (
+                db.ACCOUNT_VERIFIED,
+                db.ACCOUNT_ACTIVE,
+            ):
+                return _render_login(
+                    errors={"code": "Code ungültig oder abgelaufen."},
+                    challenge=signed_challenge,
+                )
+            _establish_session(person)
+            return redirect(
+                url_for("schedule")
+                if person.account_status == db.ACCOUNT_ACTIVE
+                else url_for("registration_status")
+            )
+
+        values = _auth_values()
+        channel, destination, errors = _validated_auth_contact(values)
+        if errors:
+            return _render_login(values=values, errors=errors)
+        assert channel is not None and destination is not None
+        client_allowed = _rate_allowed(
+            f"login-client:{request.remote_addr or 'unknown'}", 10
         )
+        person = _contact_person(
+            channel,
+            destination,
+            (db.ACCOUNT_VERIFIED, db.ACCOUNT_ACTIVE),
+        )
+        challenge = None
         if person is not None:
-            channel_limit = 2 if not person.email else 3
-            person_allowed = _rate_allowed(f"person:{person.id}", channel_limit)
+            channel_limit = 2 if channel == "sms" else 3
+            person_allowed = _rate_allowed(
+                f"login-person:{person.id}:{channel}", channel_limit
+            )
             if client_allowed and person_allowed:
-                _send_token(person, "login")
-        return _generic_sent_response()
+                challenge = _send_challenge(
+                    person, "login", channel, destination
+                )
+        if challenge is None:
+            challenge = _dummy_challenge("login", channel, destination)
+        return _render_login(
+            values=values,
+            challenge=challenge,
+            message=(
+                "Falls die Angaben bekannt sind, wurde ein sechsstelliger "
+                "Code versendet."
+            ),
+        )
 
     @app.route("/login/token/<token>")
     def login_token(token: str):
-        person = _consume_token("login", signed_token=token)
+        person = _consume_legacy_link("login", token)
         if person is None or person.account_status not in (
             db.ACCOUNT_VERIFIED,
             db.ACCOUNT_ACTIVE,
         ):
-            return render_template("message.html", message="Anmeldung ungültig oder abgelaufen."), 400
-        session.clear()
-        session["person_id"] = person.id
-        session.permanent = True
-        if person.account_status == db.ACCOUNT_VERIFIED:
-            return redirect(url_for("registration_status"))
-        return redirect(url_for("schedule"))
+            return render_template(
+                "message.html",
+                message="Anmeldung ungültig oder abgelaufen.",
+            ), 400
+        _establish_session(person)
+        return redirect(
+            url_for("schedule")
+            if person.account_status == db.ACCOUNT_ACTIVE
+            else url_for("registration_status")
+        )
 
     @app.route("/login/code", methods=["GET", "POST"])
     def login_code():
-        if request.method == "GET":
-            return render_template("code.html", purpose="login")
-        contact = (request.form.get("contact") or "").strip()
-        person = _contact_person(
-            contact, (db.ACCOUNT_VERIFIED, db.ACCOUNT_ACTIVE)
-        )
-        client_allowed = _rate_allowed(
-            f"verify-client:{request.remote_addr or 'unknown'}", 10
-        )
-        person_allowed = person is not None and _rate_allowed(
-            f"verify-person:{person.id}", 5
-        )
-        verified = (
-            _consume_token(
-                "login", code=(request.form.get("code") or "").strip(), person=person
-            )
-            if client_allowed and person_allowed
-            else None
-        )
-        if verified is None:
-            flash("Code ungültig oder abgelaufen.", "error")
-            return redirect(url_for("login_code"))
-        session.clear()
-        session["person_id"] = verified.id
-        session.permanent = True
-        return redirect(
-            url_for("schedule")
-            if verified.account_status == db.ACCOUNT_ACTIVE
-            else url_for("registration_status")
-        )
+        return redirect(url_for("login"), code=303)
 
     @app.post("/logout")
     def logout():
@@ -407,85 +670,134 @@ def create_app() -> Flask:
     @app.route("/registrieren", methods=["GET", "POST"])
     def register():
         if request.method == "GET":
-            return render_template("register.html", teams=db.get_all_teams(get_session()))
-        name = (request.form.get("name") or "").strip()
-        email = (request.form.get("email") or "").strip() or None
-        phone = (request.form.get("phone") or "").strip() or None
-        if not name or bool(email) == bool(phone):
-            flash("Name und genau ein Kontaktweg sind erforderlich.", "error")
+            return _render_register()
+        action = request.form.get("action") or "request_code"
+        if action == "reset":
             return redirect(url_for("register"))
-        if request.form.get("consent") != "yes":
-            flash("Die Zustimmung zur Veröffentlichung des Namens ist erforderlich.", "error")
-            return redirect(url_for("register"))
-        team = get_session().get(db.Team, request.form.get("team_id"))
+        if action == "confirm_code":
+            signed_challenge = request.form.get("challenge")
+            _, record = _challenge_record("verify", signed_challenge)
+            client_allowed = _rate_allowed(
+                f"confirm-client:{request.remote_addr or 'unknown'}", 10
+            )
+            person_allowed = record is not None and _rate_allowed(
+                f"confirm-person:{record.person_id}", 5
+            )
+            person = (
+                _consume_challenge(
+                    "verify",
+                    signed_challenge,
+                    (request.form.get("code") or "").strip(),
+                )
+                if client_allowed and person_allowed
+                else None
+            )
+            if person is None or person.account_status != db.ACCOUNT_REGISTERED:
+                return _render_register(
+                    errors={"code": "Code ungültig oder abgelaufen."},
+                    challenge=signed_challenge,
+                )
+            db.verify_person(get_session(), person)
+            get_session().commit()
+            _notify_registration_approver(person)
+            _establish_session(person)
+            return redirect(url_for("registration_status"))
+
+        values = _auth_values()
+        values.update({
+            "name": (request.form.get("name") or "").strip(),
+            "team_id": (request.form.get("team_id") or "").strip(),
+            "consent": request.form.get("consent") or "",
+        })
+        errors: dict[str, str] = {}
+        if not values["name"]:
+            errors["name"] = "Bitte gib deinen Namen ein."
+        if values["consent"] != "yes":
+            errors["consent"] = (
+                "Die Zustimmung zur Veröffentlichung des Namens ist erforderlich."
+            )
+        try:
+            team_id = int(values["team_id"])
+        except (TypeError, ValueError):
+            team = None
+        else:
+            team = get_session().get(db.Team, team_id)
         if team is None:
-            flash("Bitte eine gültige Mannschaft wählen.", "error")
-            return redirect(url_for("register"))
-        contact = email or phone or ""
-        existing = _contact_person(contact)
+            errors["team_id"] = "Bitte wähle eine gültige Mannschaft."
+        channel, destination, contact_errors = _validated_auth_contact(values)
+        errors.update(contact_errors)
+        if errors:
+            return _render_register(values=values, errors=errors)
+        assert channel is not None and destination is not None and team is not None
+
         client_allowed = _rate_allowed(
             f"register-client:{request.remote_addr or 'unknown'}", 5
         )
+        existing = _contact_person(channel, destination)
+        challenge = None
         if existing is None and client_allowed:
+            email = destination if channel == "email" else None
+            phone = destination if channel == "sms" else None
             try:
-                person = db.register_person(get_session(), name, team, email, phone)
+                person = db.register_person(
+                    get_session(), values["name"], team, email, phone
+                )
                 get_session().commit()
             except IntegrityError:
                 get_session().rollback()
             else:
-                _send_token(person, "verify")
-        elif (
-            existing is not None
-            and existing.account_status != db.ACCOUNT_INACTIVE
-            and client_allowed
-            and _rate_allowed(
-                f"register-person:{existing.id}", 2 if not existing.email else 3
+                challenge = _send_challenge(
+                    person, "verify", channel, destination
+                )
+        elif existing is not None and client_allowed:
+            person_limit = 2 if channel == "sms" else 3
+            person_allowed = _rate_allowed(
+                f"register-person:{existing.id}:{channel}", person_limit
             )
-        ):
-            _safe_account_message(
-                existing,
-                "Registrierung nuLigaHelper",
-                "Für diesen Kontakt besteht bereits ein Konto.",
-                "Für diesen Kontakt besteht bereits ein Konto.",
-            )
-        return _generic_sent_response()
+            if person_allowed and existing.account_status == db.ACCOUNT_REGISTERED:
+                challenge = _send_challenge(
+                    existing, "verify", channel, destination
+                )
+            elif person_allowed:
+                _safe_account_message_via(
+                    existing,
+                    channel,
+                    "Registrierung nuLigaHelper",
+                    (
+                        "Für diesen Kontakt besteht bereits ein Konto. "
+                        "Bitte nutze die Anmeldung."
+                    ),
+                )
+        if challenge is None:
+            challenge = _dummy_challenge("verify", channel, destination)
+        return _render_register(
+            values=values,
+            challenge=challenge,
+            message=(
+                "Falls die Angaben verwendet werden können, wurde ein "
+                "sechsstelliger Code versendet."
+            ),
+        )
 
     @app.route("/registrieren/code", methods=["GET", "POST"])
     def registration_code():
-        if request.method == "GET":
-            return render_template("code.html", purpose="verify")
-        contact = (request.form.get("contact") or "").strip()
-        person = _contact_person(contact, (db.ACCOUNT_REGISTERED,))
-        client_allowed = _rate_allowed(
-            f"verify-client:{request.remote_addr or 'unknown'}", 10
-        )
-        person_allowed = person is not None and _rate_allowed(
-            f"verify-person:{person.id}", 5
-        )
-        verified = (
-            _consume_token(
-                "verify", code=(request.form.get("code") or "").strip(), person=person
-            )
-            if client_allowed and person_allowed
-            else None
-        )
-        if verified is None:
-            flash("Code ungültig oder abgelaufen.", "error")
-            return redirect(url_for("registration_code"))
-        db.verify_person(get_session(), verified)
-        get_session().commit()
-        _notify_registration_approver(verified)
-        return render_template("message.html", message="Kontakt bestätigt. Die Freigabe steht noch aus.")
+        return redirect(url_for("register"), code=303)
 
     @app.route("/registrieren/verifizieren/<token>")
     def verify_registration(token: str):
-        person = _consume_token("verify", signed_token=token)
+        person = _consume_legacy_link("verify", token)
         if person is None or person.account_status != db.ACCOUNT_REGISTERED:
-            return render_template("message.html", message="Bestätigung ungültig oder abgelaufen."), 400
+            return render_template(
+                "message.html",
+                message="Bestätigung ungültig oder abgelaufen.",
+            ), 400
         db.verify_person(get_session(), person)
         get_session().commit()
         _notify_registration_approver(person)
-        return render_template("message.html", message="Kontakt bestätigt. Die Freigabe steht noch aus.")
+        return render_template(
+            "message.html",
+            message="Kontakt bestätigt. Die Freigabe steht noch aus.",
+        )
 
     def _notify_registration_approver(person: db.Person) -> None:
         team = person.desired_team
@@ -840,20 +1152,36 @@ def create_app() -> Flask:
         if g.tier != "admin":
             return api_error("Keine Berechtigung.", 403)
         name = (request.form.get("name") or "").strip()
-        email = (request.form.get("email") or "").strip() or None
-        phone = (request.form.get("phone") or "").strip() or None
         if not name:
             flash("Bitte einen Namen angeben.", "error")
             return redirect(url_for("persons"))
+        email, phone, errors = _normalized_person_contacts()
+        if errors:
+            flash(next(iter(errors.values())), "error")
+            return redirect(url_for("persons"))
         session = get_session()
-        if _contact_in_use(email) or _contact_in_use(phone):
-            flash("E-Mail-Adresse oder Telefonnummer wird bereits verwendet.", "error")
+        if (
+            _contact_in_use("email", email)
+            or _contact_in_use("sms", phone)
+        ):
+            flash(
+                "E-Mail-Adresse oder Telefonnummer wird bereits verwendet.",
+                "error",
+            )
             return redirect(url_for("persons"))
         person = db.Person(name=name, email=email, phone=phone)
         person.team_id = _form_team_id(session)
         session.add(person)
+        try:
+            session.commit()
+        except IntegrityError:
+            session.rollback()
+            flash(
+                "E-Mail-Adresse oder Telefonnummer wird bereits verwendet.",
+                "error",
+            )
+            return redirect(url_for("persons"))
         flash(f"'{name}' wurde angelegt.", "ok")
-        session.commit()
         return redirect(url_for("persons"))
 
     @app.post("/personen/<int:person_id>/edit")
@@ -865,23 +1193,43 @@ def create_app() -> Flask:
             return redirect(url_for("persons"))
         if g.tier != "admin" and person.id != g.viewer.id:
             return api_error("Keine Berechtigung.", 403)
+
         name = (request.form.get("name") or "").strip()
+        email, phone, errors = _normalized_person_contacts()
+        if errors:
+            flash(next(iter(errors.values())), "error")
+            return redirect(url_for("persons"))
+        if (
+            _contact_in_use("email", email, person.id)
+            or _contact_in_use("sms", phone, person.id)
+        ):
+            flash(
+                "E-Mail-Adresse oder Telefonnummer wird bereits verwendet.",
+                "error",
+            )
+            return redirect(url_for("persons"))
+        team_id = _form_team_id(session) if g.tier == "admin" else None
+
         if name:
             person.name = name
-        email = (request.form.get("email") or "").strip() or None
-        phone = (request.form.get("phone") or "").strip() or None
-        if _contact_in_use(email, person.id) or _contact_in_use(phone, person.id):
-            flash("E-Mail-Adresse oder Telefonnummer wird bereits verwendet.", "error")
-            return redirect(url_for("persons"))
         person.email = email
         person.phone = phone
-        if g.tier == "admin":
-            team_id = _form_team_id(session)
-            if team_id is not None:
-                person.team_id = team_id
-        session.commit()
+        if team_id is not None:
+            person.team_id = team_id
+        try:
+            session.commit()
+        except IntegrityError:
+            session.rollback()
+            flash(
+                "E-Mail-Adresse oder Telefonnummer wird bereits verwendet.",
+                "error",
+            )
+            return redirect(url_for("persons"))
         if not person.email and not person.phone:
-            flash("Gespeichert. Ohne Kontaktweg kannst du dich nicht erneut anmelden.", "error")
+            flash(
+                "Gespeichert. Ohne Kontaktweg kannst du dich nicht erneut anmelden.",
+                "error",
+            )
         else:
             flash(f"Daten von '{person.name}' gespeichert.", "ok")
         return redirect(url_for("persons"))

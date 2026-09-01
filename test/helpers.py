@@ -79,7 +79,7 @@ def sample_games() -> list[dict]:
     chronological ordering; game 1001 gets assignments in other tests.
     """
     base = {"day": "Sa", "hall": 280340, "home": "TuS Raubling", "score": ""}
-    return [
+    games = [
         {**base, "date": "03.10.2026", "time": "17:30", "game_nr": 1003,
          "ak": "BL F", "guest": "TSV Brannenburg"},
         {**base, "date": "05.09.2026", "time": "15:00", "game_nr": 1001,
@@ -93,6 +93,9 @@ def sample_games() -> list[dict]:
         {**base, "date": "01.11.2026", "time": "18:00", "game_nr": 1005,
          "ak": "BL mC", "guest": "TSV Übersee"},
     ]
+    for game in games:
+        game["source_key"] = f"test:{game['game_nr']}"
+    return games
 
 
 def sync_sample_games(session) -> list[dict]:

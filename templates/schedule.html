@@ -2,7 +2,7 @@
 {% block title %}Heimspielplan{% endblock %}
 
 {% macro game_card(g, teams, support_id) %}
-<article class="game-card" id="game-{{ g.id }}" data-support="{{ support_id }}">
+<article class="game-card"{% if viewer %} id="game-{{ g.id }}" data-support="{{ support_id }}"{% endif %}>
   <div class="game-info">
     <div class="game-time">{{ g.time }}</div>
     <div class="game-teams">

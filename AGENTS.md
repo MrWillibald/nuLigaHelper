@@ -75,6 +75,12 @@ test/run_tests.sh                          # whole suite, must stay green
 - **Teams are fully automatic**: derived from the scraped age classes (`ak`,
   e.g. "BL mD") plus exactly one seeded support team ("Supporter"). Users cannot
   create/edit/delete teams; the CLI only resolves existing ones.
+- **Scraped game identity is `(season_year, source_key)`, never `game_nr`.** Prefer
+  nuLiga's `meeting` query parameter for `source_key`; the scraper fallback hashes
+  normalized game number, age class, home and guest, excluding mutable scheduling
+  fields. Game numbers may repeat and remain display/filter data. Internal mutations
+  and event consumers use `Game.id`; ambiguous source keys abort before sync mutates
+  the ORM. CLI and admin choices include date, time, age class and matchup context.
 - **Games are never pre-assigned** to their own age-class team – that team is
   busy playing. The responsible team ("Verantwortlich") is chosen per game
   and may stay empty.
@@ -108,10 +114,18 @@ test/run_tests.sh                          # whole suite, must stay green
   still has open task slots (`db.missing_slots`). MV is not a per-game
   assignment role anymore.
 - **Contact data (mail/phone) must never be rendered on the schedule overview.**
-  Channel choice: prefer e-mail, fall back to phone; skip with warning if neither.
-- Passwordless e-mail links and SMS codes are signed/single-use and expire after
-  15 minutes. Sessions use a one-hour sliding lifetime. State-changing forms and
-  JSON endpoints require CSRF tokens; the route guard is default-deny.
+  Validate and canonicalize every contact at authentication and person-write
+  boundaries: e-mail uses the shared offline-safe normalizer; phone uses the
+  selected calling code and is stored as E.164. Run `manage_db.py contact-preflight`
+  before normalizing existing data; collisions are reported, never auto-merged.
+- Ordinary notifications prefer e-mail, fall back to phone and skip with warning
+  if neither exists. Authentication is different: the explicitly selected E-Mail
+  or SMS route receives a six-digit code even when both contacts exist.
+- Passwordless e-mail and SMS challenges are purpose-bound, signed/single-use and
+  expire after 15 minutes. Unknown or ineligible contacts receive a same-shaped
+  dummy challenge without a message or session. Sessions use a one-hour sliding
+  lifetime. State-changing forms and JSON endpoints require CSRF tokens; the route
+  guard is default-deny.
 - Dates/times are stored exactly as scraped (German `dd.mm.yyyy` strings).
   **Never `ORDER BY` the date column** – use `db.game_sort_key()`.
   Normalizing to real DATE columns is a deliberate future task.

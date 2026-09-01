@@ -32,7 +32,7 @@ It is then reachable in the local network at `http://<device-ip>:8080`.
 - **Statistik**: games covered per team, jobs per person (incl. role breakdown) and a list of upcoming games with missing assignments.
 - **Änderungsprotokoll**: admin-only, append-only history of assignment claims and releases with actor, tier, person, game, role, slot and timestamp.
 
-Registration requires a name, exactly one contact channel, a desired team and consent to publish the name when assigned. An e-mail link or SMS code verifies the channel; the requested team's MV (or an admin for Supporter/teams without an MV) then approves roster membership. Login is passwordless using the stored e-mail address or phone. Links/codes are single-use and valid for 15 minutes; sessions expire after one hour of inactivity.
+Registration and login each use one two-step form: select E-Mail or SMS, request a six-digit code, then enter it on the same page. Registration additionally requires a name, desired team and consent to publish the name when assigned; verification queues the registration for approval by the requested team's MV (or an admin for Supporter/teams without an MV). E-mail addresses are syntax-checked and stored in a canonical lowercase form. Phone input combines the selected country calling code with the national number and is stored as E.164 (for example `+491701234567`). Codes are single-use and valid for 15 minutes; sessions expire after one hour of inactivity. Active accounts land on the Heimspielplan after login, while verified registrations awaiting approval see only their status.
 
 Access is derived from database facts on every request:
 
@@ -61,18 +61,18 @@ or individually via `python3 test/test_db.py` etc., or with pytest (`pytest test
 
 # Database schema
 
-- `games`: one row per scraped home game (number, date, time, hall, age class, teams, score)
+- `games`: one row per scraped home game, identified within a season by a stable nuLiga source key; game numbers are display data and may repeat
 - `teams`: derived automatically from the scraped age classes plus one support team; each team optionally references its MV (Mannschaftsverantwortlicher)
 - `persons`: stable internal identity, mutable/non-unique name, contact/team, account state and admin flag
 - `assignments`: one stable role/slot link between a game and person
-- `auth_tokens`: expiring, single-use registration/login nonces and SMS codes
+- `auth_tokens`: expiring, single-use registration/login nonces and six-digit e-mail/SMS codes
 - `assignment_audit`: append-only assignment-change snapshots that remain readable after deletion
 
 The MV of a game's responsible team receives an MV notification as long as tasks of that game are still unassigned.
 
 # Getting started
 
-Clone the repository and open `config_template.json`. Modify all entries according to your needs. Accounts and logins have to be specified, the texts can be modified according to your needs. Save the file as `config.json` in the same folder. Make sure all necessary libraries are installed (see `requirements.txt`).
+Clone the repository and open `config_template.json`. Modify all entries according to your needs. Accounts and logins have to be specified, the texts can be modified according to your needs. Save the file as `config.json` in the same folder. Install all libraries from `requirements.txt`; this includes the pinned `email-validator` and `phonenumbers` packages used for deterministic, offline-safe contact validation.
 
 Initialize the database and manage persons, games and assignments via the management CLI:
 
@@ -80,14 +80,16 @@ Initialize the database and manage persons, games and assignments via the manage
 python3 manage_db.py init
 python3 manage_db.py add-person "Max Mustermann" --team "Supporter" --email max@example.com
 python3 manage_db.py list-persons
+python3 manage_db.py contact-preflight
 python3 manage_db.py search-person "Max"
 python3 manage_db.py grant-admin 1
 python3 manage_db.py list-games
-python3 manage_db.py assign 12034 Zeitnehmer 1
-python3 manage_db.py set-jteam 12034 "Damen 1"
+python3 manage_db.py list-games --number 12034
+python3 manage_db.py assign 42 Zeitnehmer 1
+python3 manage_db.py set-jteam 42 "Damen 1"
 ```
 
-Person IDs are shown by `list-persons` and `search-person`; names are display data and may repeat. Existing-person commands (`assign`, `unassign`, `set-mv`, `grant-admin`) therefore take the ID.
+Run `contact-preflight` before deploying contact normalization to an existing database; it reports invalid values, canonical changes and collisions without writing anything. Person IDs are shown by `list-persons` and `search-person`; names are display data and may repeat. Existing-person commands (`assign`, `unassign`, `set-mv`, `grant-admin`) therefore take the person ID. Game numbers may also repeat: `list-games` shows the internal game ID together with its schedule context, and `assign`, `unassign` and `set-jteam` take that game ID. `--number` only filters the list.
 
 Games are inserted automatically on the first run after scraping. Run the daily job via `./run.sh` (or export `NULIGAHELPER_SECRET` before `python3 main.py`). nuLigaHelper will scrape all available data from the nuLiga Hallenspielplan, sync it into the SQLite database and send all due notifications. A backup of the database is uploaded to Dropbox after every run.
 All actions are logged in the file `helper.log`.

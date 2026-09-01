@@ -15,10 +15,13 @@
     {% if viewer and viewer.account_status == 'active' %}
     <a href="{{ url_for('persons') }}" {% if active_page == '/personen' %}class="active"{% endif %}>Helfer verwalten</a>
     <a href="{{ url_for('statistics') }}" {% if active_page == '/statistik' %}class="active"{% endif %}>Statistik</a>
-    {% if viewer_tier == 'admin' %}<a href="{{ url_for('audit') }}">Änderungsprotokoll</a>{% endif %}
+    {% if viewer_tier == 'admin' %}<a href="{{ url_for('audit') }}" {% if active_page == '/audit' %}class="active"{% endif %}>Änderungsprotokoll</a>{% endif %}
     {% endif %}
     {% if viewer %}
-    <form method="post" action="{{ url_for('logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit">Abmelden</button></form>
+    <form class="nav-action" method="post" action="{{ url_for('logout') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit">Abmelden</button>
+    </form>
     {% else %}
     <a href="{{ url_for('login') }}">Anmelden</a>
     <a href="{{ url_for('register') }}">Registrieren</a>
