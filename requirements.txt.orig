@@ -1,7 +1,0 @@
-requests
-lxml
-pandas
-SQLAlchemy>=2.0
-dropbox
-twilio
-Flask>=3.0
