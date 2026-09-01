@@ -14,27 +14,44 @@ A helper class to organize home games with nuLiga Handball.
 - Notifications on missing referees are sent to specified persons
 - Unknown new games are reported to the admin
 - Notifications can be sent via Email or SMS (using Twilio account)
-- Web interface for viewing the home game schedule and managing helpers (Flask)
+- Passwordless Flask web interface with registration, tiered access, self-service assignments and an audit trail
 
 # Web interface
 
-Start the web interface with `run_webapp.sh` (or `python3 webapp.py`). It is then reachable in the local network at `http://<device-ip>:8080`.
+Create a persistent signing secret once, then start the web interface:
 
-- **Heimspielplan**: all home games of the current season grouped by day. Each game gets a responsible team ("Verantwortlich") and tasks (Zeitnehmer, Sekretär, Verkauf, Ordnungsdienst, Reinigung) assigned via dropdown directly in the schedule; changes are saved instantly. If a team is assigned to a game, helpers of other teams are greyed out in the dropdowns but can still be chosen (with a hint). A person can hold at most one task per game: once assigned, the person is removed from the dropdowns of the other tasks of that game. Contact data is intentionally not shown on the overview.
-- **Helfer verwalten**: add, edit and delete persons incl. e-mail, phone and team. Every person belongs to a team; persons without an active team belong to the support team (created automatically). Each team can have exactly one Mannschaftsverantwortlicher ("MV"), chosen among its members.
+```bash
+python3 -c 'import secrets; print(secrets.token_urlsafe(48))' > .nuligahelper_secret
+./run_webapp.sh
+```
+
+It is then reachable in the local network at `http://<device-ip>:8080`.
+
+- **Heimspielplan**: public, read-only schedule with assigned helper names. Signed-in members can claim and release their own future tasks. MVs can additionally staff their own team on games for which that team is responsible; admins can correct every slot and set the responsible team. Concurrent stale changes are rejected rather than overwriting another person's work.
+- **Helfer verwalten**: members see names and teams but only their own contact data. Admins create, edit, deactivate/reactivate or delete erroneous entries and appoint team MVs. MVs and admins approve registrations in their scope.
 - **Statistik**: games covered per team, jobs per person (incl. role breakdown) and a list of upcoming games with missing assignments.
+- **Änderungsprotokoll**: admin-only, append-only history of assignment claims and releases with actor, tier, person, game, role, slot and timestamp.
+
+Registration and login each use one two-step form: select E-Mail or SMS, request a six-digit code, then enter it on the same page. Registration additionally requires a name, desired team and consent to publish the name when assigned; verification queues the registration for approval by the requested team's MV (or an admin for Supporter/teams without an MV). E-mail addresses are syntax-checked and stored in a canonical lowercase form. Phone input combines the selected country calling code with the national number and is stored as E.164 (for example `+491701234567`). Codes are single-use and valid for 15 minutes; sessions expire after one hour of inactivity. Active accounts land on the Heimspielplan after login, while verified registrations awaiting approval see only their status.
+
+Access is derived from database facts on every request:
+
+- **Guest**: public read-only schedule, without roster/contact payloads.
+- **Member**: roster without others' contact data, statistics, own profile and own assignments.
+- **MV**: member rights plus staffing and registration approval for the MV's team.
+- **Admin**: all administration and the audit trail. Bootstrap the first admin with `manage_db.py grant-admin PERSON_ID`.
 
 Teams are fully automatic: they are derived from the scraped age classes (`ak`, e.g. "BL mD") plus one support team ("Supporter") for persons without an active team. Teams cannot be created or edited manually. The responsible team is chosen per game; it is never pre-assigned, since the team playing the game should not be pre-booked for its own support tasks. In the dropdowns, members of the responsible team and the support team appear normally; members of other teams and of the playing team itself are greyed out but can still be selected (with a hint).
 
 There is no database migration: after schema changes simply delete `nuliga_helper.db` (or your configured database file) and let the next run recreate it.
 
-The interface is currently open (no authentication) and intended for local network use. User authentication and user rights are planned for a future step.
+Authentication does not by itself make the Flask development server suitable for the public internet. Production WSGI serving, TLS and deployment hardening remain required before public exposure.
 
-Optional environment variables: `NULIGAHELPER_DB` (path to the SQLite file) and `NULIGAHELPER_SECRET` (Flask secret key).
+`NULIGAHELPER_SECRET` is mandatory for both the webapp and daily job. Set it in the environment or keep the raw value in the gitignored `.nuligahelper_secret` file used by both launch scripts. Keep it stable: changing it invalidates every session. `NULIGAHELPER_DB` is an optional SQLite-path override.
 
 # Testing
 
-The `test/` folder contains automated tests for the database, notification and web layers. They run completely offline against throwaway databases:
+The `test/` folder contains offline tests for the database, notifications, authentication, authorization, CLI, concurrent claims and web flow. Every test uses synthetic secrets and throwaway databases:
 
 ```bash
 test/run_tests.sh
@@ -44,30 +61,37 @@ or individually via `python3 test/test_db.py` etc., or with pytest (`pytest test
 
 # Database schema
 
-- `games`: one row per scraped home game (number, date, time, hall, age class, teams, score)
+- `games`: one row per scraped home game, identified within a season by a stable nuLiga source key; game numbers are display data and may repeat
 - `teams`: derived automatically from the scraped age classes plus one support team; each team optionally references its MV (Mannschaftsverantwortlicher)
-- `persons`: name plus e-mail address and/or phone number and team, stored once per person
-- `assignments`: link between a game and a person including the role (Zeitnehmer, Sekretär, Verkauf, Ordnungsdienst, Reinigung)
+- `persons`: stable internal identity, mutable/non-unique name, contact/team, account state and admin flag
+- `assignments`: one stable role/slot link between a game and person
+- `auth_tokens`: expiring, single-use registration/login nonces and six-digit e-mail/SMS codes
+- `assignment_audit`: append-only assignment-change snapshots that remain readable after deletion
 
 The MV of a game's responsible team receives an MV notification as long as tasks of that game are still unassigned.
 
-The database is prepared to be used by a future web interface.
-
 # Getting started
 
-Clone the repository and open `config_template.json`. Modify all entries according to your needs. Accounts and logins have to be specified, the texts can be modified according to your needs. Save the file as `config.json` in the same folder. Make sure all necessary libraries are installed (see `requirements.txt`).
+Clone the repository and open `config_template.json`. Modify all entries according to your needs. Accounts and logins have to be specified, the texts can be modified according to your needs. Save the file as `config.json` in the same folder. Install all libraries from `requirements.txt`; this includes the pinned `email-validator` and `phonenumbers` packages used for deterministic, offline-safe contact validation.
 
 Initialize the database and manage persons, games and assignments via the management CLI:
 
 ```
 python3 manage_db.py init
-python3 manage_db.py add-person "Max Mustermann" --email max@example.com --phone +4917012345678
+python3 manage_db.py add-person "Max Mustermann" --team "Supporter" --email max@example.com
+python3 manage_db.py list-persons
+python3 manage_db.py contact-preflight
+python3 manage_db.py search-person "Max"
+python3 manage_db.py grant-admin 1
 python3 manage_db.py list-games
-python3 manage_db.py assign 12034 Zeitnehmer "Max Mustermann"
-python3 manage_db.py set-jteam 12034 "Damen 1"
+python3 manage_db.py list-games --number 12034
+python3 manage_db.py assign 42 Zeitnehmer 1
+python3 manage_db.py set-jteam 42 "Damen 1"
 ```
 
-Games are inserted automatically on the first run after scraping. Then run the daily job via `run.sh` or `python3 main.py`. nuLigaHelper will scrape all available data from the nuLiga Hallenspielplan, sync it into the SQLite database and send all due notifications. A backup of the database is uploaded to Dropbox after every run.
+Run `contact-preflight` before deploying contact normalization to an existing database; it reports invalid values, canonical changes and collisions without writing anything. Person IDs are shown by `list-persons` and `search-person`; names are display data and may repeat. Existing-person commands (`assign`, `unassign`, `set-mv`, `grant-admin`) therefore take the person ID. Game numbers may also repeat: `list-games` shows the internal game ID together with its schedule context, and `assign`, `unassign` and `set-jteam` take that game ID. `--number` only filters the list.
+
+Games are inserted automatically on the first run after scraping. Run the daily job via `./run.sh` (or export `NULIGAHELPER_SECRET` before `python3 main.py`). nuLigaHelper will scrape all available data from the nuLiga Hallenspielplan, sync it into the SQLite database and send all due notifications. A backup of the database is uploaded to Dropbox after every run.
 All actions are logged in the file `helper.log`.
 This script is good to run on a raspberry pi as scheduled job once a day.
 If you need any assistance feel free to contact me.

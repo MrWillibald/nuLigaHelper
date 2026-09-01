@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Änderungsprotokoll{% endblock %}
+{% block content %}
+<section class="section audit-section">
+  <div class="section-header">
+    <div class="section-icon" aria-hidden="true">§</div>
+    <div><p class="section-eyebrow">Administration</p><h2>Änderungsprotokoll</h2></div>
+  </div>
+  <p class="hint">Unveränderliche Aufzeichnung aller Änderungen an Dienstzuweisungen.</p>
+
+  <form method="get" class="audit-filter-card">
+    <div class="filter-field audit-game-filter">
+      <label for="audit-game">Spiel</label>
+      <select id="audit-game" name="game_id">
+        <option value="">Alle Spiele</option>
+        {% for game in games %}
+        <option value="{{ game.id }}" {% if selected_game == game.id %}selected{% endif %}>{{ game.game_nr }} · {{ game.date }} {{ game.time or '' }} · {{ game.ak or '?' }} · {{ game.home or '?' }} – {{ game.guest or '?' }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="filter-field">
+      <label for="audit-person">Person</label>
+      <select id="audit-person" name="person_id">
+        <option value="">Alle Personen</option>
+        {% for person in persons %}
+        <option value="{{ person.id }}" {% if selected_person == person.id %}selected{% endif %}>{{ person.name }} · {{ person.team.name if person.team else 'ohne Team' }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="filter-actions">
+      <button class="btn btn-primary" type="submit">Filtern</button>
+      <a class="btn btn-secondary" href="{{ url_for('audit') }}">Zurücksetzen</a>
+    </div>
+  </form>
+
+  <div class="data-table-wrap">
+    <table class="data-table responsive-table audit-table">
+      <thead><tr><th>Zeit</th><th>Akteur</th><th>Aktion</th><th>Person</th><th>Spiel</th><th>Dienst</th></tr></thead>
+      <tbody>
+        {% for entry in entries %}
+        <tr class="audit-entry">
+          <td data-label="Zeit">{{ entry.changed_at.strftime('%d.%m.%Y %H:%M:%S') }}</td>
+          <td data-label="Akteur"><strong>{{ entry.actor_name }}</strong><span class="audit-tier-badge">{{ entry.actor_tier }}</span></td>
+          <td data-label="Aktion"><span class="audit-action-badge audit-action-{{ entry.action }}">{{ entry.action }}</span></td>
+          <td data-label="Person">{{ entry.affected_person_name }}</td>
+          <td data-label="Spiel">{{ entry.game_snapshot }}</td>
+          <td data-label="Dienst"><strong>{{ entry.role }}</strong> · Platz {{ entry.slot + 1 }}</td>
+        </tr>
+        {% else %}
+        <tr class="audit-empty"><td colspan="6">Keine Einträge.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

@@ -110,6 +110,40 @@ class Notifier:
         """Build a receiver dict from a Person instance."""
         return {"name": person.name, "email": person.email, "phone": person.phone, "task": task}
 
+    def send_account_message(
+        self,
+        person: db.Person,
+        subject: str,
+        mail_body: str,
+        sms_body: str,
+    ) -> int:
+        """Send an account message using the established channel preference."""
+        return self._dispatch(
+            self._person_receiver(person, "Anmeldung"),
+            subject,
+            mail_body,
+            sms_body,
+            game_nr=0,
+        )
+
+    def send_account_message_via(
+        self, person: db.Person, channel: str, subject: str, body: str
+    ) -> int:
+        """Send an account message only through the explicitly selected channel."""
+        receiver = self._person_receiver(person, "Anmeldung")
+        if channel == "email":
+            receiver["phone"] = None
+        elif channel == "sms":
+            receiver["email"] = None
+        else:
+            logging.warning("Unknown account message channel %r", channel)
+            return 0
+        return self._dispatch(
+            receiver, subject,
+            body if channel == "email" else "",
+            body if channel == "sms" else "", game_nr=0,
+        )
+
     # ---------------------------------------------------------------------------
     # Game-day notifications (judges, shop, security, cleaning + MV)
     # ---------------------------------------------------------------------------
@@ -235,7 +269,7 @@ class Notifier:
         """Send shift notifications for all affected games."""
         cnt = 0
         for shift in shifts:
-            game = db.get_game(self.session, self._season_year, shift.game_nr)
+            game = self.session.get(db.Game, shift.game_id)
             if game is None:
                 continue
             logging.info(
@@ -269,7 +303,7 @@ class Notifier:
 
     def notify_referee_alert(self, event: db.RefereeEvent) -> int:
         """Notify referee coordinator and MV about a missing referee for one game."""
-        game = db.get_game(self.session, self._season_year, event.game_nr)
+        game = self.session.get(db.Game, event.game_id)
         if game is None:
             return 0
         return self._notify_missing_referee(game, event.date, event.time)
@@ -312,9 +346,9 @@ class Notifier:
     # Admin error notification (new unknown games)
     # ---------------------------------------------------------------------------
 
-    def notify_new_games(self, game_nrs: list[int]) -> int:
+    def notify_new_games(self, games: list[db.GameEvent]) -> int:
         """Inform the admin about scraped games that were not known before."""
-        if not game_nrs:
+        if not games:
             return 0
         logging.warning(
             "Spielnummer not contained in home schedule, please correct manually!"

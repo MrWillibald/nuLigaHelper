@@ -33,23 +33,25 @@
 
   {% if person_stats %}
   <h3 class="stat-title">Dienste pro Person</h3>
-  <table class="stat-table">
+  <div class="data-table-wrap">
+  <table class="data-table responsive-table stat-table">
     <thead><tr><th>Person</th><th>Mannschaft</th><th>Dienste</th><th>Aufteilung</th></tr></thead>
     <tbody>
       {% for p in person_stats %}
       <tr>
-        <td class="stat-strong">{{ p.name }}</td>
-        <td>{{ p.team_name or "–" }}</td>
-        <td class="stat-strong">{{ p.jobs }}</td>
-        <td class="role-chips">
+        <td class="stat-strong" data-label="Person">{{ p.name }}</td>
+        <td data-label="Mannschaft">{{ p.team_name or "–" }}</td>
+        <td class="stat-strong" data-label="Dienste">{{ p.jobs }}</td>
+        <td data-label="Aufteilung"><div class="role-chips">
           {% for role, count in p.roles %}
           <span class="chip">{{ count }}× {{ role }}</span>
           {% endfor %}
-        </td>
+        </div></td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
+  </div>
   {% else %}
   <p class="hint">Noch keine Dienste vergeben.</p>
   {% endif %}
@@ -57,23 +59,25 @@
   <h3 class="stat-title">Offene Dienste</h3>
   {% if gaps %}
   <p class="hint">{{ gaps | length }} anstehende Spiele haben noch unbesetzte Dienste:</p>
-  <table class="stat-table gap-table">
+  <div class="data-table-wrap">
+  <table class="data-table responsive-table stat-table gap-table">
     <thead><tr><th>Spiel</th><th>Termin</th><th>Team</th><th>Fehlt</th></tr></thead>
     <tbody>
       {% for g in gaps %}
       <tr>
-        <td><span class="hex" style="background:{{ g.color }}"></span> {{ g.teams }} <small>({{ g.ak }})</small></td>
-        <td>{{ g.date }} {{ g.time }}</td>
-        <td>{{ g.team_name or "– offen –" }}</td>
-        <td class="gap-list">
+        <td data-label="Spiel"><span class="hex" style="background:{{ g.color }}"></span> {{ g.teams }} <small>({{ g.ak }})</small></td>
+        <td data-label="Termin">{{ g.date }} {{ g.time }}</td>
+        <td data-label="Team">{{ g.team_name or "– offen –" }}</td>
+        <td data-label="Fehlt"><div class="gap-list">
           {% for role, count in g.missing %}
           <span class="chip chip-gap">{{ role }}{% if count > 1 %} ({{ count }}×){% endif %}</span>
           {% endfor %}
-        </td>
+        </div></td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
+  </div>
   {% else %}
   <p class="hint">Alle anstehenden Spiele sind vollständig besetzt. 🎉</p>
   {% endif %}

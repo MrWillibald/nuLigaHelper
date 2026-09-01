@@ -14,9 +14,9 @@ It runs as a **daily cron job on a Raspberry Pi** and:
 3. reports shifts, missing referees ("§77") and unknown new games,
 4. sends notifications by e-mail or SMS (Twilio) to assigned helpers,
 5. backs up the database file to Dropbox (backup only – no Excel anymore),
-6. serves a **Flask web interface** (local network, port 8080) where the club
-   assigns helpers to tasks and views statistics. A future step will add
-   authentication/user rights and public exposure.
+6. serves a **Flask web interface** (local network, port 8080) with passwordless
+   authentication, tiered rights, self-service assignments and statistics.
+   Production serving, TLS and public exposure remain separate work.
 
 Language: code/comments in English, UI texts and notification templates in German.
 
@@ -25,10 +25,10 @@ Language: code/comments in English, UI texts and notification templates in Germa
 | File                | Purpose                                                                 |
 |---------------------|-------------------------------------------------------------------------|
 | `common.py`         | VERSION, `DEBUG_FLAG`/`CHANGE_DAY`/`DEBUG_TODAY`, `effective_today()`, season-year helper, `load_config()` |
-| `db.py`             | Models (`Team`, `Person`, `Game`, `Assignment`), `init_db`, `sync_games`, query helpers |
+| `db.py`             | Models incl. accounts, assignment slots/auth tokens/audit, sync and domain helpers |
 | `scraper.py`        | Scrapes nuLiga into plain dicts (keys see `GAME_FIELDS`)                 |
 | `notifier.py`       | All mail/SMS notifications; reads assignments from the DB               |
-| `webapp.py`         | Flask app factory: schedule page, persons CRUD, statistics, JSON APIs    |
+| `webapp.py`         | Flask app factory: auth/registration, tier checks, pages and JSON APIs   |
 | `manage_db.py`      | CLI to manage persons/games until the web UI covers everything          |
 | `main.py`           | Daily job entry point incl. Dropbox DB backup                           |
 | `templates/`, `static/` | Jinja templates + CSS/JS; visual language copied from www.handball-raubling.de |
@@ -47,7 +47,10 @@ test/run_tests.sh                          # whole suite, must stay green
 - `config.json` holds credentials/texts; it is gitignored. `config_template.json`
   lists every key the code reads. Notification texts are `str.format` templates —
   placeholder **order and count are part of the contract**, don't reorder lightly.
-- Env overrides: `NULIGAHELPER_DB` (SQLite path), `NULIGAHELPER_SECRET`.
+- `NULIGAHELPER_SECRET` is mandatory for the webapp and daily job. Store a
+  persistent random value in the environment or the gitignored
+  `.nuligahelper_secret` file; rotating it invalidates all sessions.
+- `NULIGAHELPER_DB` optionally overrides the SQLite path.
 - Two independent debug switches in `common.py`, both `False` in the committed state:
   - `DEBUG_FLAG = True` disables all outbound mail/SMS (`send_Mail`/`send_SMS` return
     early) **and** pins "today" to `DEBUG_TODAY`.
@@ -59,9 +62,25 @@ test/run_tests.sh                          # whole suite, must stay green
 
 ## Domain rules (do not break silently)
 
+- **Identity is `Person.id`, never the display name.** Names are mutable and may
+  repeat. APIs and CLI mutation commands take internal IDs; person lists and
+  pickers show the team beside the name. `get_or_create_person()` is only a
+  seeding/test convenience.
+- **Access tiers are derived on every request**: guest (no session), member
+  (active account), MV (active and referenced by `Team.mv_person_id`) and admin
+  (active and `Person.is_admin`). Admin and MV rights form a union. Verified but
+  unapproved registrations see only their status; inactive persons cannot log in.
+- Guest access is limited to a read-only schedule. The guest response includes
+  assigned helper names but no roster payload, person IDs or contact data.
 - **Teams are fully automatic**: derived from the scraped age classes (`ak`,
   e.g. "BL mD") plus exactly one seeded support team ("Supporter"). Users cannot
   create/edit/delete teams; the CLI only resolves existing ones.
+- **Scraped game identity is `(season_year, source_key)`, never `game_nr`.** Prefer
+  nuLiga's `meeting` query parameter for `source_key`; the scraper fallback hashes
+  normalized game number, age class, home and guest, excluding mutable scheduling
+  fields. Game numbers may repeat and remain display/filter data. Internal mutations
+  and event consumers use `Game.id`; ambiguous source keys abort before sync mutates
+  the ORM. CLI and admin choices include date, time, age class and matchup context.
 - **Games are never pre-assigned** to their own age-class team – that team is
   busy playing. The responsible team ("Verantwortlich") is chosen per game
   and may stay empty.
@@ -75,6 +94,15 @@ test/run_tests.sh                          # whole suite, must stay green
   and kept in sync by `static/app.js`); enforced by the unique constraint
   `(game_id, person_id)` on `assignments`, by `db.assign_person` (raises
   `ValueError`) and by the web/CLI entry points.
+- **Assignment writes are per-slot compare-and-swap operations.** Claim expects
+  an empty slot; release names the expected occupant. A stale expectation returns
+  a conflict and current occupant without overwriting the winner. Use
+  `db.claim_slot()` / `db.release_slot()` and the matching JSON endpoints, not a
+  read-modify-write of a complete role.
+- Every successful assignment mutation writes an append-only audit snapshot.
+  Deactivation keeps past assignments, releases and audits future assignments,
+  clears MV records and does not restore freed slots on reactivation. Deletion is
+  reserved for erroneous records and must preserve readable audit entries.
 - Roles: `Zeitnehmer`, `Sekretär`, `Verkauf` (**2 slots**), `Ordnungsdienst`,
   `Reinigung` — see `db.ROLE_SLOT_COUNT`. Any aggregation over roles must iterate
   roles once (e.g. `ROLE_SLOT_COUNT.items()`), not `SLOT_LABELS` in `webapp.py`
@@ -86,7 +114,18 @@ test/run_tests.sh                          # whole suite, must stay green
   still has open task slots (`db.missing_slots`). MV is not a per-game
   assignment role anymore.
 - **Contact data (mail/phone) must never be rendered on the schedule overview.**
-  Channel choice: prefer e-mail, fall back to phone; skip with warning if neither.
+  Validate and canonicalize every contact at authentication and person-write
+  boundaries: e-mail uses the shared offline-safe normalizer; phone uses the
+  selected calling code and is stored as E.164. Run `manage_db.py contact-preflight`
+  before normalizing existing data; collisions are reported, never auto-merged.
+- Ordinary notifications prefer e-mail, fall back to phone and skip with warning
+  if neither exists. Authentication is different: the explicitly selected E-Mail
+  or SMS route receives a six-digit code even when both contacts exist.
+- Passwordless e-mail and SMS challenges are purpose-bound, signed/single-use and
+  expire after 15 minutes. Unknown or ineligible contacts receive a same-shaped
+  dummy challenge without a message or session. Sessions use a one-hour sliding
+  lifetime. State-changing forms and JSON endpoints require CSRF tokens; the route
+  guard is default-deny.
 - Dates/times are stored exactly as scraped (German `dd.mm.yyyy` strings).
   **Never `ORDER BY` the date column** – use `db.game_sort_key()`.
   Normalizing to real DATE columns is a deliberate future task.
@@ -108,13 +147,16 @@ test/run_tests.sh                          # whole suite, must stay green
   string columns are NA-aware — clean values via the `_clean` pattern in
   `scraper.py` so empty cells become `""`, never `NA`/"nan".
 - **SQLAlchemy collections**: `session.delete(obj)` leaves stale entries inside
-  loaded relationships. Rewrite role slots via collection manipulation as done
-  in `db.set_role_assignments` (remove → flush → append), otherwise duplicate
+  loaded relationships. Mutate assignments through the slot helpers (which use
+  collection removal and flush), otherwise duplicate
   checks hit ghost rows and inserts silently vanish.
 - Dispatch counting: a person without mail *and* phone counts as skipped (return 0),
   every valid contact returns 1 — tests rely on these exact counts.
 - Webapp tests build on each other top-to-bottom (a click-through scenario);
   keep them order-tolerant or update the scenario consciously.
+- `test/test_auth.py`, `test/test_refusals.py` and `test/test_concurrency.py`
+  cover authentication, tier failures and stale claims. Every test database and
+  secret must remain synthetic; tests must never read `config.json`.
 
 ## Conventions
 

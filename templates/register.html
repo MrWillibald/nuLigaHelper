@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% from "_auth_fields.html" import contact_fields, challenge_step, field_error %}
+{% block title %}Registrieren{% endblock %}
+{% block content %}
+<section class="section auth-shell">
+  <form class="auth-card auth-form" method="post" data-auth-form data-auth-locked="{{ 'true' if challenge else 'false' }}" novalidate>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <header class="auth-header">
+      <p class="auth-eyebrow">nuLigaHelper</p>
+      <h2>Registrieren</h2>
+      <p>Registriere dich für Helferdienste und wähle deine Mannschaft.</p>
+    </header>
+
+    {% if request_message %}<div class="auth-message" role="status">{{ request_message }}</div>{% endif %}
+
+    <section class="auth-step {% if not challenge %}is-active{% endif %}" aria-labelledby="auth-step-one">
+      <div class="auth-step-heading">
+        <span class="auth-step-number">1</span>
+        <h3 id="auth-step-one">Angaben und Kontakt</h3>
+      </div>
+      {% if challenge %}
+      <p class="auth-help">Deine Angaben wurden für diese Registrierung gespeichert. Im nächsten Schritt wird nur noch der signierte Vorgang verwendet.</p>
+      <a class="auth-change-link" href="{{ url_for('register') }}">Angaben ändern</a>
+      {% else %}
+      <div class="auth-field">
+        <label for="name">Vor- und Nachname</label>
+        <p class="auth-help" id="name-help">So erscheint dein Name später im Heimspielplan.</p>
+        <input id="name" name="name" maxlength="120" autocomplete="name"
+               value="{{ values.name }}" aria-describedby="name-help{% if errors.get('name') %} name-error{% endif %}"
+               {% if errors.get('name') %}aria-invalid="true"{% endif %} required>
+        {{ field_error('name', errors) }}
+      </div>
+      <div class="auth-field">
+        <label for="team">Gewünschte Mannschaft</label>
+        <p class="auth-help" id="team-help">Wähle die Mannschaft, der du angehörst.</p>
+        <select id="team" name="team_id" aria-describedby="team-help{% if errors.get('team_id') %} team_id-error{% endif %}"
+                {% if errors.get('team_id') %}aria-invalid="true"{% endif %} required>
+          <option value="">Bitte wählen</option>
+          {% for team in teams %}
+          <option value="{{ team.id }}" {% if values.team_id|string == team.id|string %}selected{% endif %}>{{ team.name }}</option>
+          {% endfor %}
+        </select>
+        {{ field_error('team_id', errors) }}
+      </div>
+      <div class="auth-consent">
+        <label for="consent">
+          <input id="consent" name="consent" type="checkbox" value="yes"
+                 {% if values.consent == 'yes' %}checked{% endif %}
+                 aria-describedby="consent-help{% if errors.get('consent') %} consent-error{% endif %}"
+                 {% if errors.get('consent') %}aria-invalid="true"{% endif %} required>
+          <span>Ich stimme der Veröffentlichung meines Namens im öffentlichen Heimspielplan zu.</span>
+        </label>
+        <p class="auth-help" id="consent-help">Kontaktdaten werden dort nicht veröffentlicht.</p>
+        {{ field_error('consent', errors) }}
+      </div>
+
+      {{ contact_fields(values, errors, country_codes) }}
+
+      <button class="auth-button auth-button-secondary" type="submit"
+              name="action" value="request_code">CODE ANFORDERN</button>
+      {% endif %}
+    </section>
+
+    {{ challenge_step(challenge, masked_destination, errors, "REGISTRIERUNG ABSCHLIESSEN") }}
+  </form>
+</section>
+{% endblock %}

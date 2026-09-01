@@ -20,6 +20,7 @@ if PROJECT_DIR not in sys.path:
 
 _TEST_DIR = tempfile.mkdtemp(prefix="nuligahelper-test-")
 os.environ["NULIGAHELPER_DB"] = os.path.join(_TEST_DIR, "webapp.db")
+os.environ["NULIGAHELPER_SECRET"] = "test-only-secret-not-for-production"
 
 SEASON = 2026
 
@@ -47,6 +48,23 @@ def app_db_engine():
     return create_engine(f"sqlite:///{os.environ['NULIGAHELPER_DB']}")
 
 
+def sign_in(client, person_id: int, csrf_token: str = "test-csrf-token") -> str:
+    """Create an authenticated test session and return its CSRF token."""
+    with client.session_transaction() as browser_session:
+        browser_session["person_id"] = person_id
+        browser_session["csrf_token"] = csrf_token
+        browser_session.permanent = True
+    return csrf_token
+
+
+def csrf_headers(token: str = "test-csrf-token") -> dict:
+    return {"X-CSRF-Token": token}
+
+
+def csrf_data(data: dict | None = None, token: str = "test-csrf-token") -> dict:
+    return {**(data or {}), "csrf_token": token}
+
+
 def load_club_config() -> dict:
     """Load the sample club configuration (texts etc.) shipped with the repo."""
     with open(os.path.join(PROJECT_DIR, "config_template.json"), encoding="utf-8") as f:
@@ -61,7 +79,7 @@ def sample_games() -> list[dict]:
     chronological ordering; game 1001 gets assignments in other tests.
     """
     base = {"day": "Sa", "hall": 280340, "home": "TuS Raubling", "score": ""}
-    return [
+    games = [
         {**base, "date": "03.10.2026", "time": "17:30", "game_nr": 1003,
          "ak": "BL F", "guest": "TSV Brannenburg"},
         {**base, "date": "05.09.2026", "time": "15:00", "game_nr": 1001,
@@ -75,6 +93,9 @@ def sample_games() -> list[dict]:
         {**base, "date": "01.11.2026", "time": "18:00", "game_nr": 1005,
          "ak": "BL mC", "guest": "TSV Übersee"},
     ]
+    for game in games:
+        game["source_key"] = f"test:{game['game_nr']}"
+    return games
 
 
 def sync_sample_games(session) -> list[dict]:

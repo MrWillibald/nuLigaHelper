@@ -21,6 +21,11 @@ from notifier import Notifier
 from scraper import fetch_home_games
 
 
+def reportable_new_games(events: db.SyncEvents) -> list[db.GameEvent]:
+    """Exclude tournament age class GE without collapsing duplicate game numbers."""
+    return [event for event in events.new_games if event.ak != "GE"]
+
+
 def backup_to_dropbox(token: str, folder: str, local_path: str):
     """Upload the SQLite database file as backup to Dropbox."""
     try:
@@ -36,6 +41,8 @@ def backup_to_dropbox(token: str, folder: str, local_path: str):
 
 
 def main():
+    if not os.environ.get("NULIGAHELPER_SECRET"):
+        raise RuntimeError("NULIGAHELPER_SECRET muss gesetzt sein.")
     # Initialize logger
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(message)s",
@@ -91,9 +98,7 @@ def main():
         logging.info("-------------------------------------------------")
 
         # Report unknown new games to admin (tournament games excluded)
-        ak_by_nr = {rec["game_nr"]: rec["ak"] for rec in scraped}
-        new_nrs = [nr for nr in events.new_games if ak_by_nr.get(nr) != "GE"]
-        notifier.notify_new_games(new_nrs)
+        notifier.notify_new_games(reportable_new_games(events))
 
         """
         # Check if newspaper article has to be sent
