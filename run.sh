@@ -9,5 +9,5 @@ fi
 # Activate the virtual environment
 source venv/bin/activate
 
-# Run the nuLigaHelper daily job
-python main.py
+# Python owns the per-database overlap lock; exec preserves its status for cron.
+exec python main.py

@@ -17,7 +17,8 @@
         },
         "dropbox":{
             "dropbox_token":"xxxx",
-            "dropbox_folder":"TuS Heimatstadt Handball"
+            "dropbox_folder":"TuS Heimatstadt Handball",
+            "dated_retention":14
         },
         "twilio":{
             "twilio_sid":"xxxxxxxxxx",

@@ -18,10 +18,11 @@
 
 import argparse
 import json
-import contact_validation as contacts
 import os
 
+import backup
 import common
+import contact_validation as contacts
 import db
 
 
@@ -45,6 +46,76 @@ def open_session(args):
 def cmd_init(args):
     _, engine = open_session(args)
     print(f"Database initialized at {engine.url}")
+
+
+def _restore_error_message(error: backup.RestoreError) -> str:
+    stage = error.stage.value
+    if error.stage is backup.FailureStage.RESTORE_VALIDATION:
+        action = (
+            "The active database was not changed. Choose another self-contained "
+            "SQLite snapshot."
+        )
+    elif error.stage is backup.FailureStage.RESTORE_COPY:
+        action = (
+            "The active database was not changed. Verify that the snapshot is "
+            "readable and the target directory is writable and has free space."
+        )
+    elif error.stage in {
+        backup.FailureStage.RESTORE_PRESERVE,
+        backup.FailureStage.RESTORE_INSTALL,
+    }:
+        recovery_failed = any(
+            failure.stage is backup.FailureStage.RESTORE_RECOVERY
+            for failure in error.secondary_failures
+        )
+        if recovery_failed:
+            action = (
+                "Automatic recovery reported errors. Keep all database users stopped and "
+                "inspect the active .db/-wal/-shm set before starting services."
+            )
+        else:
+            action = (
+                "The original database set was recovered. Keep all database users stopped, "
+                "verify the active files, and fix filesystem access before retrying."
+            )
+    elif error.stage is backup.FailureStage.RESTORE_RECOVERY:
+        action = (
+            "Keep all database users stopped and inspect the active .db/-wal/-shm "
+            "set before starting services."
+        )
+    else:
+        action = (
+            "Keep all database users stopped and inspect the target database and "
+            "rollback artifacts before retrying."
+        )
+    return f"Restore failed during {stage}. {action}"
+
+
+def cmd_restore_snapshot(args):
+    if not args.confirm_stopped:
+        raise SystemExit(
+            "Restore refused: stop all web and daily database users, then pass "
+            "--confirm-stopped."
+        )
+
+    target_path = os.path.abspath(db.resolve_db_path(get_db_path(args)))
+    try:
+        result = backup.install_snapshot(
+            args.snapshot,
+            target_path,
+            confirmed_stopped=True,
+        )
+    except backup.RestoreError as exc:
+        raise SystemExit(_restore_error_message(exc)) from None
+
+    print(f"Restored database: {result.restored_path}")
+    print(f"Rollback directory: {result.rollback_directory}")
+    if result.preserved_paths:
+        print("Preserved files:")
+        for path in result.preserved_paths:
+            print(f"  {path}")
+    else:
+        print("Preserved files: none (no previous database files existed)")
 
 
 def _resolve_team(session, name: str) -> db.Team:
@@ -240,6 +311,18 @@ def build_parser():
     sub = parser.add_subparsers(dest="command", required=True)
 
     sub.add_parser("init").set_defaults(func=cmd_init)
+
+    p = sub.add_parser(
+        "restore-snapshot",
+        help="Validate and restore a standalone SQLite snapshot while services are stopped",
+    )
+    p.add_argument("snapshot", help="Path to the downloaded standalone snapshot")
+    p.add_argument(
+        "--confirm-stopped",
+        action="store_true",
+        help="Confirm that all web and daily database users are stopped",
+    )
+    p.set_defaults(func=cmd_restore_snapshot)
 
     p = sub.add_parser("add-person", help="Create a person")
     p.add_argument("name")

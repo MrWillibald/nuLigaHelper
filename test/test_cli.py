@@ -3,13 +3,17 @@
 import contextlib
 import io
 import os
-import tempfile
+import sqlite3
 import subprocess
+import tempfile
+from pathlib import Path
 
-import helpers as h
+import helpers as h  # pyright: ignore[reportImplicitRelativeImport]
+
+import backup
 import db
-import manage_db
 import main
+import manage_db
 import webapp
 
 
@@ -19,6 +23,32 @@ def _run(path, *arguments):
     with contextlib.redirect_stdout(output):
         args.func(args)
     return output.getvalue()
+
+
+def _expect_system_exit(callback):
+    try:
+        callback()
+    except SystemExit as exc:
+        return exc
+    raise AssertionError("expected SystemExit")
+
+
+def _create_items_database(path, values):
+    with contextlib.closing(sqlite3.connect(path)) as connection:
+        connection.execute("CREATE TABLE items (value INTEGER NOT NULL)")
+        connection.executemany(
+            "INSERT INTO items (value) VALUES (?)",
+            [(value,) for value in values],
+        )
+        connection.commit()
+
+
+def _item_values(path):
+    with contextlib.closing(sqlite3.connect(path)) as connection:
+        return [
+            row[0]
+            for row in connection.execute("SELECT value FROM items ORDER BY value")
+        ]
 
 
 def test_duplicate_names_are_discovered_and_selected_by_id():
@@ -116,6 +146,178 @@ def test_contact_preflight_reports_issues_without_writing():
             for person in session.query(db.Person).order_by(db.Person.id)
         ]
     assert after == before, "preflight must never canonicalize or mutate records"
+
+
+def test_restore_snapshot_parser_refuses_without_stopped_confirmation():
+    with tempfile.TemporaryDirectory() as raw_directory:
+        directory = Path(raw_directory)
+        target = directory / "active.db"
+        target.write_bytes(b"active database marker")
+        candidate = directory / "candidate.db"
+
+        args = manage_db.build_parser().parse_args(
+            ["--db", str(target), "restore-snapshot", str(candidate)]
+        )
+        assert args.snapshot == str(candidate)
+        assert args.confirm_stopped is False
+
+        original_install = backup.install_snapshot
+        called = []
+
+        def unexpected_install(*_args, **_kwargs):
+            called.append(True)
+            raise AssertionError("restore helper must not run without confirmation")
+
+        backup.install_snapshot = unexpected_install
+        try:
+            error = _expect_system_exit(
+                lambda: _run(str(target), "restore-snapshot", candidate)
+            )
+        finally:
+            backup.install_snapshot = original_install
+
+        message = str(error)
+        assert "--confirm-stopped" in message
+        assert "stop all web and daily database users" in message
+        assert called == []
+        assert target.read_bytes() == b"active database marker"
+
+
+def test_restore_snapshot_installs_standalone_wal_data_and_preserves_sidecars():
+    with tempfile.TemporaryDirectory() as raw_directory:
+        directory = Path(raw_directory)
+        source = directory / "wal-source.db"
+        writer = sqlite3.connect(source)
+        try:
+            assert writer.execute("PRAGMA journal_mode=WAL").fetchone()[0] == "wal"
+            writer.execute("PRAGMA wal_autocheckpoint=0")
+            writer.execute("CREATE TABLE items (value INTEGER NOT NULL)")
+            writer.executemany("INSERT INTO items VALUES (?)", [(10,), (20,)])
+            writer.commit()
+            assert Path(f"{source}-wal").exists(), "committed data must reside in WAL"
+
+            candidate = directory / "standalone-snapshot.db"
+            candidate.write_bytes(backup.snapshot_database(source))
+        finally:
+            writer.close()
+
+        assert not Path(f"{candidate}-wal").exists()
+        assert not Path(f"{candidate}-shm").exists()
+
+        target = directory / "active.db"
+        _create_items_database(target, (99,))
+        target_wal = Path(f"{target}-wal")
+        target_shm = Path(f"{target}-shm")
+        target_wal.write_bytes(b"stale target wal")
+        target_shm.write_bytes(b"stale target shm")
+        old_files = {
+            path.name: path.read_bytes()
+            for path in (target, target_wal, target_shm)
+        }
+
+        original_open_session = manage_db.open_session
+        original_init_db = db.init_db
+
+        def unexpected_database_initialization(*_args, **_kwargs):
+            raise AssertionError("restore must not initialize or open the target database")
+
+        manage_db.open_session = unexpected_database_initialization
+        db.init_db = unexpected_database_initialization
+        try:
+            output = _run(
+                str(target),
+                "restore-snapshot",
+                candidate,
+                "--confirm-stopped",
+            )
+        finally:
+            manage_db.open_session = original_open_session
+            db.init_db = original_init_db
+
+        rollback_directories = list(directory.glob(".active.db.rollback-*"))
+        assert len(rollback_directories) == 1
+        rollback_directory = rollback_directories[0]
+        assert f"Restored database: {target.resolve()}" in output
+        assert f"Rollback directory: {rollback_directory}" in output
+        assert "Preserved files:" in output
+        for name, contents in old_files.items():
+            preserved = rollback_directory / name
+            assert str(preserved) in output
+            assert preserved.read_bytes() == contents
+
+        assert not target_wal.exists(), "stale target WAL must not survive installation"
+        assert not target_shm.exists(), "stale target SHM must not survive installation"
+        assert _item_values(target) == [10, 20]
+
+
+def test_restore_snapshot_invalid_candidate_leaves_active_set_untouched():
+    with tempfile.TemporaryDirectory() as raw_directory:
+        directory = Path(raw_directory)
+        target = directory / "active.db"
+        _create_items_database(target, (77,))
+        target_wal = Path(f"{target}-wal")
+        target_shm = Path(f"{target}-shm")
+        target_wal.write_bytes(b"active wal")
+        target_shm.write_bytes(b"active shm")
+        original = {
+            path: path.read_bytes()
+            for path in (target, target_wal, target_shm)
+        }
+        invalid = directory / "invalid.db"
+        invalid.write_bytes(b"not a sqlite snapshot")
+
+        error = _expect_system_exit(
+            lambda: _run(
+                str(target),
+                "restore-snapshot",
+                invalid,
+                "--confirm-stopped",
+            )
+        )
+
+        message = str(error)
+        assert "restore_validation" in message
+        assert "active database was not changed" in message.lower()
+        assert {path: path.read_bytes() for path in original} == original
+        assert list(directory.glob(".active.db.rollback-*")) == []
+        assert list(directory.glob(".active.db.restore-*")) == []
+
+
+def test_restore_snapshot_maps_typed_errors_without_exposing_causes():
+    with tempfile.TemporaryDirectory() as raw_directory:
+        directory = Path(raw_directory)
+        target = directory / "active.db"
+        candidate = directory / "candidate.db"
+        calls = []
+        original_install = backup.install_snapshot
+
+        def fail_install(snapshot, target_path, *, confirmed_stopped):
+            calls.append((snapshot, target_path, confirmed_stopped))
+            raise backup.RestoreError(
+                backup.FailureStage.RESTORE_INSTALL,
+                "installation failed with credential top-secret-value",
+                cause=RuntimeError("token=another-secret-value"),
+            )
+
+        backup.install_snapshot = fail_install
+        try:
+            error = _expect_system_exit(
+                lambda: _run(
+                    str(target),
+                    "restore-snapshot",
+                    candidate,
+                    "--confirm-stopped",
+                )
+            )
+        finally:
+            backup.install_snapshot = original_install
+
+        assert calls == [(str(candidate), str(target.resolve()), True)]
+        message = str(error)
+        assert "restore_install" in message
+        assert "original database set was recovered" in message.lower()
+        assert "top-secret-value" not in message
+        assert "another-secret-value" not in message
 
 
 def test_launchers_validate_the_mandatory_secret():

@@ -8,13 +8,14 @@
 from __future__ import annotations
 
 import logging
+import time
 
 import contact_validation as contacts
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, DateTime, Integer, String, ForeignKey, UniqueConstraint, create_engine, delete, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import Boolean, DateTime, Integer, String, ForeignKey, UniqueConstraint, create_engine, delete, event, select
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import (
     DeclarativeBase,
     Mapped,
@@ -55,6 +56,22 @@ ROLE_SLOT_COUNT = {
 }
 
 DEFAULT_DB_PATH = "nuliga_helper.db"
+SQLITE_TIMEOUT_SECONDS = 5.0
+SQLITE_BUSY_TIMEOUT_MS = 5000
+SQLITE_SYNCHRONOUS_FULL = 2
+
+
+class SQLiteInitializationError(RuntimeError):
+    """Raised when the configured SQLite runtime invariants cannot be established."""
+
+
+class AssignmentTemporarilyUnavailableError(RuntimeError):
+    """Raised when an assignment CAS cannot finish within the lock deadline."""
+
+    def __init__(self):
+        super().__init__(
+            "Die Datenbank ist vorübergehend ausgelastet. Bitte versuche es erneut."
+        )
 
 
 def resolve_db_path(db_path: str) -> str:
@@ -66,9 +83,78 @@ def resolve_db_path(db_path: str) -> str:
     return os.path.join(os.path.dirname(os.path.abspath(__file__)), db_path)
 
 
+def _sqlite_pragma_value(dbapi_connection, pragma: str):
+    cursor = dbapi_connection.cursor()
+    try:
+        cursor.execute(f"PRAGMA {pragma}")
+        row = cursor.fetchone()
+        return row[0] if row else None
+    finally:
+        cursor.close()
+
+
+def _configure_sqlite_connection(dbapi_connection, _connection_record=None) -> None:
+    cursor = dbapi_connection.cursor()
+    try:
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.execute(f"PRAGMA busy_timeout={SQLITE_BUSY_TIMEOUT_MS}")
+        cursor.execute("PRAGMA synchronous=FULL")
+    finally:
+        cursor.close()
+
+    actual = {
+        "foreign_keys": _sqlite_pragma_value(dbapi_connection, "foreign_keys"),
+        "busy_timeout": _sqlite_pragma_value(dbapi_connection, "busy_timeout"),
+        "synchronous": _sqlite_pragma_value(dbapi_connection, "synchronous"),
+    }
+    expected = {
+        "foreign_keys": 1,
+        "busy_timeout": SQLITE_BUSY_TIMEOUT_MS,
+        "synchronous": SQLITE_SYNCHRONOUS_FULL,
+    }
+    mismatches = [
+        f"{name}={actual[name]!r} (expected {expected[name]!r})"
+        for name in expected
+        if actual[name] != expected[name]
+    ]
+    if mismatches:
+        raise SQLiteInitializationError(
+            "SQLite connection safety settings could not be verified: "
+            + ", ".join(mismatches)
+        )
+
+
+def inspect_sqlite_runtime(connection) -> dict[str, int | str | None]:
+    """Return the SQLite settings used by startup checks and focused tests."""
+    return {
+        "foreign_keys": connection.exec_driver_sql(
+            "PRAGMA foreign_keys"
+        ).scalar_one_or_none(),
+        "busy_timeout": connection.exec_driver_sql(
+            "PRAGMA busy_timeout"
+        ).scalar_one_or_none(),
+        "synchronous": connection.exec_driver_sql(
+            "PRAGMA synchronous"
+        ).scalar_one_or_none(),
+        "journal_mode": connection.exec_driver_sql(
+            "PRAGMA journal_mode"
+        ).scalar_one_or_none(),
+    }
+
+
 def make_engine(db_path: str = DEFAULT_DB_PATH):
-    """Create the SQLAlchemy engine for the SQLite database."""
-    return create_engine(f"sqlite:///{resolve_db_path(db_path)}")
+    """Create an engine with the supported SQLite runtime profile."""
+    database_url = (
+        "sqlite:///:memory:"
+        if db_path == ":memory:"
+        else f"sqlite:///{resolve_db_path(db_path)}"
+    )
+    engine = create_engine(
+        database_url,
+        connect_args={"timeout": SQLITE_TIMEOUT_SECONDS},
+    )
+    event.listen(engine, "connect", _configure_sqlite_connection)
+    return engine
 
 
 SUPPORT_TEAM_NAME = "Supporter"
@@ -88,8 +174,65 @@ ACCOUNT_STATUSES = {
 
 
 def init_db(engine) -> None:
-    """Create all tables and make sure the support team exists."""
+    """Establish and verify SQLite runtime invariants, then initialize tables."""
+    try:
+        with engine.connect() as connection:
+            # Keep initialization compatible with pre-existing callers while all
+            # application engines move through make_engine().
+            _configure_sqlite_connection(connection.connection.driver_connection)
+            mode = connection.exec_driver_sql("PRAGMA journal_mode=WAL").scalar_one()
+            if str(mode).lower() != "wal":
+                raise SQLiteInitializationError(
+                    "SQLite startup could not establish WAL journal mode "
+                    f"(database reported {mode!r}). Ensure the database is writable "
+                    "and stored on a local filesystem."
+                )
+            settings = inspect_sqlite_runtime(connection)
+            expected = {
+                "foreign_keys": 1,
+                "busy_timeout": SQLITE_BUSY_TIMEOUT_MS,
+                "synchronous": SQLITE_SYNCHRONOUS_FULL,
+            }
+            mismatches = [
+                f"{name}={settings[name]!r} (expected {value!r})"
+                for name, value in expected.items()
+                if settings[name] != value
+            ]
+            if mismatches:
+                raise SQLiteInitializationError(
+                    "SQLite startup safety checks failed: " + ", ".join(mismatches)
+                )
+    except SQLiteInitializationError:
+        raise
+    except OperationalError as exc:
+        raise SQLiteInitializationError(
+            "SQLite startup failed while establishing and verifying WAL mode. "
+            "Ensure the database is writable, not held by another startup, and "
+            "stored on a local filesystem."
+        ) from exc
+
     Base.metadata.create_all(engine)
+
+    try:
+        with engine.connect() as connection:
+            violations = connection.exec_driver_sql(
+                "PRAGMA foreign_key_check"
+            ).fetchall()
+    except OperationalError as exc:
+        raise SQLiteInitializationError(
+            "SQLite startup could not run foreign_key_check. Ensure the database "
+            "is readable and not locked, then retry."
+        ) from exc
+    if violations:
+        details = "; ".join(
+            f"table={table!r}, rowid={rowid!r}, parent={parent!r}, fk_index={fk_id!r}"
+            for table, rowid, parent, fk_id in violations
+        )
+        raise SQLiteInitializationError(
+            "SQLite foreign_key_check failed: " + details
+            + ". Repair the listed relationships or restore a valid backup."
+        )
+
     session = Session(engine)
     try:
         if get_support_team(session) is None:
@@ -575,6 +718,36 @@ class SlotConflictError(ValueError):
         self.current_person_id = current_person_id
 
 
+def _is_sqlite_contention(exc: OperationalError) -> bool:
+    original = exc.orig
+    error_code = getattr(original, "sqlite_errorcode", None)
+    if isinstance(error_code, int) and error_code & 0xFF in (5, 6):
+        return True
+    message = str(original).lower()
+    return "database is locked" in message or "database is busy" in message
+
+
+def _wait_for_assignment_retry(deadline: float, exc: OperationalError) -> None:
+    if not _is_sqlite_contention(exc):
+        raise exc
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise AssignmentTemporarilyUnavailableError() from exc
+    time.sleep(min(0.05, remaining))
+
+
+def _stored_slot(
+    session: Session, game_id: int, role: str, slot: int
+) -> Assignment | None:
+    return session.scalars(
+        select(Assignment).where(
+            Assignment.game_id == game_id,
+            Assignment.role == role,
+            Assignment.slot == slot,
+        )
+    ).first()
+
+
 def _validate_slot(role: str, slot: int) -> None:
     if role not in ROLE_SLOT_COUNT or slot < 0 or slot >= ROLE_SLOT_COUNT[role]:
         raise ValueError("Ungültiger Aufgabenplatz.")
@@ -626,41 +799,78 @@ def claim_slot(
     actor: Person | None = None,
     actor_tier: str = "system",
 ) -> Assignment:
-    """Claim one slot if its current occupant matches the caller's expectation."""
+    """Claim one slot using bounded, freshly revalidated compare-and-swap."""
     _validate_slot(role, slot)
-    current = _slot_assignment(game, role, slot)
-    current_id = current.person_id if current else None
-    if current_id != expected_person_id:
-        raise SlotConflictError(current_id)
-    if current is not None:
-        if current.person_id == person.id:
-            return current
-        raise SlotConflictError(current.person_id)
-    if person.account_status != ACCOUNT_ACTIVE:
-        raise ValueError("Diese Person kann nicht eingeteilt werden.")
-    other = next((a for a in game.assignments if a.person_id == person.id), None)
-    if other is not None:
-        raise ValueError(
-            f"{person.name} ist für dieses Spiel bereits als '{other.role}' eingeteilt."
-        )
-    assignment = Assignment(game=game, person=person, role=role, slot=slot)
     game_id = game.id
-    session.add(assignment)
-    try:
-        session.flush()
-    except IntegrityError:
-        session.rollback()
-        stored = session.scalars(
-            select(Assignment).where(
-                Assignment.game_id == game_id,
-                Assignment.role == role,
-                Assignment.slot == slot,
+    person_id = person.id
+    actor_id = actor.id if actor else None
+    deadline = time.monotonic() + SQLITE_TIMEOUT_SECONDS
+
+    while True:
+        try:
+            current = _stored_slot(session, game_id, role, slot)
+            current_id = current.person_id if current else None
+            if current_id != expected_person_id:
+                raise SlotConflictError(current_id)
+            if current is not None:
+                if current.person_id == person_id:
+                    return current
+                raise SlotConflictError(current.person_id)
+
+            stored_game = session.get(Game, game_id)
+            stored_person = session.get(Person, person_id)
+            if stored_game is None or stored_person is None:
+                raise ValueError("Spiel oder Person wurde nicht gefunden.")
+            if stored_person.account_status != ACCOUNT_ACTIVE:
+                raise ValueError("Diese Person kann nicht eingeteilt werden.")
+            other = session.scalars(
+                select(Assignment).where(
+                    Assignment.game_id == game_id,
+                    Assignment.person_id == person_id,
+                )
+            ).first()
+            if other is not None:
+                raise ValueError(
+                    f"{stored_person.name} ist für dieses Spiel bereits als "
+                    f"'{other.role}' eingeteilt."
+                )
+
+            stored_actor = session.get(Person, actor_id) if actor_id else None
+            assignment = Assignment(
+                game=stored_game,
+                person=stored_person,
+                role=role,
+                slot=slot,
             )
-        ).first()
-        raise SlotConflictError(stored.person_id if stored else None) from None
-    _audit_assignment(session, assignment, "claim", actor, actor_tier)
-    session.flush()
-    return assignment
+            session.add(assignment)
+            session.flush()
+            _audit_assignment(
+                session, assignment, "claim", stored_actor, actor_tier
+            )
+            session.flush()
+            return assignment
+        except OperationalError as exc:
+            session.rollback()
+            _wait_for_assignment_retry(deadline, exc)
+        except IntegrityError as exc:
+            session.rollback()
+            current = _stored_slot(session, game_id, role, slot)
+            current_id = current.person_id if current else None
+            if current_id != expected_person_id:
+                raise SlotConflictError(current_id) from None
+            other = session.scalars(
+                select(Assignment).where(
+                    Assignment.game_id == game_id,
+                    Assignment.person_id == person_id,
+                )
+            ).first()
+            if other is not None:
+                stored_person = session.get(Person, person_id)
+                name = stored_person.name if stored_person else "Die Person"
+                raise ValueError(
+                    f"{name} ist für dieses Spiel bereits als '{other.role}' eingeteilt."
+                ) from None
+            raise
 
 
 def release_slot(
@@ -672,44 +882,61 @@ def release_slot(
     actor: Person | None = None,
     actor_tier: str = "system",
 ) -> Person | None:
-    """Release one slot if its occupant matches the caller's expectation."""
+    """Release one slot using bounded, freshly revalidated compare-and-swap."""
     _validate_slot(role, slot)
-    current = _slot_assignment(game, role, slot)
-    current_id = current.person_id if current else None
-    if current_id != expected_person_id:
-        raise SlotConflictError(current_id)
-    if current is None:
-        return None
-    person = current.person
-    audit = AssignmentAudit(
-        actor_person_id=actor.id if actor else None,
-        actor_tier=actor_tier,
-        action="release",
-        affected_person_id=current.person_id,
-        game_id=current.game_id,
-        role=current.role,
-        slot=current.slot,
-        actor_name=actor.name if actor else "System",
-        affected_person_name=current.person.name,
-        game_snapshot=_game_snapshot(current.game),
-    )
-    result = session.execute(
-        delete(Assignment).where(
-            Assignment.id == current.id,
-            Assignment.game_id == game.id,
-            Assignment.role == role,
-            Assignment.slot == slot,
-            Assignment.person_id == expected_person_id,
-        )
-    )
-    if result.rowcount != 1:
-        session.expire(game, ["assignments"])
-        stored = _slot_assignment(game, role, slot)
-        raise SlotConflictError(stored.person_id if stored else None)
-    session.add(audit)
-    session.expire(game, ["assignments"])
-    session.flush()
-    return person
+    game_id = game.id
+    actor_id = actor.id if actor else None
+    actor_name = actor.name if actor else "System"
+    deadline = time.monotonic() + SQLITE_TIMEOUT_SECONDS
+
+    while True:
+        try:
+            current = _stored_slot(session, game_id, role, slot)
+            current_id = current.person_id if current else None
+            if current_id != expected_person_id:
+                raise SlotConflictError(current_id)
+            if current is None:
+                return None
+
+            person = current.person
+            audit = AssignmentAudit(
+                actor_person_id=actor_id,
+                actor_tier=actor_tier,
+                action="release",
+                affected_person_id=current.person_id,
+                game_id=current.game_id,
+                role=current.role,
+                slot=current.slot,
+                actor_name=actor_name,
+                affected_person_name=person.name,
+                game_snapshot=_game_snapshot(current.game),
+            )
+            result = session.execute(
+                delete(Assignment).where(
+                    Assignment.id == current.id,
+                    Assignment.game_id == game_id,
+                    Assignment.role == role,
+                    Assignment.slot == slot,
+                    Assignment.person_id == expected_person_id,
+                ).execution_options(synchronize_session=False)
+            )
+            if getattr(result, "rowcount", None) != 1:
+                session.rollback()
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise AssignmentTemporarilyUnavailableError()
+                time.sleep(min(0.05, remaining))
+                continue
+            session.add(audit)
+            session.flush()
+            session.expire(current.game, ["assignments"])
+            return person
+        except OperationalError as exc:
+            session.rollback()
+            _wait_for_assignment_retry(deadline, exc)
+        except IntegrityError:
+            session.rollback()
+            raise
 
 
 def set_role_assignments(session: Session, game: Game, role: str,

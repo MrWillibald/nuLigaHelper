@@ -55,6 +55,9 @@ def _capture_messages():
     )
 
     def fake_fallback(self, person, subject, mail_body, sms_body):
+        assert not self.session.new
+        assert not self.session.dirty
+        assert not self.session.deleted
         messages.append({
             "person_id": person.id,
             "channel": "fallback",
@@ -64,6 +67,9 @@ def _capture_messages():
         return 1
 
     def fake_via(self, person, channel, subject, body):
+        assert not self.session.new
+        assert not self.session.dirty
+        assert not self.session.deleted
         messages.append({
             "person_id": person.id,
             "channel": channel,

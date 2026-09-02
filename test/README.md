@@ -29,10 +29,20 @@ test/run_tests.sh
 | `test_db.py`       | Bootstrap, sync events (new/shift/§77/removed), ordering, cascades       |
 | `test_notifier.py` | Mail/SMS dispatch counts and texts (recorded, never sent)                |
 | `test_webapp.py`   | Schedule rendering, inline assignment API, persons CRUD, statistics      |
+| `test_sqlite_runtime.py` | SQLite WAL, foreign-key, timeout and startup invariants             |
+| `test_concurrency.py` | Assignment CAS, audit atomicity and bounded WAL contention             |
+| `test_daily_lock.py` | Per-database process lock for non-overlapping daily runs                 |
+| `test_backup.py`   | Online snapshots, Dropbox retention, staged failures and safe restore     |
+| `test_main.py`     | Daily orchestration order, transaction boundaries and failure status      |
+| `test_cli.py`      | Management commands including guarded snapshot restoration                |
 
 ## Notes
 
 - The webapp tests build on each other and run top to bottom within their file
   (like a user clicking through the interface once).
 - Databases live in the system temp directory and are recreated on every run;
-  there is no migration logic to test by design (see main README).
+  there is no schema-migration logic to test by design (see main README).
+- Dropbox, scraper, mail and SMS behavior is faked; backup tests use only local
+  synthetic SQLite files and fake Dropbox clients.
+- File-backed test databases use the same WAL/foreign-key/busy-timeout profile as
+  the application so contention tests exercise the supported runtime behavior.

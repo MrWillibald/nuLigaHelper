@@ -43,9 +43,44 @@ Access is derived from database facts on every request:
 
 Teams are fully automatic: they are derived from the scraped age classes (`ak`, e.g. "BL mD") plus one support team ("Supporter") for persons without an active team. Teams cannot be created or edited manually. The responsible team is chosen per game; it is never pre-assigned, since the team playing the game should not be pre-booked for its own support tasks. In the dropdowns, members of the responsible team and the support team appear normally; members of other teams and of the playing team itself are greyed out but can still be selected (with a hint).
 
-There is no database migration: after schema changes simply delete `nuliga_helper.db` (or your configured database file) and let the next run recreate it.
+There is no schema-migration layer. During development, a database may be recreated after a schema change; once real production data exists, preserve it and make schema upgrades only through a separately reviewed migration plan. The SQLite runtime settings below do not change the table schema and do not require recreating the database.
 
 Authentication does not by itself make the Flask development server suitable for the public internet. Production WSGI serving, TLS and deployment hardening remain required before public exposure.
+
+## SQLite production profile and backups
+
+All application database connections enable foreign-key enforcement, wait up to five seconds for transient locks and use `synchronous=FULL`. Startup establishes WAL journal mode and refuses to continue if WAL, the connection settings or `PRAGMA foreign_key_check` cannot be verified. Existing foreign-key violations are reported for explicit operator repair or restore; they are never deleted automatically.
+
+The supported deployment uses the database on a local Raspberry Pi filesystem, exactly one web process/worker, and at most one daily-job process. Multi-worker WSGI operation, network-filesystem SQLite and PostgreSQL are outside the currently verified topology. WAL creates temporary `<database>-wal` and `<database>-shm` files while connections are active. Do not copy, move or delete these files while the application is running.
+
+The daily job takes a non-blocking OS lock at `<resolved-database>.daily.lock` before database initialization or external work. A concurrent run for the same database fails immediately with a nonzero exit status; an unlocked file left after a restart is harmless. `run.sh` uses `exec`, so cron receives the Python process status directly.
+
+Backups use SQLite's online backup API and therefore include one complete committed state even when committed pages still reside in WAL. The live `.db` file and its sidecars are never uploaded directly. Every snapshot must pass `PRAGMA quick_check` and `PRAGMA foreign_key_check` before publication. Dropbox receives, in this order:
+
+1. `<database-stem>-YYYY-MM-DD<suffix>` for `common.effective_today()`;
+2. the stable configured database basename as the latest backup;
+3. retention cleanup of only older names that exactly match that database's dated convention.
+
+`club.dropbox.dated_retention` is optional and defaults to `14`; it must be a positive integer. A same-day rerun replaces that day's recovery point. Retry-safe Dropbox operations recover from transient connection, DNS, timeout, rate-limit and server failures with three bounded retries after 1, 2 and 4 seconds; authentication, bad-input and other permanent failures fail immediately. Snapshot, validation, read, Dropbox client, upload, listing, pagination, deletion and local-cleanup failures are logged concisely by stage and make the daily job exit unsuccessfully. When the source database remains usable, due notification work is still attempted after a backup failure, but notifications are not retried automatically.
+
+### Restore a downloaded snapshot
+
+Restoration is an offline operation. Copying only a live WAL-mode main file is not a valid backup or restore method.
+
+1. Stop the web process and disable or wait for the daily job. Verify that no process is using the database or holding its daily-run lock.
+2. Download the selected latest or dated Dropbox object to a separate path. Never download it over the active database.
+3. Run the guarded command against the configured target:
+
+   ```bash
+   python3 manage_db.py --db /absolute/path/nuliga_helper.db \
+       restore-snapshot /path/to/downloaded-snapshot.db --confirm-stopped
+   ```
+
+4. The command validates the candidate before changing the target, fsyncs a same-filesystem temporary copy, preserves the current `.db`, `-wal` and `-shm` set in the printed rollback directory, and atomically installs the snapshot. If installation fails, it attempts to recover the complete preserved set. Keep all services stopped and inspect the reported paths after any failure.
+5. Start exactly one application process. Normal startup re-establishes WAL and repeats the runtime and foreign-key checks. Verify the schedule, authentication and one non-destructive database query before re-enabling normal traffic and the daily timer.
+6. Retain the command-created rollback directory until the restored service and the next validated Dropbox backup have been accepted.
+
+Before deploying these settings to an existing database, stop writers, preserve the current database together with any sidecars, run the full offline suite, and start one process to perform the integrity preflight. For rollback, stop every database user first and restore a validated snapshot or the complete preserved database set; never replace only the main file while WAL users are active.
 
 `NULIGAHELPER_SECRET` is mandatory for both the webapp and daily job. Set it in the environment or keep the raw value in the gitignored `.nuligahelper_secret` file used by both launch scripts. Keep it stable: changing it invalidates every session. `NULIGAHELPER_DB` is an optional SQLite-path override.
 

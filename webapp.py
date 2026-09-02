@@ -1471,6 +1471,15 @@ def create_app() -> Flask:
             current_person_name=current.name if current else None,
         ), 409
 
+    def _assignment_unavailable_response(
+        exc: db.AssignmentTemporarilyUnavailableError,
+    ):
+        return jsonify(
+            ok=False,
+            code="temporarily_unavailable",
+            error=str(exc),
+        ), 503
+
     @app.post("/api/assignment/claim")
     def api_assignment_claim():
         data, session_db, game, role, slot, error = _assignment_request()
@@ -1495,14 +1504,17 @@ def create_app() -> Flask:
         except db.SlotConflictError as exc:
             session_db.rollback()
             return _conflict_response(exc)
-        except IntegrityError:
+        except db.AssignmentTemporarilyUnavailableError as exc:
             session_db.rollback()
-            current = session_db.query(db.Assignment).filter_by(
-                game_id=game.id, role=role, slot=slot
-            ).first()
-            return _conflict_response(
-                db.SlotConflictError(current.person_id if current else None)
+            logging.warning(
+                "Assignment claim temporarily unavailable for game=%s role=%s "
+                "slot=%s: %s",
+                game.id,
+                role,
+                slot,
+                exc,
             )
+            return _assignment_unavailable_response(exc)
         except ValueError as exc:
             session_db.rollback()
             return api_error(str(exc))
@@ -1530,6 +1542,17 @@ def create_app() -> Flask:
         except db.SlotConflictError as exc:
             session_db.rollback()
             return _conflict_response(exc)
+        except db.AssignmentTemporarilyUnavailableError as exc:
+            session_db.rollback()
+            logging.warning(
+                "Assignment release temporarily unavailable for game=%s role=%s "
+                "slot=%s: %s",
+                game.id,
+                role,
+                slot,
+                exc,
+            )
+            return _assignment_unavailable_response(exc)
         return jsonify(ok=True)
 
     @app.post("/api/games/<int:game_id>/team")

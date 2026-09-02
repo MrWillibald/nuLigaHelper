@@ -27,11 +27,10 @@ SEASON = 2026
 
 def make_engine():
     """Return a fresh in-file SQLite engine with all tables created."""
-    from sqlalchemy import create_engine
     import db
 
     path = os.path.join(_TEST_DIR, f"{next(tempfile._get_candidate_names())}.db")
-    engine = create_engine(f"sqlite:///{path}")
+    engine = db.make_engine(path)
     db.init_db(engine)
     return engine
 
@@ -44,8 +43,9 @@ def Session(engine):
 
 def app_db_engine():
     """Engine for the database the webapp uses (NULIGAHELPER_DB target)."""
-    from sqlalchemy import create_engine
-    return create_engine(f"sqlite:///{os.environ['NULIGAHELPER_DB']}")
+    import db
+
+    return db.make_engine(os.environ["NULIGAHELPER_DB"])
 
 
 def sign_in(client, person_id: int, csrf_token: str = "test-csrf-token") -> str:

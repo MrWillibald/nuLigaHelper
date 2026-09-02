@@ -4,5 +4,6 @@
 **/__pycache__/**
 **.code-workspace
 **.db
+**.daily.lock
 venv/
 **.nuligahelper_secret
