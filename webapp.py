@@ -536,7 +536,7 @@ def create_app() -> Flask:
         action = "Registrierung" if purpose == "verify" else "Anmeldung"
         body = (
             f"Hallo {person.name},\n\n"
-            f"dein Code für die {action} bei nuLigaHelper lautet {code}. "
+            f"{code} ist dein Code für die {action} bei nuLigaHelper des TuS Raubling Handball. "
             "Er gilt 15 Minuten."
         )
         _safe_account_message_via(

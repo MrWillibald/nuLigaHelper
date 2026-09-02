@@ -16,7 +16,7 @@ def load_config(filename: str = "config.json") -> dict:
         return json.load(f)
 
 # Version string
-VERSION = "0.29"
+VERSION = "0.30"
 
 # Debug flag: disables all outbound mail/SMS and fixes "today" for testing
 DEBUG_FLAG = False
