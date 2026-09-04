@@ -30,6 +30,7 @@ test/run_tests.sh
 | `test_notifier.py` | Mail/SMS dispatch counts and texts (recorded, never sent)                |
 | `test_webapp.py`   | Schedule rendering, inline assignment API, persons CRUD, statistics      |
 | `test_sqlite_runtime.py` | SQLite WAL, foreign-key, timeout and startup invariants             |
+| `test_production_runtime.py` | Production config, proxy/host/cookie/body/header behavior and deployment assets |
 | `test_concurrency.py` | Assignment CAS, audit atomicity and bounded WAL contention             |
 | `test_daily_lock.py` | Per-database process lock for non-overlapping daily runs                 |
 | `test_backup.py`   | Online snapshots, Dropbox retention, staged failures and safe restore     |

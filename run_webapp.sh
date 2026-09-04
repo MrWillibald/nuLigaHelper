@@ -9,5 +9,7 @@ fi
 # Activate the virtual environment
 source venv/bin/activate
 
-# Start the web interface (reachable in local network on port 8080)
+# Local/development server only (trusted LAN, port 8080). For production use the
+# documented Caddy -> loopback Gunicorn -> systemd deployment in deploy/PRODUCTION.md.
+echo "Lokaler Entwicklungsserver; nicht öffentlich ins Internet stellen." >&2
 python webapp.py

@@ -12,6 +12,8 @@
 import os
 import secrets
 import logging
+import ipaddress
+import re
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
 
@@ -33,6 +35,114 @@ from flask import (
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from sqlalchemy import or_, update
 from sqlalchemy.exc import IntegrityError
+from werkzeug.exceptions import RequestEntityTooLarge
+from werkzeug.middleware.proxy_fix import ProxyFix
+
+PRODUCTION_ENV = "production"
+MAX_PRODUCTION_BODY_BYTES = 1024 * 1024
+PRODUCTION_SECURITY_HEADERS = {
+    "Content-Security-Policy": (
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data:; object-src 'none'; base-uri 'self'; "
+        "frame-ancestors 'none'; form-action 'self'"
+    ),
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+}
+
+_HOST_LABEL = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\Z")
+
+
+def _production_mode() -> bool:
+    value = os.environ.get("NULIGAHELPER_ENV", "").strip().lower()
+    if value in {"", "local", "development"}:
+        return False
+    if value == PRODUCTION_ENV:
+        return True
+    raise RuntimeError(
+        "NULIGAHELPER_ENV muss 'production' sein oder für den lokalen Modus fehlen."
+    )
+
+
+def _valid_exact_hostname(value: str) -> bool:
+    if (
+        not value
+        or value != value.lower()
+        or len(value) > 253
+        or value.startswith(".")
+        or value.endswith(".")
+        or ":" in value
+        or "/" in value
+        or "*" in value
+        or "," in value
+    ):
+        return False
+    return all(_HOST_LABEL.fullmatch(label) for label in value.split("."))
+
+
+def _production_settings() -> tuple[str, str, list[str]]:
+    secret = os.environ.get("NULIGAHELPER_SECRET", "")
+    database = os.environ.get("NULIGAHELPER_DB", "")
+    raw_hosts = os.environ.get("NULIGAHELPER_TRUSTED_HOSTS", "")
+    if not secret.strip():
+        raise RuntimeError("NULIGAHELPER_SECRET muss in Produktion gesetzt sein.")
+    if not database or not os.path.isabs(database):
+        raise RuntimeError("NULIGAHELPER_DB muss in Produktion ein absoluter Pfad sein.")
+    hosts = [host.strip() for host in raw_hosts.split(",")]
+    if not raw_hosts or any(not _valid_exact_hostname(host) for host in hosts):
+        raise RuntimeError(
+            "NULIGAHELPER_TRUSTED_HOSTS muss exakte, kleingeschriebene Hostnamen "
+            "ohne Schema, Port, Pfad oder Platzhalter enthalten."
+        )
+    if len(set(hosts)) != len(hosts):
+        raise RuntimeError("NULIGAHELPER_TRUSTED_HOSTS darf keine Duplikate enthalten.")
+    return secret, database, hosts
+
+
+def _plain_wsgi_error(start_response, status: str, message: str):
+    body = (message + "\n").encode("utf-8")
+    headers = [("Content-Type", "text/plain; charset=utf-8"),
+               ("Content-Length", str(len(body)))]
+    headers.extend(PRODUCTION_SECURITY_HEADERS.items())
+    start_response(status, headers)
+    return [body]
+
+
+class ProductionProxyBoundary:
+    """Validate raw Caddy metadata before one-hop ProxyFix correction."""
+
+    def __init__(self, app):
+        self.app = app
+
+    def __call__(self, environ, start_response):
+        peer = environ.get("REMOTE_ADDR", "")
+        try:
+            if not ipaddress.ip_address(peer).is_loopback:
+                raise ValueError
+        except ValueError:
+            return _plain_wsgi_error(start_response, "400 Bad Request", "Ungültige Proxy-Grenze.")
+
+        forwarded = environ.get("HTTP_FORWARDED")
+        client = environ.get("HTTP_X_FORWARDED_FOR", "")
+        scheme = environ.get("HTTP_X_FORWARDED_PROTO", "")
+        host = environ.get("HTTP_X_FORWARDED_HOST", "")
+        unexpected = (
+            environ.get("HTTP_X_FORWARDED_PORT"),
+            environ.get("HTTP_X_FORWARDED_PREFIX"),
+        )
+        try:
+            if forwarded or any(unexpected):
+                raise ValueError
+            if any("," in value for value in (client, scheme, host)):
+                raise ValueError
+            ipaddress.ip_address(client)
+            if scheme != "https" or not _valid_exact_hostname(host):
+                raise ValueError
+        except ValueError:
+            return _plain_wsgi_error(start_response, "400 Bad Request", "Ungültige Proxy-Metadaten.")
+        return self.app(environ, start_response)
 
 MONATE = [
     "Januar", "Februar", "März", "April", "Mai", "Juni",
@@ -60,10 +170,12 @@ COUNTRY_CODES = [
 
 
 def get_db_path() -> str:
-    return os.environ.get(
-        "NULIGAHELPER_DB",
-        common.load_config()["club"].get("database", {}).get("path", db.DEFAULT_DB_PATH),
-    )
+    configured_path = os.environ.get("NULIGAHELPER_DB")
+    if configured_path:
+        return configured_path
+    return common.load_config()["club"].get(
+        "database", {}
+    ).get("path", db.DEFAULT_DB_PATH)
 
 
 def ak_color(ak: str | None) -> str:
@@ -96,7 +208,13 @@ def _person_team(persons: list[dict], person_id: int) -> int | None:
 
 def create_app() -> Flask:
     app = Flask(__name__)
-    secret_key = os.environ.get("NULIGAHELPER_SECRET")
+    production = _production_mode()
+    if production:
+        secret_key, database_path, trusted_hosts = _production_settings()
+    else:
+        secret_key = os.environ.get("NULIGAHELPER_SECRET")
+        database_path = get_db_path()
+        trusted_hosts = None
     if not secret_key:
         raise RuntimeError("NULIGAHELPER_SECRET muss gesetzt sein.")
     app.secret_key = secret_key
@@ -104,11 +222,61 @@ def create_app() -> Flask:
         PERMANENT_SESSION_LIFETIME=timedelta(hours=1),
         SESSION_REFRESH_EACH_REQUEST=True,
         SESSION_COOKIE_SAMESITE="Lax",
+        SESSION_COOKIE_HTTPONLY=True,
+        SESSION_COOKIE_PATH="/",
+        SESSION_COOKIE_DOMAIN=None,
+        SESSION_COOKIE_SECURE=production,
+        MAX_CONTENT_LENGTH=(MAX_PRODUCTION_BODY_BYTES if production else None),
+        TRUSTED_HOSTS=trusted_hosts,
+        NULIGAHELPER_PRODUCTION=production,
     )
-    engine = db.make_engine(get_db_path())
+    engine = db.make_engine(database_path)
     db.init_db(engine)
     serializer = URLSafeTimedSerializer(secret_key, salt="nuligahelper-auth")
     rate_events: dict[str, deque[datetime]] = defaultdict(deque)
+    app.extensions["nuligahelper_rate_events"] = rate_events
+
+    if production:
+        app.logger.setLevel(logging.INFO)
+        corrected_app = ProxyFix(
+            app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=0, x_prefix=0
+        )
+        app.wsgi_app = ProductionProxyBoundary(corrected_app)
+
+    @app.before_request
+    def enforce_trusted_host():
+        if production:
+            # Accessing the property invokes Werkzeug's TRUSTED_HOSTS check before
+            # authentication, CSRF, or endpoint code can run.
+            request.host
+
+    @app.before_request
+    def enforce_content_length():
+        if production and request.content_length is not None:
+            if request.content_length > MAX_PRODUCTION_BODY_BYTES:
+                raise RequestEntityTooLarge()
+
+    @app.errorhandler(413)
+    def request_too_large(error):
+        if request.path.startswith("/api/"):
+            return jsonify(ok=False, code="request_too_large", error="Anfrage zu groß."), 413
+        return render_template("message.html", message="Die Anfrage ist zu groß."), 413
+
+    @app.after_request
+    def production_response_headers(response):
+        if production:
+            for name, value in PRODUCTION_SECURITY_HEADERS.items():
+                response.headers[name] = value
+            if request.is_secure:
+                response.headers["Strict-Transport-Security"] = "max-age=31536000"
+            app.logger.info(
+                "web request client=%s method=%s path=%s status=%s",
+                request.remote_addr or "unknown",
+                request.method,
+                request.path,
+                response.status_code,
+            )
+        return response
 
     @app.teardown_appcontext
     def close_session(exception):

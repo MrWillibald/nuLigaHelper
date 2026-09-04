@@ -18,7 +18,8 @@ A helper class to organize home games with nuLiga Handball.
 
 # Web interface
 
-Create a persistent signing secret once, then start the web interface:
+For local development or trusted-LAN use, create a persistent signing secret once,
+then start the Flask development server:
 
 ```bash
 python3 -c 'import secrets; print(secrets.token_urlsafe(48))' > .nuligahelper_secret
@@ -26,6 +27,10 @@ python3 -c 'import secrets; print(secrets.token_urlsafe(48))' > .nuligahelper_se
 ```
 
 It is then reachable in the local network at `http://<device-ip>:8080`.
+`run_webapp.sh` is development-only and must not be exposed to the public internet.
+The supported production path uses one loopback Gunicorn worker supervised by
+systemd behind Caddy-managed HTTPS. Follow the complete
+[Raspberry Pi/Linux production guide](deploy/PRODUCTION.md).
 
 - **Heimspielplan**: public, read-only schedule with assigned helper names. Signed-in members can claim and release their own future tasks. MVs can additionally staff their own team on games for which that team is responsible; admins can correct every slot and set the responsible team. Concurrent stale changes are rejected rather than overwriting another person's work.
 - **Helfer verwalten**: members see names and teams but only their own contact data. Admins create, edit, deactivate/reactivate or delete erroneous entries and appoint team MVs. MVs and admins approve registrations in their scope.
@@ -45,7 +50,10 @@ Teams are fully automatic: they are derived from the scraped age classes (`ak`, 
 
 There is no schema-migration layer. During development, a database may be recreated after a schema change; once real production data exists, preserve it and make schema upgrades only through a separately reviewed migration plan. The SQLite runtime settings below do not change the table schema and do not require recreating the database.
 
-Authentication does not by itself make the Flask development server suitable for the public internet. Production WSGI serving, TLS and deployment hardening remain required before public exposure.
+Authentication does not make the Flask development server suitable for public use.
+The versioned Gunicorn, systemd, Caddy, and environment examples under `deploy/`
+provide the supported hardened production path; site-specific secrets and hostnames
+remain outside Git.
 
 ## SQLite production profile and backups
 
@@ -82,7 +90,7 @@ Restoration is an offline operation. Copying only a live WAL-mode main file is n
 
 Before deploying these settings to an existing database, stop writers, preserve the current database together with any sidecars, run the full offline suite, and start one process to perform the integrity preflight. For rollback, stop every database user first and restore a validated snapshot or the complete preserved database set; never replace only the main file while WAL users are active.
 
-`NULIGAHELPER_SECRET` is mandatory for both the webapp and daily job. Set it in the environment or keep the raw value in the gitignored `.nuligahelper_secret` file used by both launch scripts. Keep it stable: changing it invalidates every session. `NULIGAHELPER_DB` is an optional SQLite-path override.
+`NULIGAHELPER_SECRET` is mandatory for both the webapp and daily job. Set it in the environment or keep the raw value in the gitignored `.nuligahelper_secret` file used by both launch scripts. Keep it stable: changing it invalidates every session. `NULIGAHELPER_DB` is an optional SQLite-path override locally; production requires `NULIGAHELPER_ENV=production`, an absolute `NULIGAHELPER_DB`, and exact `NULIGAHELPER_TRUSTED_HOSTS` entries as described in the [production guide](deploy/PRODUCTION.md).
 
 # Testing
 
