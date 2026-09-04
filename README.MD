@@ -2,6 +2,10 @@
 
 A helper class to organize home games with nuLiga Handball.
 
+Production authentication-abuse controls, trusted proxy coordination, SQLite
+retention, SMS cap tuning, Twilio backstops, and rollback procedures are documented
+in [`deploy/PRODUCTION.md`](deploy/PRODUCTION.md).
+
 # Features
 
 - Read home games from Hallenspielplan website of nuLiga

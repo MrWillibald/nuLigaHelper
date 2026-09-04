@@ -13,11 +13,12 @@ import os
 import secrets
 import logging
 import ipaddress
+import json
 import re
-from collections import defaultdict, deque
 from datetime import datetime, timedelta
 
 import common
+import auth_abuse
 import contact_validation as contacts
 import db
 import notifier
@@ -233,8 +234,23 @@ def create_app() -> Flask:
     engine = db.make_engine(database_path)
     db.init_db(engine)
     serializer = URLSafeTimedSerializer(secret_key, salt="nuligahelper-auth")
-    rate_events: dict[str, deque[datetime]] = defaultdict(deque)
-    app.extensions["nuligahelper_rate_events"] = rate_events
+    raw_abuse_config = os.environ.get("NULIGAHELPER_AUTH_ABUSE_CONFIG")
+    if raw_abuse_config:
+        try:
+            abuse_section = json.loads(raw_abuse_config)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError("NULIGAHELPER_AUTH_ABUSE_CONFIG must be valid JSON") from exc
+    elif production or os.environ.get("NULIGAHELPER_DB"):
+        abuse_section = {}
+    else:
+        abuse_section = common.load_config().get("club", {}).get("auth_abuse", {})
+    try:
+        abuse_config = auth_abuse.load_config(abuse_section)
+    except ValueError as exc:
+        raise RuntimeError(f"Invalid auth_abuse configuration: {exc}") from exc
+    abuse_service = auth_abuse.Service(engine, abuse_config, secret_key)
+    abuse_service.cleanup()
+    app.extensions["nuligahelper_auth_abuse"] = abuse_service
 
     if production:
         app.logger.setLevel(logging.INFO)
@@ -270,8 +286,7 @@ def create_app() -> Flask:
             if request.is_secure:
                 response.headers["Strict-Transport-Security"] = "max-age=31536000"
             app.logger.info(
-                "web request client=%s method=%s path=%s status=%s",
-                request.remote_addr or "unknown",
+                "web request method=%s path=%s status=%s",
                 request.method,
                 request.path,
                 response.status_code,
@@ -498,16 +513,47 @@ def create_app() -> Flask:
             errors[exc.field_name] = exc.message
         return email, phone, errors
 
-    def _rate_allowed(key: str, limit: int, window_minutes: int = 15) -> bool:
-        now = datetime.now()
-        cutoff = now - timedelta(minutes=window_minutes)
-        events = rate_events[key]
-        while events and events[0] < cutoff:
-            events.popleft()
-        if len(events) >= limit:
-            return False
-        events.append(now)
-        return True
+    def _client_subject() -> str | None:
+        return auth_abuse.attributed_client(
+            request.remote_addr,
+            request.headers.get("X-Forwarded-For"),
+            abuse_config,
+        )
+
+    def _reserve(rules: list[auth_abuse.Rule]) -> auth_abuse.Decision:
+        client = _client_subject()
+        if client is None:
+            auth_abuse.LOGGER.error(
+                "auth_abuse_storage_error action=client_attribution channel=any reason=invalid_proxy_metadata"
+            )
+            return auth_abuse.Decision(False, (), True)
+        return abuse_service.reserve([
+            auth_abuse.Rule(rule.policy, client if rule.subject == "@client" else rule.subject,
+                            rule.prehashed)
+            for rule in rules
+        ])
+
+    def _request_rules(
+        action: str,
+        channel: str,
+        contacts_for_limits: list[tuple[str, str]],
+        people: list[db.Person],
+    ) -> list[auth_abuse.Rule]:
+        rules = [auth_abuse.Rule(f"{action}_client", "@client")]
+        for contact_channel, contact in contacts_for_limits:
+            rules.append(auth_abuse.Rule(
+                f"{action}_contact_{contact_channel}", contact
+            ))
+        for person in {person.id: person for person in people}.values():
+            rules.append(auth_abuse.Rule(f"{action}_person_{channel}", str(person.id)))
+        if channel == "sms":
+            selected_contacts = [value for kind, value in contacts_for_limits if kind == "sms"]
+            for contact in selected_contacts:
+                rules.append(auth_abuse.Rule("sms_contact_cap", contact))
+            for person in {person.id: person for person in people}.values():
+                rules.append(auth_abuse.Rule("sms_person_cap", str(person.id)))
+            rules.append(auth_abuse.Rule("sms_global_cap", "application"))
+        return rules
 
     def _account_notifier():
         club_config = common.load_config()["club"]
@@ -518,13 +564,16 @@ def create_app() -> Flask:
         )
 
     def _challenge_payload(
-        nonce: str, purpose: str, channel: str, masked_destination: str
+        nonce: str, purpose: str, channel: str, masked_destination: str,
+        contact_subject: str, person_subject: str,
     ) -> str:
         return serializer.dumps({
             "nonce": nonce,
             "purpose": purpose,
             "channel": channel,
             "masked_destination": masked_destination,
+            "contact_subject": contact_subject,
+            "person_subject": person_subject,
         })
 
     def _decode_challenge(
@@ -540,6 +589,10 @@ def create_app() -> Flask:
             payload.get("purpose") != purpose
             or not isinstance(payload.get("nonce"), str)
             or payload.get("channel") not in {"email", "sms"}
+            or not isinstance(payload.get("contact_subject"), str)
+            or len(payload["contact_subject"]) != 64
+            or not isinstance(payload.get("person_subject"), str)
+            or len(payload["person_subject"]) != 64
         ):
             return None
         return payload
@@ -566,7 +619,9 @@ def create_app() -> Flask:
         get_session().commit()
         return (
             _challenge_payload(
-                nonce, purpose, channel, contacts.mask_contact(channel, destination)
+                nonce, purpose, channel, contacts.mask_contact(channel, destination),
+                abuse_service.digest("contact", channel, destination),
+                abuse_service.digest("person", channel, str(person.id)),
             ),
             code,
         )
@@ -579,6 +634,8 @@ def create_app() -> Flask:
             purpose,
             channel,
             contacts.mask_contact(channel, destination),
+            abuse_service.digest("contact", channel, destination),
+            abuse_service.digest("person", channel, f"dummy:{destination}"),
         )
 
     def _challenge_record(
@@ -671,8 +728,11 @@ def create_app() -> Flask:
                     person, subject, mail_body, sms_body
                 )
             )
-        except Exception:
-            logging.exception("Account message delivery failed for person ID %s", person.id)
+        except Exception as exc:
+            auth_abuse.LOGGER.error(
+                "auth_delivery_failed action=account_message channel=preferred reason=%s",
+                type(exc).__name__,
+            )
             return False
 
     def _safe_account_message_via(
@@ -684,11 +744,10 @@ def create_app() -> Flask:
                     person, channel, subject, body
                 )
             )
-        except Exception:
-            logging.exception(
-                "Account message delivery failed for person ID %s via %s",
-                person.id,
-                channel,
+        except Exception as exc:
+            auth_abuse.LOGGER.error(
+                "auth_delivery_failed action=account_message channel=%s reason=%s",
+                channel, type(exc).__name__,
             )
             return False
 
@@ -783,20 +842,21 @@ def create_app() -> Flask:
             return redirect(url_for("login"))
         if action == "confirm_code":
             signed_challenge = request.form.get("challenge")
-            _, record = _challenge_record("login", signed_challenge)
-            client_allowed = _rate_allowed(
-                f"confirm-client:{request.remote_addr or 'unknown'}", 10
-            )
-            person_allowed = record is not None and _rate_allowed(
-                f"confirm-person:{record.person_id}", 5
-            )
+            payload, _ = _challenge_record("login", signed_challenge)
+            rules = [auth_abuse.Rule("confirmation_client", "@client")]
+            if payload is not None:
+                rules.extend([
+                    auth_abuse.Rule("confirmation_contact", payload["contact_subject"], True),
+                    auth_abuse.Rule("confirmation_person", payload["person_subject"], True),
+                ])
+            allowed = _reserve(rules).allowed
             person = (
                 _consume_challenge(
                     "login",
                     signed_challenge,
                     (request.form.get("code") or "").strip(),
                 )
-                if client_allowed and person_allowed
+                if allowed
                 else None
             )
             if person is None or person.account_status not in (
@@ -819,24 +879,18 @@ def create_app() -> Flask:
         if errors:
             return _render_login(values=values, errors=errors)
         assert channel is not None and destination is not None
-        client_allowed = _rate_allowed(
-            f"login-client:{request.remote_addr or 'unknown'}", 10
-        )
-        person = _contact_person(
-            channel,
-            destination,
-            (db.ACCOUNT_VERIFIED, db.ACCOUNT_ACTIVE),
-        )
+        person = _contact_person(channel, destination)
+        decision = _reserve(_request_rules(
+            "login", channel, [(channel, destination)],
+            [person] if person is not None else [],
+        ))
         challenge = None
-        if person is not None:
-            channel_limit = 2 if channel == "sms" else 3
-            person_allowed = _rate_allowed(
-                f"login-person:{person.id}:{channel}", channel_limit
-            )
-            if client_allowed and person_allowed:
-                challenge = _send_challenge(
-                    person, "login", channel, destination
-                )
+        if (
+            person is not None
+            and person.account_status in (db.ACCOUNT_VERIFIED, db.ACCOUNT_ACTIVE)
+            and decision.allowed
+        ):
+            challenge = _send_challenge(person, "login", channel, destination)
         if challenge is None:
             challenge = _dummy_challenge("login", channel, destination)
         return _render_login(
@@ -884,20 +938,21 @@ def create_app() -> Flask:
             return redirect(url_for("register"))
         if action == "confirm_code":
             signed_challenge = request.form.get("challenge")
-            _, record = _challenge_record("verify", signed_challenge)
-            client_allowed = _rate_allowed(
-                f"confirm-client:{request.remote_addr or 'unknown'}", 10
-            )
-            person_allowed = record is not None and _rate_allowed(
-                f"confirm-person:{record.person_id}", 5
-            )
+            payload, _ = _challenge_record("verify", signed_challenge)
+            rules = [auth_abuse.Rule("confirmation_client", "@client")]
+            if payload is not None:
+                rules.extend([
+                    auth_abuse.Rule("confirmation_contact", payload["contact_subject"], True),
+                    auth_abuse.Rule("confirmation_person", payload["person_subject"], True),
+                ])
+            allowed = _reserve(rules).allowed
             person = (
                 _consume_challenge(
                     "verify",
                     signed_challenge,
                     (request.form.get("code") or "").strip(),
                 )
-                if client_allowed and person_allowed
+                if allowed
                 else None
             )
             if person is None or person.account_status != db.ACCOUNT_REGISTERED:
@@ -940,9 +995,6 @@ def create_app() -> Flask:
             return _render_register(values=values, errors=errors)
         assert channel is not None and destination is not None and team is not None
 
-        client_allowed = _rate_allowed(
-            f"register-client:{request.remote_addr or 'unknown'}", 5
-        )
         email_person = _contact_person("email", email) if email else None
         phone_person = _contact_person("sms", phone) if phone else None
         selected_person = email_person if channel == "email" else phone_person
@@ -951,8 +1003,17 @@ def create_app() -> Flask:
             for person in (email_person, phone_person)
             if person is not None
         }
+        limit_contacts = []
+        if email:
+            limit_contacts.append(("email", email))
+        if phone:
+            limit_contacts.append(("sms", phone))
+        decision = _reserve(_request_rules(
+            "registration", channel, limit_contacts,
+            list(conflicting_people.values()),
+        ))
         challenge = None
-        if not conflicting_people and client_allowed:
+        if not conflicting_people and decision.allowed:
             try:
                 person = db.register_person(
                     get_session(), values["name"], team, email, phone
@@ -967,20 +1028,13 @@ def create_app() -> Flask:
         elif (
             selected_person is not None
             and len(conflicting_people) == 1
-            and client_allowed
+            and decision.allowed
         ):
-            person_limit = 2 if channel == "sms" else 3
-            person_allowed = _rate_allowed(
-                f"register-person:{selected_person.id}:{channel}", person_limit
-            )
-            if (
-                person_allowed
-                and selected_person.account_status == db.ACCOUNT_REGISTERED
-            ):
+            if selected_person.account_status == db.ACCOUNT_REGISTERED:
                 challenge = _send_challenge(
                     selected_person, "verify", channel, destination
                 )
-            elif person_allowed:
+            else:
                 _safe_account_message_via(
                     selected_person,
                     channel,

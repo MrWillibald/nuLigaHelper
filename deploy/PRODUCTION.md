@@ -81,7 +81,7 @@ sudo install -o root -g root -m 0600 \
 sudoedit /etc/nuligahelper/web.env
 ```
 
-The finished file must contain exactly the intended production values:
+The finished file must contain the intended production values:
 
 ```text
 NULIGAHELPER_ENV=production
@@ -93,7 +93,69 @@ NULIGAHELPER_TRUSTED_HOSTS=nuliga.example.invalid
 Generate the secret once with a cryptographically secure generator and paste it
 using `sudoedit`; do not print it in diagnostics, shell tracing, process arguments,
 or support logs. Keep `/etc/nuligahelper/web.env` root-owned and mode 0600. The
-secret must remain stable: rotating it invalidates every browser session.
+secret must remain stable: rotating it invalidates every browser session. It also
+changes every keyed authentication-abuse subject, effectively starting new limits
+while old opaque counter rows age out. Treat rotation as a security event, not as a
+way to clear a throttle.
+
+Authentication abuse controls use safe built-in defaults. To tune them, add one
+single-line `NULIGAHELPER_AUTH_ABUSE_CONFIG` JSON object to this root-owned file;
+the complete sample and every accepted key are in `config_template.json` under
+`club.auth_abuse`. Never put contacts, names, IP addresses, credentials, or the
+HMAC secret in this JSON. Startup refuses unknown policies, wrong types,
+non-positive limits/windows, inconsistent proxy settings, or retention shorter
+than the longest configured window.
+
+Each `policies` entry has a positive `limit` and `window_seconds`. Login and
+registration have independent client, canonical-contact, and resolved-person
+policies; confirmation has client/contact/person policies. `sms_contact_cap`,
+`sms_person_cap`, and `sms_global_cap` are additional SMS-only cost bounds shared
+by login and registration. E-mail never consumes SMS-cap rows. Windows are aligned
+fixed UTC epoch buckets, including the default 24-hour SMS operational period; they
+are not rolling intervals or local-midnight days. A fixed window can therefore
+admit a boundary burst across adjacent buckets.
+
+`retention_seconds` is padding after a bucket ends and must cover the longest
+policy window. `cleanup_batch` bounds deletions in one startup/opportunistic run,
+and `cleanup_interval_seconds` limits how often request traffic tries cleanup.
+Cleanup is indexed, preserves live rows, skips lock contention, and resumes on a
+later request or restart. Active counters persist in the shared SQLite database
+across process restarts and workers. Evaluation uses a dedicated, short SQLite
+writer transaction and fails closed on busy/storage errors before token, account,
+session, or delivery side effects. An allowance stays consumed if a provider later
+fails; this conservative behavior bounds sends and spending.
+
+`trusted_proxies`, `trusted_hops`, and `proxy_error` control optional direct WSGI
+forwarded-client parsing (`fallback` uses the trusted direct peer; `refuse` rejects
+attribution). Keep `trusted_proxies=[]` and `trusted_hops=0` in the supported Caddy
+topology: `ProductionProxyBoundary` already accepts only loopback, requires exactly
+one replacement `X-Forwarded-For` value, and passes the verified address through
+`ProxyFix` before the limiter sees it. Do not enable a second attribution layer.
+For another topology, first document and test the exact Flask bind address, every
+trusted peer CIDR, replacement—not append—header behavior, and exact hop count.
+Keep proxy-derived attribution disabled and public exposure blocked until network
+reachability and application trust configuration agree.
+
+Monitor `nuligahelper.security` events for `auth_abuse_throttled`,
+`auth_abuse_global_sms_cap`, `auth_abuse_storage_error`, `auth_abuse_cleanup`, and
+`auth_delivery_failed`. They contain action, channel, coarse dimensions, counts or
+stable exception classes, never limiter digests or personal/authentication data.
+Choose caps from expected member/game-day traffic and current provider pricing;
+raise them deliberately only after reviewing these events. A normal reset is to
+wait for the fixed bucket to roll over. For an emergency manual global-cap reset,
+stop public ingress and the web service, make a SQLite-consistent backup, delete
+only the current `action='sms_delivery' AND dimension='global'` row in a maintenance
+transaction, restart, and repeat health checks. Never delete arbitrary auth rows
+or recreate the database to clear a cap.
+
+Before enabling SMS publicly, use the actual Twilio Console/account documentation
+to configure supported Usage Triggers or alerts, restrict geographic permissions
+to required destinations, and verify an account/project spending limit or prepaid
+balance protection where that account and region provide one. Console capabilities
+and names vary by account type and region, so confirm controls by observation and
+alert testing rather than assuming a feature exists. Store no Twilio credential in
+tracked files. Application reservations bound calls initiated by this app, but
+Twilio-side alerts/spending controls are the independent final cost backstop.
 
 The daily job and web service **must load the same environment file**, giving them
 the identical stable `NULIGAHELPER_SECRET` and absolute `NULIGAHELPER_DB`. A second,
@@ -199,8 +261,8 @@ curl --head --silent --show-error --max-time 10 \
 
 Inspect these responses for HSTS, CSP, content-type, frame, referrer, and permissions
 headers. To verify forwarding-header overwrite, send a harmless spoofed
-`X-Forwarded-For` value through Caddy, then check the matching bounded journal tail;
-the application log must show the real client address, not the supplied value:
+`X-Forwarded-For` value through Caddy and confirm the request succeeds without a
+proxy-boundary error. Application security logs intentionally omit client addresses:
 
 ```bash
 curl --silent --output /dev/null --max-time 10 \
@@ -264,6 +326,11 @@ Preserve `/var/lib/nuligahelper/nuliga_helper.db` by default. Restore database d
 only when a data rollback was explicitly chosen, with every database writer stopped,
 using `manage_db.py restore-snapshot` and the documented guarded restore workflow in
 `README.MD`. Never delete/recreate the production database as a deployment rollback.
+
+The additive `auth_abuse_counters` table may remain unused after a code rollback;
+do not remove it as part of rollback. The old version restores process-local limits
+that reset on restart, so it is never an acceptable long-term publicly exposed
+state. Diagnose and redeploy the fixed version before restoring ingress.
 
 After local loopback health passes, start Caddy and repeat the public checks. Keep
 the stable secret unless deliberate session invalidation is intended. Werkzeug may

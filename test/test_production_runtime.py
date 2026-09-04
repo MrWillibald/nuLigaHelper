@@ -296,7 +296,7 @@ def test_security_headers_cover_html_json_redirect_error_and_static(caplog=None)
 
 
 def test_effective_client_identity_drives_logging_and_rate_limit_keys():
-    app, _ = _production_app()
+    app, path = _production_app()
     client = app.test_client()
     with app.test_request_context():
         pass
@@ -319,17 +319,31 @@ def test_effective_client_identity_drives_logging_and_rate_limit_keys():
                 client, "/login", method="POST", client_ip=address,
                 data={"channel": "email", "email": "nobody@example.test", "csrf_token": csrf},
             )
-        keys = app.extensions["nuligahelper_rate_events"]
-        assert "login-client:198.51.100.10" in keys
-        assert "login-client:198.51.100.11" in keys
-        assert any("client=198.51.100.10" in message for message in records)
-        assert any("client=198.51.100.11" in message for message in records)
-        before = set(keys)
+        service = app.extensions["nuligahelper_auth_abuse"]
+        expected = {
+            service.digest("client", "any", "198.51.100.10"),
+            service.digest("client", "any", "198.51.100.11"),
+        }
+        with h.Session(db.make_engine(path)) as database_session:
+            stored = set(database_session.scalars(
+                db.select(db.AuthAbuseCounter.subject_digest).where(
+                    db.AuthAbuseCounter.dimension == "client"
+                )
+            ))
+        assert expected <= stored
+        assert not any("198.51.100" in message for message in records)
+        before = set(stored)
         spoofed = _proxy(
             client, "/login", headers={"Forwarded": "for=192.0.2.99"}
         )
         assert spoofed.status_code == 400
-        assert set(keys) == before
+        with h.Session(db.make_engine(path)) as database_session:
+            after = set(database_session.scalars(
+                db.select(db.AuthAbuseCounter.subject_digest).where(
+                    db.AuthAbuseCounter.dimension == "client"
+                )
+            ))
+        assert after == before
     finally:
         logger.removeHandler(handler)
         logger.setLevel(old_level)

@@ -29,6 +29,32 @@
         "database":{
             "path":"nuliga_helper.db"
         },
+        "auth_abuse":{
+            "policies":{
+                "login_client":{"limit":10,"window_seconds":900},
+                "login_contact_email":{"limit":3,"window_seconds":900},
+                "login_contact_sms":{"limit":2,"window_seconds":900},
+                "login_person_email":{"limit":3,"window_seconds":900},
+                "login_person_sms":{"limit":2,"window_seconds":900},
+                "registration_client":{"limit":5,"window_seconds":900},
+                "registration_contact_email":{"limit":3,"window_seconds":900},
+                "registration_contact_sms":{"limit":2,"window_seconds":900},
+                "registration_person_email":{"limit":3,"window_seconds":900},
+                "registration_person_sms":{"limit":2,"window_seconds":900},
+                "confirmation_client":{"limit":10,"window_seconds":900},
+                "confirmation_contact":{"limit":5,"window_seconds":900},
+                "confirmation_person":{"limit":5,"window_seconds":900},
+                "sms_contact_cap":{"limit":6,"window_seconds":86400},
+                "sms_person_cap":{"limit":6,"window_seconds":86400},
+                "sms_global_cap":{"limit":30,"window_seconds":86400}
+            },
+            "retention_seconds":604800,
+            "cleanup_batch":200,
+            "cleanup_interval_seconds":300,
+            "trusted_proxies":[],
+            "trusted_hops":0,
+            "proxy_error":"fallback"
+        },
         "texts":{
             "mailErrorSubject":"Benachrichtigung Fehler",
             "mailError":"Hallo Admin,\n\nbeim Update des Heimspielplans wurden neue Spiele entdeckt, die noch nicht in der Datenbank bekannt sind. Bitte prüfe die Spiele und trage gegebenenfalls die Dienste nach.\n\nViele Grüße Max",

@@ -14,7 +14,7 @@ import contact_validation as contacts
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, DateTime, Integer, String, ForeignKey, UniqueConstraint, create_engine, delete, event, select
+from sqlalchemy import Boolean, DateTime, Index, Integer, String, ForeignKey, UniqueConstraint, create_engine, delete, event, select
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import (
     DeclarativeBase,
@@ -458,6 +458,28 @@ class AuthToken(Base):
     used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     person: Mapped[Person] = relationship()
+
+
+class AuthAbuseCounter(Base):
+    """Opaque fixed-window authentication abuse counter."""
+
+    __tablename__ = "auth_abuse_counters"
+    __table_args__ = (
+        UniqueConstraint(
+            "action", "dimension", "subject_digest", "channel",
+            "window_started_at", name="uq_auth_abuse_bucket",
+        ),
+        Index("ix_auth_abuse_expires_at", "expires_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    action: Mapped[str] = mapped_column(String(40))
+    dimension: Mapped[str] = mapped_column(String(20))
+    subject_digest: Mapped[str] = mapped_column(String(64))
+    channel: Mapped[str] = mapped_column(String(10))
+    window_started_at: Mapped[datetime] = mapped_column(DateTime)
+    count: Mapped[int] = mapped_column(Integer)
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
 
 
 # ---------------------------------------------------------------------------
