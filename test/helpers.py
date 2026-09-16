@@ -70,7 +70,23 @@ def csrf_data(data: dict | None = None, token: str = "test-csrf-token") -> dict:
 def load_club_config() -> dict:
     """Load the sample club configuration (texts etc.) shipped with the repo."""
     with open(os.path.join(PROJECT_DIR, "config_template.json"), encoding="utf-8") as f:
-        return json.load(f)["club"]
+        club = json.load(f)["club"]
+    club["email"] = {
+        "smtpserver": "smtp.test.invalid", "mail_ID": "sender@test.invalid",
+        "mail_password": "synthetic-password", "mail_name": "Test Sender",
+        "mailAddrNewspaper": "paper@test.invalid",
+        "mailAddrAdmin": "admin@test.invalid",
+        "mail_saleID": "sale@test.invalid", "mail_salePassword": "synthetic-sale-password",
+    }
+    club["twilio"] = {
+        "twilio_sid": "ACsynthetic", "twilio_token": "synthetic-token",
+        "twilio_ID": "Test", "twilio_service_ID": "MGsynthetic",
+    }
+    club["dropbox"] = {
+        "dropbox_token": "synthetic-dropbox-token", "dropbox_folder": "test",
+        "dated_retention": 14,
+    }
+    return club
 
 
 def sample_games() -> list[dict]:

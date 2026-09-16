@@ -44,8 +44,9 @@ test/run_tests.sh                          # whole suite, must stay green
 ./run_webapp.sh                            # web UI on http://<ip>:8080
 ```
 
-- `config.json` holds credentials/texts; it is gitignored. `config_template.json`
-  lists every key the code reads. Notification texts are `str.format` templates —
+- `config.json` holds club data/texts; it is gitignored. Email, Twilio and Dropbox
+  settings come from environment variables mapped in `common.PROVIDER_ENV`.
+  Production rejects provider sections in JSON. Notification texts are `str.format` templates —
   placeholder **order and count are part of the contract**, don't reorder lightly.
 - `NULIGAHELPER_SECRET` is mandatory for the webapp and daily job. Store a
   persistent random value in the environment or the gitignored

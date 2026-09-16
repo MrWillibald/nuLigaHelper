@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}{{ page.title }}{% endblock %}
+{% block content %}
+<article class="legal-content">
+  <h1>{{ page.title }}</h1>
+  {% for block in page.blocks %}
+    {% if block.type == 'heading' %}<h2>{{ block.text }}</h2>
+    {% elif block.type == 'paragraph' %}<p>{{ block.text }}</p>
+    {% elif block.type == 'list' %}<ul>{% for item in block['items'] %}<li>{{ item }}</li>{% endfor %}</ul>
+    {% elif block.type == 'link' %}<p><a href="{{ block.url }}">{{ block.text }}</a></p>
+    {% endif %}
+  {% endfor %}
+</article>
+{% endblock %}

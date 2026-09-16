@@ -85,24 +85,15 @@ class Notifier:
             msg["To"] = formataddr((receiver["name"], contact_mail))
             msg.set_content(mail_body)
             self.send_Mail(msg, mail_id, mail_password)
-            logging.info(
-                f"E-Mail sent to {receiver['name']}, "
-                f"{receiver.get('task', '')}, {contact_mail}"
-            )
+            logging.info("notification channel=email outcome=sent")
             return 1
 
         if isinstance(contact_phone, str) and "+" in contact_phone:
             self.send_SMS(contact_phone, sms_body)
-            logging.info(
-                f"SMS sent to {receiver['name']}, "
-                f"{receiver.get('task', '')}, {contact_phone}"
-            )
+            logging.info("notification channel=sms outcome=sent")
             return 1
 
-        logging.warning(
-            f"No valid phone number or email address available at game {game_nr} "
-            f"for {receiver['name']}, {receiver.get('task', '')}"
-        )
+        logging.warning("notification outcome=skipped reason=no_contact")
         return 0
 
     @staticmethod
@@ -388,7 +379,7 @@ class Notifier:
                 schedule += f"{time_str} {team} {game.home} - {game.guest}\n"
                 cnt += 1
 
-        logging.info(f"Send newspaper article to {self.mailAddrNewspaper}")
+        logging.info("notification operation=article outcome=started")
         msg = EmailMessage()
         msg["From"] = formataddr((self.mail_name, self.mail_ID))
         msg["To"] = self.mailAddrNewspaper

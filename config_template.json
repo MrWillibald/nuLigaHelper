@@ -5,27 +5,6 @@
             "clubId":"xxxxx",
             "hallIds": ["xxxxxx"]
         },
-        "email":{
-            "smtpserver":"smtp.musterserver.com",
-            "mail_ID":"mustermann@musterserver.com",
-            "mail_password":"password",
-            "mail_name":"Max Mustermann",
-            "mailAddrNewspaper":"info@heimatstadt.de",
-            "mailAddrAdmin":"vorstand@musterserver.com",
-            "mail_saleID":"verkauf@musterserver.com",
-            "mail_salePassword":"password"
-        },
-        "dropbox":{
-            "dropbox_token":"xxxx",
-            "dropbox_folder":"TuS Heimatstadt Handball",
-            "dated_retention":14
-        },
-        "twilio":{
-            "twilio_sid":"xxxxxxxxxx",
-            "twilio_token":"xxxxxxxxxx",
-            "twilio_ID":"TusHandball",
-            "twilio_service_ID":"xxxxxxxxxx"
-        },
         "database":{
             "path":"nuliga_helper.db"
         },

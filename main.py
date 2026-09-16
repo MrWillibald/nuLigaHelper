@@ -18,6 +18,7 @@ import dropbox
 
 import backup
 import common
+import production
 import daily_lock
 import db
 from notifier import Notifier
@@ -155,16 +156,12 @@ def _send_notifications(
 def main():
     if not os.environ.get("NULIGAHELPER_SECRET"):
         raise RuntimeError("NULIGAHELPER_SECRET muss gesetzt sein.")
-    # Initialize logger
-    logging.basicConfig(
-        format="%(asctime)s - %(levelname)s - %(message)s",
-        filename="helper.log",
-        level=logging.DEBUG,
-    )
-    logging.getLogger().addHandler(logging.StreamHandler())
-    logging.getLogger("twilio.http_client").setLevel(logging.WARNING)
-    logging.getLogger("requests").setLevel(logging.WARNING)
-    logging.getLogger("urllib3").setLevel(logging.WARNING)
+    if os.environ.get("NULIGAHELPER_ENV") == "production":
+        from production_logging import configure
+        configure()
+    else:
+        logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO)
+    production.event("application", "started")
 
     logging.info("#################################################")
     logging.info("nuLiga Helper start, version " + common.VERSION)
@@ -194,15 +191,21 @@ def main():
             failures: list[tuple[str, Exception]] = []
             try:
                 _backup_database(club_cfg, resolved_db_path, today)
-            except backup.BackupError as error:
-                _log_backup_error(error)
-                failures.append((f"backup:{error.stage.value}", error))
+                production.write_success("backup")
+                production.event("backup", "success")
+            except Exception as error:
+                production.event("backup", "failure", error.stage.value if isinstance(error, backup.BackupError) else type(error).__name__)
+                if isinstance(error, backup.BackupError):
+                    _log_backup_error(error)
+                failures.append((f"backup:{error.stage.value}" if isinstance(error, backup.BackupError) else "backup", error))
             logging.info("-------------------------------------------------")
 
             try:
                 _send_notifications(club_cfg, engine, season_year, today, events)
+                production.write_success("application")
+                production.event("application", "success")
             except Exception as error:
-                logging.exception("Notification delivery failed: %s", error)
+                production.event("application", "failure", type(error).__name__)
                 failures.append(("notifications", error))
 
             if failures:
@@ -222,5 +225,6 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except (DailyJobError, daily_lock.DailyRunLockError):
+    except Exception as error:
+        production.event("application", "failure", type(error).__name__)
         raise SystemExit(1) from None

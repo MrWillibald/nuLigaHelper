@@ -2,9 +2,7 @@
 
 A helper class to organize home games with nuLiga Handball.
 
-Production authentication-abuse controls, trusted proxy coordination, SQLite
-retention, SMS cap tuning, Twilio backstops, and rollback procedures are documented
-in [`deploy/PRODUCTION.md`](deploy/PRODUCTION.md).
+Host-specific deployment configuration and operator records are maintained privately outside this repository.
 
 # Features
 
@@ -32,9 +30,8 @@ python3 -c 'import secrets; print(secrets.token_urlsafe(48))' > .nuligahelper_se
 
 It is then reachable in the local network at `http://<device-ip>:8080`.
 `run_webapp.sh` is development-only and must not be exposed to the public internet.
-The supported production path uses one loopback Gunicorn worker supervised by
-systemd behind Caddy-managed HTTPS. Follow the complete
-[Raspberry Pi/Linux production guide](deploy/PRODUCTION.md).
+Public hosting requires a separately maintained production deployment with TLS,
+restricted secrets, monitoring and a reviewed launch procedure.
 
 - **Heimspielplan**: public, read-only schedule with assigned helper names. Signed-in members can claim and release their own future tasks. MVs can additionally staff their own team on games for which that team is responsible; admins can correct every slot and set the responsible team. Concurrent stale changes are rejected rather than overwriting another person's work.
 - **Helfer verwalten**: members see names and teams but only their own contact data. Admins create, edit, deactivate/reactivate or delete erroneous entries and appoint team MVs. MVs and admins approve registrations in their scope.
@@ -55,15 +52,14 @@ Teams are fully automatic: they are derived from the scraped age classes (`ak`, 
 There is no schema-migration layer. During development, a database may be recreated after a schema change; once real production data exists, preserve it and make schema upgrades only through a separately reviewed migration plan. The SQLite runtime settings below do not change the table schema and do not require recreating the database.
 
 Authentication does not make the Flask development server suitable for public use.
-The versioned Gunicorn, systemd, Caddy, and environment examples under `deploy/`
-provide the supported hardened production path; site-specific secrets and hostnames
-remain outside Git.
+The host-specific Gunicorn, systemd, Caddy and environment configuration is
+maintained outside this repository.
 
 ## SQLite production profile and backups
 
 All application database connections enable foreign-key enforcement, wait up to five seconds for transient locks and use `synchronous=FULL`. Startup establishes WAL journal mode and refuses to continue if WAL, the connection settings or `PRAGMA foreign_key_check` cannot be verified. Existing foreign-key violations are reported for explicit operator repair or restore; they are never deleted automatically.
 
-The supported deployment uses the database on a local Raspberry Pi filesystem, exactly one web process/worker, and at most one daily-job process. Multi-worker WSGI operation, network-filesystem SQLite and PostgreSQL are outside the currently verified topology. WAL creates temporary `<database>-wal` and `<database>-shm` files while connections are active. Do not copy, move or delete these files while the application is running.
+The supported deployment uses the database on a local netcup VPS filesystem, exactly one web process/worker, and at most one daily-job process. Multi-worker WSGI operation, network-filesystem SQLite and PostgreSQL are outside the currently verified topology. WAL creates temporary `<database>-wal` and `<database>-shm` files while connections are active. Do not copy, move or delete these files while the application is running.
 
 The daily job takes a non-blocking OS lock at `<resolved-database>.daily.lock` before database initialization or external work. A concurrent run for the same database fails immediately with a nonzero exit status; an unlocked file left after a restart is harmless. `run.sh` uses `exec`, so cron receives the Python process status directly.
 
@@ -73,7 +69,7 @@ Backups use SQLite's online backup API and therefore include one complete commit
 2. the stable configured database basename as the latest backup;
 3. retention cleanup of only older names that exactly match that database's dated convention.
 
-`club.dropbox.dated_retention` is optional and defaults to `14`; it must be a positive integer. A same-day rerun replaces that day's recovery point. Retry-safe Dropbox operations recover from transient connection, DNS, timeout, rate-limit and server failures with three bounded retries after 1, 2 and 4 seconds; authentication, bad-input and other permanent failures fail immediately. Snapshot, validation, read, Dropbox client, upload, listing, pagination, deletion and local-cleanup failures are logged concisely by stage and make the daily job exit unsuccessfully. When the source database remains usable, due notification work is still attempted after a backup failure, but notifications are not retried automatically.
+`NULIGAHELPER_DROPBOX_DATED_RETENTION` is required in production and must be a positive integer. A same-day rerun replaces that day's recovery point. Retry-safe Dropbox operations recover from transient connection, DNS, timeout, rate-limit and server failures with three bounded retries after 1, 2 and 4 seconds; authentication, bad-input and other permanent failures fail immediately. Snapshot, validation, read, Dropbox client, upload, listing, pagination, deletion and local-cleanup failures are logged concisely by stage and make the daily job exit unsuccessfully. When the source database remains usable, due notification work is still attempted after a backup failure, but notifications are not retried automatically.
 
 ### Restore a downloaded snapshot
 
@@ -94,7 +90,7 @@ Restoration is an offline operation. Copying only a live WAL-mode main file is n
 
 Before deploying these settings to an existing database, stop writers, preserve the current database together with any sidecars, run the full offline suite, and start one process to perform the integrity preflight. For rollback, stop every database user first and restore a validated snapshot or the complete preserved database set; never replace only the main file while WAL users are active.
 
-`NULIGAHELPER_SECRET` is mandatory for both the webapp and daily job. Set it in the environment or keep the raw value in the gitignored `.nuligahelper_secret` file used by both launch scripts. Keep it stable: changing it invalidates every session. `NULIGAHELPER_DB` is an optional SQLite-path override locally; production requires `NULIGAHELPER_ENV=production`, an absolute `NULIGAHELPER_DB`, and exact `NULIGAHELPER_TRUSTED_HOSTS` entries as described in the [production guide](deploy/PRODUCTION.md).
+`NULIGAHELPER_SECRET` is mandatory for both the webapp and daily job. Set it in the environment or keep the raw value in the gitignored `.nuligahelper_secret` file used by both launch scripts. Keep it stable: changing it invalidates every session. `NULIGAHELPER_DB` is an optional SQLite-path override locally; production requires `NULIGAHELPER_ENV=production`, an absolute `NULIGAHELPER_DB`, and exact `NULIGAHELPER_TRUSTED_HOSTS` entries.
 
 # Testing
 
@@ -119,7 +115,7 @@ The MV of a game's responsible team receives an MV notification as long as tasks
 
 # Getting started
 
-Clone the repository and open `config_template.json`. Modify all entries according to your needs. Accounts and logins have to be specified, the texts can be modified according to your needs. Save the file as `config.json` in the same folder. Install all libraries from `requirements.txt`; this includes the pinned `email-validator` and `phonenumbers` packages used for deterministic, offline-safe contact validation.
+Clone the repository and open `config_template.json`. Modify the club data and notification texts, then save it as `config.json`. Email, Twilio and Dropbox settings belong in environment variables mapped in `common.PROVIDER_ENV`. Production refuses provider sections in `config.json`; local legacy files remain readable during transition. Install all libraries from `requirements.txt`; this includes the pinned `email-validator` and `phonenumbers` packages used for deterministic, offline-safe contact validation.
 
 Initialize the database and manage persons, games and assignments via the management CLI:
 
@@ -140,5 +136,17 @@ Run `contact-preflight` before deploying contact normalization to an existing da
 
 Games are inserted automatically on the first run after scraping. Run the daily job via `./run.sh` (or export `NULIGAHELPER_SECRET` before `python3 main.py`). nuLigaHelper will scrape all available data from the nuLiga Hallenspielplan, sync it into the SQLite database and send all due notifications. A backup of the database is uploaded to Dropbox after every run.
 All actions are logged in the file `helper.log`.
-This script is good to run on a raspberry pi as scheduled job once a day.
-If you need any assistance feel free to contact me.
+Run the daily job through one scheduler only; disable any old scheduler before enabling a replacement.
+
+## Private deployment
+
+The application exposes a fixed `/healthz` readiness route and public
+`/impressum` and `/datenschutz` routes. Legal-page content, privacy retention
+settings, host monitoring, service units and launch evidence are supplied by the
+private deployment. Missing or unapproved legal content returns a generic 503 page.
+
+Production uses a stable `NULIGAHELPER_SECRET`, an absolute `NULIGAHELPER_DB`,
+exact `NULIGAHELPER_TRUSTED_HOSTS`, and provider settings from environment
+variables. Production `config.json` contains club data and notification texts,
+not email, Twilio or Dropbox provider sections. Host setup and public launch
+require separate operator review.

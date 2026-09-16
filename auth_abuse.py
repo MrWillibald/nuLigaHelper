@@ -6,6 +6,7 @@ import hashlib
 import hmac
 import ipaddress
 import logging
+import os
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -17,6 +18,16 @@ from sqlalchemy.exc import SQLAlchemyError
 import db
 
 LOGGER = logging.getLogger("nuligahelper.security")
+
+
+def cleanup_records(connection, cutoff, limit, *, apply=True):
+    """Shared bounded expiry primitive; callers own transactions and error policy."""
+    table = db.AuthAbuseCounter.__table__
+    ids = list(connection.scalars(select(table.c.id).where(table.c.expires_at < cutoff)
+               .order_by(table.c.expires_at, table.c.id).limit(limit)))
+    if apply and ids:
+        connection.execute(delete(table).where(table.c.id.in_(ids)))
+    return len(ids)
 
 
 @dataclass(frozen=True)
@@ -265,21 +276,19 @@ class Service:
         return Decision(True)
 
     def cleanup(self, now: datetime | None = None) -> int:
+        if os.environ.get("NULIGAHELPER_ENV") == "production":
+            # Scheduled privacy cleanup owns the reviewed production grace period.
+            return 0
         now = (now or datetime.now(timezone.utc)).replace(tzinfo=None)
         table = db.AuthAbuseCounter.__table__
         try:
             with self.engine.begin() as connection:
-                ids = list(connection.scalars(
-                    select(table.c.id).where(table.c.expires_at < now)
-                    .order_by(table.c.expires_at).limit(self.config.cleanup_batch)
-                ))
-                if ids:
-                    connection.execute(delete(table).where(table.c.id.in_(ids)))
+                count = cleanup_records(connection, now, self.config.cleanup_batch)
         except (SQLAlchemyError, OSError) as exc:
             LOGGER.warning("auth_abuse_cleanup status=skipped reason=%s", type(exc).__name__)
             return 0
-        LOGGER.info("auth_abuse_cleanup status=complete count=%s", len(ids))
-        return len(ids)
+        LOGGER.info("auth_abuse_cleanup status=complete count=%s", count)
+        return count
 
     def maybe_cleanup(self, now: datetime | None = None) -> int:
         monotonic = time.monotonic()

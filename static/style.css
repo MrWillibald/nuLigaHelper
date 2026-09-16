@@ -286,3 +286,9 @@ select.select-warn{border-color:#e8b23c;background:#fffaf0}
   .auth-message{margin:18px 18px 0}
   .auth-radio-group,.auth-phone-group{grid-template-columns:1fr}
 }
+
+/* Public legal deployment content remains readable at narrow widths. */
+.legal-content { max-width: 75ch; margin-inline: auto; overflow-wrap: anywhere; }
+.legal-content p { white-space: pre-line; }
+.legal-content a:focus-visible, .footer a:focus-visible { outline: 3px solid currentColor; outline-offset: 3px; }
+.footer nav { margin-top: 0.75rem; }

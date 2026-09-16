@@ -2,6 +2,8 @@
 
 import os
 import tempfile
+from datetime import date
+from unittest.mock import patch
 
 import helpers as h
 import db
@@ -195,6 +197,11 @@ def test_06_admin_and_mv_rights_are_derived_together():
     page = client.get("/").get_data(as_text=True)
     assert 'class="team-select"' in page, "admin rights remain when the person is also MV"
 
+
+# Keep this scenario's sample games in the future regardless of execution date.
+for _name, _test in list(globals().items()):
+    if _name.startswith("test_") and callable(_test):
+        globals()[_name] = patch("common.effective_today", new=lambda: date(2026, 9, 1))(_test)
 
 if __name__ == "__main__":
     h.run_all(dict(globals()))

@@ -317,6 +317,8 @@ class Person(Base):
     )
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     account_status: Mapped[str] = mapped_column(String(20), default=ACCOUNT_ACTIVE)
+    registered_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    rejected_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     verified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     approved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
@@ -711,6 +713,7 @@ def register_person(
         phone=phone,
         desired_team=desired_team,
         account_status=ACCOUNT_REGISTERED,
+        registered_at=datetime.now(),
     )
     session.add(person)
     session.flush()
@@ -1135,3 +1138,20 @@ def unassign_person(
         session, game, role, assignment.slot, person.id, actor, actor_tier
     )
     return True
+
+
+def database_ready(database_path: str) -> bool:
+    """Read the existing SQLite schema without creating a missing database."""
+    import sqlite3
+    from pathlib import Path
+    try:
+        uri = Path(database_path).resolve().as_uri() + '?mode=ro'
+        with sqlite3.connect(uri, uri=True, timeout=1) as connection:
+            connection.execute('PRAGMA query_only=ON')
+            # Resolve essential schema even for a freshly initialized empty roster.
+            connection.execute('SELECT id FROM games LIMIT 0')
+            connection.execute('SELECT id FROM persons LIMIT 0')
+            connection.execute('SELECT id FROM auth_tokens LIMIT 0')
+        return True
+    except (sqlite3.Error, OSError, ValueError):
+        return False

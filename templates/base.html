@@ -40,6 +40,11 @@
 <footer class="footer">
   <div>&copy; {{ self.title() }} &middot; TuS Raubling e.V. – Abteilung Handball</div>
   <small>Heimspielplan-Verwaltung des TuS Raubling</small>
+  <nav aria-label="Rechtliche Informationen">
+    <a href="{{ url_for('impressum') }}">Impressum</a>
+    <span aria-hidden="true"> · </span>
+    <a href="{{ url_for('datenschutz') }}">Datenschutzerklärung</a>
+  </nav>
 </footer>
 
 <div id="toast" class="toast" role="status"></div>

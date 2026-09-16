@@ -7,3 +7,20 @@
 **.daily.lock
 venv/
 **.nuligahelper_secret
+
+# Private host deployment, approvals, and operator evidence.
+/deploy/
+/DATENSCHUTZ-ARBEITSBLATT.md
+/requirements-production.txt
+/operations.py
+/privacy.py
+/runtime_check.py
+/monitor_watchdog.py
+/openspec/changes/add-production-operations-and-privacy/
+/openspec/changes/archive/2026-09-04-deploy-production-web-runtime/
+/openspec/specs/production-web-runtime/
+/test/test_host_operations.py
+/test/test_operations.py
+/test/test_operations_integration.py
+/test/test_privacy.py
+/test/test_deployment_assets.py

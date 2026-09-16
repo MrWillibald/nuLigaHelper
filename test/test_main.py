@@ -457,7 +457,8 @@ def test_combined_backup_and_notification_failures_are_both_visible_without_retr
     output = logs.getvalue()
     assert "retention_pagination" in output
     assert "dated_upload, latest_upload" in output
-    assert "Notification delivery failed: synthetic notification failure" in output
+    assert "operation=application outcome=failure reason=RuntimeError" in output
+    assert "synthetic notification failure" not in output
     assert "2 fatal stage(s)" in output
 
 

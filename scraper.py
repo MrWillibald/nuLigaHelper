@@ -4,8 +4,8 @@
 # Scraper for the BHV/nuLiga Hallenspielplan (home games only)
 # ---------------------------------------------------------------
 
-import io
 import hashlib
+import io
 import logging
 from urllib.parse import parse_qs, urlsplit
 

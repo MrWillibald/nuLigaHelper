@@ -18,6 +18,7 @@ import re
 from datetime import datetime, timedelta
 
 import common
+import production as production_data
 import auth_abuse
 import contact_validation as contacts
 import db
@@ -36,7 +37,7 @@ from flask import (
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from sqlalchemy import or_, update
 from sqlalchemy.exc import IntegrityError
-from werkzeug.exceptions import RequestEntityTooLarge
+from werkzeug.exceptions import RequestEntityTooLarge, SecurityError
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 PRODUCTION_ENV = "production"
@@ -211,6 +212,8 @@ def create_app() -> Flask:
     app = Flask(__name__)
     production = _production_mode()
     if production:
+        from production_logging import configure
+        configure()
         secret_key, database_path, trusted_hosts = _production_settings()
     else:
         secret_key = os.environ.get("NULIGAHELPER_SECRET")
@@ -260,6 +263,21 @@ def create_app() -> Flask:
         app.wsgi_app = ProductionProxyBoundary(corrected_app)
 
     @app.before_request
+    def public_readiness():
+        if request.endpoint == "health" and request.method in {"GET", "HEAD"}:
+            if production:
+                request.host
+            healthy = db.database_ready(database_path)
+            if not healthy:
+                logging.getLogger("nuligahelper.operations").warning(
+                    "operation=health outcome=unavailable reason=database")
+            return app.response_class("ok\n" if healthy else "unavailable\n",
+                                      status=200 if healthy else 503,
+                                      mimetype="text/plain", headers={"Cache-Control": "no-store"})
+
+    app.add_url_rule("/healthz", "health", lambda: "", methods=["GET"])
+
+    @app.before_request
     def enforce_trusted_host():
         if production:
             # Accessing the property invokes Werkzeug's TRUSTED_HOSTS check before
@@ -288,7 +306,7 @@ def create_app() -> Flask:
             app.logger.info(
                 "web request method=%s path=%s status=%s",
                 request.method,
-                request.path,
+                str(request.url_rule) if request.url_rule else "unmatched",
                 response.status_code,
             )
         return response
@@ -326,6 +344,9 @@ def create_app() -> Flask:
     @app.before_request
     def load_viewer():
         g.viewer = None
+        if request.endpoint in {"impressum", "datenschutz"}:
+            g.tier, g.mv_team_ids = "guest", set()
+            return
         person_id = session.get("person_id")
         if person_id is not None:
             person = get_session().get(db.Person, person_id)
@@ -341,6 +362,9 @@ def create_app() -> Flask:
 
     public_endpoints = {
         "static",
+        "health",
+        "impressum",
+        "datenschutz",
         "schedule",
         "login",
         "login_token",
@@ -396,6 +420,28 @@ def create_app() -> Flask:
             "viewer_tier": g.get("tier", "guest"),
             "csrf_token": session["csrf_token"],
         }
+
+    def legal_page(name):
+        try:
+            content = production_data.validate_legal(production_data.read_json(
+                os.environ.get("NULIGAHELPER_LEGAL")))
+        except production_data.ConfigurationError:
+            return render_template("message.html",
+                message="Diese Information ist derzeit nicht verfügbar."), 503
+        return render_template("legal.html", page=content["pages"][name])
+
+    app.add_url_rule("/impressum", "impressum", lambda: legal_page("impressum"))
+    app.add_url_rule("/datenschutz", "datenschutz", lambda: legal_page("datenschutz"))
+
+    @app.errorhandler(400)
+    @app.errorhandler(403)
+    @app.errorhandler(404)
+    @app.errorhandler(405)
+    @app.errorhandler(500)
+    def public_error(error):
+        if isinstance(error, SecurityError):
+            return "Bad Request", 400
+        return render_template("message.html", message="Die Anfrage konnte nicht bearbeitet werden."), error.code
 
     def _contact_person(
         channel: str,
@@ -1112,6 +1158,7 @@ def create_app() -> Flask:
             db.approve_person(get_session(), person)
         elif decision == "reject":
             person.account_status = db.ACCOUNT_REJECTED
+            person.rejected_at = datetime.now()
         else:
             return api_error("Ungültige Entscheidung.")
         get_session().commit()
