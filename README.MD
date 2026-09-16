@@ -143,7 +143,11 @@ Run the daily job through one scheduler only; disable any old scheduler before e
 The application exposes a fixed `/healthz` readiness route and public
 `/impressum` and `/datenschutz` routes. Legal-page content, privacy retention
 settings, host monitoring, service units and launch evidence are supplied by the
-private deployment. Missing or unapproved legal content returns a generic 503 page.
+private deployment. Missing or invalid legal content returns a generic 503 page.
+The private deployment uses a short cleanup policy (five retention periods and
+batch size), two public legal pages, and a launch record with one club officer's
+decision. The launch record checks the restore rehearsal, privacy notice and
+retention settings; technical host checks run separately.
 
 Production uses a stable `NULIGAHELPER_SECRET`, an absolute `NULIGAHELPER_DB`,
 exact `NULIGAHELPER_TRUSTED_HOSTS`, and provider settings from environment

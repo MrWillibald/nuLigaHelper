@@ -48,20 +48,6 @@ def digest(value):
                                      separators=(',', ':')).encode()).hexdigest()
 
 
-def approval(document, payload):
-    a = document.get('approval', {})
-    require(isinstance(a, dict), 'approval')
-    for key in ('operator', 'reviewer', 'approved_at', 'evidence', 'version'):
-        text(a.get(key), 'approval.' + key)
-    require(a['version'] == document.get('version'), 'approval.version')
-    require(a.get('sha256') == digest(payload), 'approval.sha256')
-    try:
-        stamp = datetime.fromisoformat(a['approved_at'])
-        require(stamp.tzinfo is not None and stamp <= datetime.now(timezone.utc), 'approval.approved_at')
-    except ValueError:
-        raise ConfigurationError('approval.approved_at') from None
-
-
 def validate_operations(data):
     require(isinstance(data, dict), 'operations')
     require(data.get('schema_version') == 1, 'schema_version')
@@ -93,37 +79,15 @@ def validate_operations(data):
     return data
 
 
-DATA_CLASSES = ('auth_tokens', 'abuse_counters', 'sessions', 'registered', 'verified',
-                'rejected', 'registration_evidence', 'active_persons', 'inactive_persons',
-                'assignments', 'audits', 'journals', 'local_snapshots', 'dropbox_dated',
-                'dropbox_latest', 'restore_copies', 'operator_alerts')
-PROCESSORS = ('netcup', 'ionos', 'twilio', 'dropbox', 'dns', 'tls', 'alert_mailbox')
-
-
 def validate_policy(data):
-    require(isinstance(data, dict) and data.get('schema_version') == 1, 'policy.schema_version')
+    require(isinstance(data, dict) and data.get('schema_version') == 2, 'policy.schema_version')
     require(bool(re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,79}', text(data.get('version'), 'policy.version'))), 'policy.version')
-    classes = data.get('data_classes', {})
-    require(isinstance(classes, dict) and set(classes) == set(DATA_CLASSES), 'policy.data_classes')
-    for name, entry in classes.items():
-        require(isinstance(entry, dict), 'policy.' + name)
-        for key in ('owner', 'purpose', 'legal_basis', 'location', 'access', 'trigger', 'period', 'disposition'):
-            text(entry.get(key), 'policy.' + name + '.' + key)
-    require(classes['audits']['disposition'] == 'preserve_append_only', 'policy.audits.disposition')
-    processors = data.get('processors', {})
-    require(isinstance(processors, dict) and set(processors) == set(PROCESSORS), 'policy.processors')
-    for name, entry in processors.items():
-        require(isinstance(entry, dict) and type(entry.get('enabled')) is bool, 'processor.' + name)
-        for key in ('owner', 'purpose', 'data', 'transfer', 'locations', 'review', 'retention', 'incident_contact'):
-            text(entry.get(key), 'processor.' + name + '.' + key)
-    approval(data, {k: v for k, v in data.items() if k != 'approval'})
     return data
 
 
 def validate_legal(data):
-    require(isinstance(data, dict) and data.get('schema_version') == 1, 'legal.schema_version')
+    require(isinstance(data, dict) and data.get('schema_version') == 2, 'legal.schema_version')
     text(data.get('version'), 'legal.version')
-    text(data.get('policy_sha256'), 'legal.policy_sha256')
     pages = data.get('pages', {})
     require(isinstance(pages, dict) and set(pages) == {'impressum', 'datenschutz'}, 'legal.pages')
     for name, page in pages.items():
@@ -146,7 +110,6 @@ def validate_legal(data):
                 parsed = urlsplit(url)
                 require(parsed.scheme in {'https', 'mailto'} and not any(c.isspace() for c in url), 'legal.url')
                 require(bool(parsed.netloc) if parsed.scheme == 'https' else bool(parsed.path), 'legal.url')
-    approval(data, {k: v for k, v in data.items() if k != 'approval'})
     return data
 
 
@@ -200,22 +163,20 @@ def event(component, outcome, reason='none'):
         'operation=%s outcome=%s reason=%s', component, outcome, reason)
 
 
-LAUNCH_CHECKS = ('release', 'sibling_changes', 'permissions', 'secrets', 'backup_restore',
-                'log_redaction_retention', 'health_alerts', 'timers_markers', 'clock_disk_tls',
-                'privacy_processors', 'legal_content', 'observation', 'rollback')
+LAUNCH_CHECKS = ('backup_restore', 'privacy_notice', 'retention')
 
 
 def validate_launch(data, operations, policy, legal):
-    require(isinstance(data, dict) and data.get('schema_version') == 1, 'launch.schema_version')
-    text(data.get('version'), 'launch.version')
+    require(isinstance(data, dict) and data.get('schema_version') == 2, 'launch.schema_version')
     require(data.get('decision') == 'go', 'launch.decision')
     text(data.get('operator'), 'launch.operator')
-    for key, value in [('operations_sha256', operations), ('policy_sha256', policy), ('legal_sha256', legal)]:
-        require(data.get(key) == digest(value), 'launch.' + key)
+    try:
+        reviewed = datetime.fromisoformat(text(data.get('reviewed_at'), 'launch.reviewed_at'))
+        require(reviewed.tzinfo is not None and reviewed <= datetime.now(timezone.utc), 'launch.reviewed_at')
+    except ValueError:
+        raise ConfigurationError('launch.reviewed_at') from None
     checks = data.get('checks', {})
     require(isinstance(checks, dict) and set(checks) == set(LAUNCH_CHECKS), 'launch.checks')
     for name, check in checks.items():
-        require(isinstance(check, dict) and check.get('complete') is True, 'launch.' + name)
-        for key in ('owner', 'evidence', 'verified_at'):
-            text(check.get(key), 'launch.' + name + '.' + key)
+        require(check is True, 'launch.' + name)
     return data
