@@ -274,6 +274,7 @@ def _fake_job(
     ]
 
     with contextlib.ExitStack() as stack:
+        stack.enter_context(patch.dict(os.environ, {"NULIGAHELPER_DB": ""}))
         for active_patch in patches:
             stack.enter_context(active_patch)
         yield state
@@ -328,6 +329,18 @@ def test_successful_daily_path_orders_lock_sync_backup_and_notifications():
     assert "retention" not in options, "omitted retention must use backup.py's default"
     assert callable(options["client_factory"])
     assert all(session.closed for session in state["sessions"])
+
+
+def test_daily_uses_environment_database_for_lock_and_backup():
+    with tempfile.TemporaryDirectory() as directory:
+        configured_path = os.path.join(directory, "config.db")
+        production_path = os.path.join(directory, "production.db")
+        with _fake_job(configured_path, games_exist=False) as state:
+            with patch.dict(os.environ, {"NULIGAHELPER_DB": production_path}):
+                main.main()
+    assert state["lock_paths"] == [os.path.realpath(production_path)]
+    assert state["engine_path"] == os.path.realpath(production_path)
+    assert state["backup_calls"][0][0] == os.path.realpath(production_path)
 
 
 def test_explicit_retention_is_forwarded_to_backup_api():
@@ -474,6 +487,7 @@ def test_overlap_is_shell_visible_and_nonzero():
             "    runpy.run_path('main.py', run_name='__main__')",
         ])
         environment = os.environ.copy()
+        environment.pop("NULIGAHELPER_DB", None)
         environment["NULIGAHELPER_SECRET"] = "synthetic-subprocess-secret"
         with daily_lock.daily_run_lock(database_path):
             result = subprocess.run(

@@ -36,16 +36,26 @@ h3{color:var(--navy)}
 .hint code{background:#eef3f8;border-radius:6px;padding:2px 6px}
 
 /* ---- schedule ---- */
+.schedule-filter-card{display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) auto;
+  gap:14px;align-items:end;padding:18px;margin-bottom:24px;border:1px solid var(--line);
+  border-radius:18px;background:#f8fafc}
+.schedule-empty{padding:20px;border:1px solid var(--line);border-radius:14px;
+  background:#f8fafc;color:var(--muted);line-height:1.5}
+.schedule-empty a{color:var(--navy);font-weight:800}
+.schedule-empty a:focus-visible{outline:3px solid var(--kids);outline-offset:3px}
 .month-title{color:var(--navy);margin:26px 0 14px;font-size:1.35rem;text-transform:uppercase;letter-spacing:.05em}
 .day-block{margin-bottom:30px;background:#fff;border:1px solid var(--line);
   border-radius:18px;overflow:hidden}
 .day-title{background:var(--navy);color:#fff;padding:13px 18px;
   font-size:1.15rem;font-weight:900;letter-spacing:.04em;text-transform:uppercase}
-.day-block.past .day-title{background:#8a93ab}
+.day-block.past{background:#f5f7fa;border-color:#cfd6e1}
+.day-block.past .day-title{background:#647087}
 .game-card{display:grid;grid-template-columns:minmax(240px,340px) 1fr;gap:22px;
   padding:20px;background:#fff;border-bottom:1px solid var(--line)}
 .game-card:last-of-type{border-bottom:none}
-.day-block.past .game-card{opacity:.55}
+.day-block.past .game-card{background:#f5f7fa}
+.day-block.past .game-time{color:#41516d}
+.day-block.past .hex{filter:saturate(.55)}
 .game-info{display:flex;flex-direction:column;gap:7px}
 .game-time{font-size:1.5rem;font-weight:900;color:var(--navy)}
 .game-teams{display:flex;align-items:center;gap:9px;font-weight:900;line-height:1.35}
@@ -66,10 +76,14 @@ select.select-warn{border-color:#e8b23c;background:#fffaf0}
 .game-card.saved{animation:savedflash .9s ease}
 @keyframes savedflash{0%{box-shadow:0 0 0 3px var(--women)}100%{box-shadow:none}}
 
-.past-details{margin-top:8px}
+.past-details{margin-top:8px;border:1px solid var(--line);border-radius:18px;
+  background:#f8fafc;padding:10px 14px}
 .past-details summary{cursor:pointer;color:var(--navy);font-weight:800;padding:12px 16px;
-  border-radius:14px;background:#eef3f8;display:inline-block}
+  border-radius:14px;background:#e9eef5}
+.past-details summary:hover{background:#dde6f0}
+.past-details summary:focus-visible{outline:3px solid var(--kids);outline-offset:2px}
 .past-details[open] summary{margin-bottom:18px}
+.past-details .month-title{margin-left:4px}
 
 /* ---- persons ---- */
 .section-eyebrow{color:var(--muted);font-size:.72rem;font-weight:900;letter-spacing:.13em;text-transform:uppercase;margin-bottom:4px}
@@ -252,11 +266,13 @@ select.select-warn{border-color:#e8b23c;background:#fffaf0}
 .toast.error{background:var(--err-fg)}
 .footer{margin-top:46px;margin-bottom:22px;padding:24px;background:var(--navy);color:#fff;text-align:center}
 .footer small{display:block;margin-top:8px;color:#d4dbe8;font-size:.82rem}
+.footer a{color:#e7edf6;text-decoration:underline;text-underline-offset:3px}
+.footer a:hover{color:#fff;text-decoration-thickness:2px}
 
 @media(max-width:900px){
   .game-card{grid-template-columns:1fr}
   .management-card-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
-  .roster-filter-card,.audit-filter-card{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .roster-filter-card,.audit-filter-card,.schedule-filter-card{grid-template-columns:repeat(2,minmax(0,1fr))}
   .filter-actions{grid-column:1/-1}
   .data-table-wrap{border:0;overflow:visible;background:transparent}
   .responsive-table,.responsive-table tbody,.responsive-table tr,.responsive-table td{display:block;width:100%}
@@ -275,7 +291,7 @@ select.select-warn{border-color:#e8b23c;background:#fffaf0}
   .nav-inner a,.nav-action{flex:0 0 auto}
   .nav-inner a,.nav-action button{font-size:.84rem;padding:14px 9px;white-space:nowrap}
   .form-grid{grid-template-columns:1fr}
-  .roster-heading{align-items:flex-start}.roster-filter-card,.audit-filter-card,.management-card-grid{grid-template-columns:1fr}
+  .roster-heading{align-items:flex-start}.roster-filter-card,.audit-filter-card,.schedule-filter-card,.management-card-grid{grid-template-columns:1fr}
   .filter-actions{grid-column:auto;flex-wrap:wrap}.filter-actions .btn{flex:1 1 130px}
   .persons-grid{grid-template-columns:1fr}.person-edit-card{grid-template-columns:44px minmax(0,1fr);gap:12px;padding:17px}
   .person-icon{width:42px;height:42px;font-size:19px}.management-divider{margin-top:34px}
@@ -290,5 +306,6 @@ select.select-warn{border-color:#e8b23c;background:#fffaf0}
 /* Public legal deployment content remains readable at narrow widths. */
 .legal-content { max-width: 75ch; margin-inline: auto; overflow-wrap: anywhere; }
 .legal-content p { white-space: pre-line; }
-.legal-content a:focus-visible, .footer a:focus-visible { outline: 3px solid currentColor; outline-offset: 3px; }
+.legal-content a:focus-visible { outline: 3px solid currentColor; outline-offset: 3px; }
+.footer a:focus-visible { color: #fff; outline: 3px solid var(--kids); outline-offset: 4px; }
 .footer nav { margin-top: 0.75rem; }

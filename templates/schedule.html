@@ -62,8 +62,39 @@
     Kontaktdaten werden hier bewusst nicht angezeigt.
   </p>
 
-  {% if not upcoming and not past %}
+  <form class="schedule-filter-card" method="get" action="{{ url_for('schedule') }}" aria-label="Spielplan filtern">
+    <div class="filter-field">
+      <label for="playing-team-filter">Spielende Mannschaft</label>
+      <select id="playing-team-filter" name="playing_team">
+        <option value="">Alle Mannschaften</option>
+        {% for t in teams if not t.is_support %}
+        <option value="team-{{ t.id }}" {% if filters.playing_team == 'team-' ~ t.id %}selected{% endif %}>{{ t.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="filter-field">
+      <label for="responsible-team-filter">Verantwortliche Mannschaft</label>
+      <select id="responsible-team-filter" name="responsible_team">
+        <option value="">Alle Mannschaften</option>
+        {% for t in teams %}
+        <option value="team-{{ t.id }}" {% if filters.responsible_team == 'team-' ~ t.id %}selected{% endif %}>{{ t.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="filter-field">
+      <label for="person-filter">Eingeteilte Person</label>
+      <input id="person-filter" name="person" type="search" value="{{ filters.person }}" placeholder="Name suchen">
+    </div>
+    <div class="filter-actions">
+      <button class="btn btn-primary" type="submit">Filtern</button>
+      <a class="btn btn-secondary" href="{{ url_for('schedule') }}">Filter löschen</a>
+    </div>
+  </form>
+
+  {% if not total_games %}
   <p class="hint">Noch keine Spiele vorhanden. Führe zuerst <code>main.py</code> aus, um den Spielplan zu laden.</p>
+  {% elif not upcoming and not past %}
+  <p class="schedule-empty">Keine Spiele für diese Filter gefunden. <a href="{{ url_for('schedule') }}">Filter löschen</a></p>
   {% endif %}
 
   {% for item in upcoming %}

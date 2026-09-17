@@ -169,7 +169,7 @@ def main():
 
     config = common.load_config()
     club_cfg = config["club"]
-    db_path = club_cfg.get("database", {}).get("path", db.DEFAULT_DB_PATH)
+    db_path = os.environ.get("NULIGAHELPER_DB") or club_cfg.get("database", {}).get("path", db.DEFAULT_DB_PATH)
     resolved_db_path = db.resolve_db_path(db_path)
 
     today = common.effective_today()

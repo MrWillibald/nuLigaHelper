@@ -1194,12 +1194,17 @@ def create_app() -> Flask:
     # Schedule overview
     # ------------------------------------------------------------------
 
-    def build_schedule(session, season_year: int, viewer: db.Person | None = None):
+    def build_schedule(
+        session, season_year: int, viewer: db.Person | None = None,
+        filters: dict[str, str] | None = None,
+    ):
+        filters = filters or {}
         today = common.effective_today()
         games = session.query(db.Game).filter(
             db.Game.season_year == season_year
         ).all()
         games.sort(key=db.game_sort_key)
+        total_games = len(games)
 
         persons = person_options(session)
         persons_by_id = {p["id"]: p for p in persons}
@@ -1207,6 +1212,28 @@ def create_app() -> Flask:
         support = db.get_support_team(session)
         support_id = support.id if support else None
         playing_team_by_ak = {t["name"]: t["id"] for t in teams}
+
+        def selected_team(value: str) -> int | None:
+            if not value:
+                return None
+            if not value.startswith("team-") or not value[5:].isdigit():
+                return -1
+            team_id = int(value[5:])
+            return team_id if any(t["id"] == team_id for t in teams) else -1
+
+        playing_filter = selected_team(filters.get("playing_team", ""))
+        responsible_filter = selected_team(filters.get("responsible_team", ""))
+        person_filter = " ".join(filters.get("person", "").split()).casefold()
+        games = [
+            game for game in games
+            if (playing_filter is None
+                or playing_team_by_ak.get(game.ak or "") == playing_filter)
+            and (responsible_filter is None or game.team_id == responsible_filter)
+            and (not person_filter or any(
+                person_filter in " ".join(assignment.person.name.split()).casefold()
+                for assignment in game.assignments
+            ))
+        ]
 
         def game_view(game):
             sales = {
@@ -1333,13 +1360,19 @@ def create_app() -> Flask:
             "persons": persons,
             "teams": teams,
             "support_id": support_id,
+            "total_games": total_games,
         }
 
     @app.route("/")
     def schedule():
         session = get_session()
         season_year = common.season_year_for(common.effective_today())
-        data = build_schedule(session, season_year, g.viewer)
+        filters = {
+            "playing_team": request.args.get("playing_team", "").strip(),
+            "responsible_team": request.args.get("responsible_team", "").strip(),
+            "person": request.args.get("person", "").strip(),
+        }
+        data = build_schedule(session, season_year, g.viewer, filters)
         return render_template(
             "schedule.html",
             upcoming=data["upcoming"],
@@ -1347,6 +1380,8 @@ def create_app() -> Flask:
             persons=data["persons"],
             teams=data["teams"],
             support_id=data["support_id"],
+            total_games=data["total_games"],
+            filters=filters,
             season=f"{season_year}/{str(season_year + 1)[-2:]}",
         )
 

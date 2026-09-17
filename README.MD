@@ -33,7 +33,7 @@ It is then reachable in the local network at `http://<device-ip>:8080`.
 Public hosting requires a separately maintained production deployment with TLS,
 restricted secrets, monitoring and a reviewed launch procedure.
 
-- **Heimspielplan**: public, read-only schedule with assigned helper names. Signed-in members can claim and release their own future tasks. MVs can additionally staff their own team on games for which that team is responsible; admins can correct every slot and set the responsible team. Concurrent stale changes are rejected rather than overwriting another person's work.
+- **Heimspielplan**: public, read-only schedule with assigned helper names. Use the filters **Spielende Mannschaft**, **Verantwortliche Mannschaft** and **Eingeteilte Person** together to find relevant games; the person field searches assigned names, and **Filter löschen** restores the full plan. Past game days appear muted under **Vergangene Spieltage anzeigen** and can be expanded. Signed-in members can claim and release their own future tasks. MVs can additionally staff their own team on games for which that team is responsible; admins can correct every slot and set the responsible team. Concurrent stale changes are rejected rather than overwriting another person's work.
 - **Helfer verwalten**: members see names and teams but only their own contact data. Admins create, edit, deactivate/reactivate or delete erroneous entries and appoint team MVs. MVs and admins approve registrations in their scope.
 - **Statistik**: games covered per team, jobs per person (incl. role breakdown) and a list of upcoming games with missing assignments.
 - **Änderungsprotokoll**: admin-only, append-only history of assignment claims and releases with actor, tier, person, game, role, slot and timestamp.
@@ -149,7 +149,8 @@ batch size), two public legal pages, and a launch record with one club officer's
 decision. The launch record checks the restore rehearsal, privacy notice and
 retention settings; technical host checks run separately.
 
-Production uses a stable `NULIGAHELPER_SECRET`, an absolute `NULIGAHELPER_DB`,
+Production uses a stable `NULIGAHELPER_SECRET`, an absolute `NULIGAHELPER_DB`
+shared by the web app, daily job, cleanup and backup,
 exact `NULIGAHELPER_TRUSTED_HOSTS`, and provider settings from environment
 variables. Production `config.json` contains club data and notification texts,
 not email, Twilio or Dropbox provider sections. Host setup and public launch
