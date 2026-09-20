@@ -21,15 +21,15 @@ client = app.test_client()
 
 with h.Session(ENGINE) as session:
     games = h.sample_games()
-    original_1001 = next(game for game in games if game["game_nr"] == 1001)
+    original_1001 = next(game for game in games if game["game_nr"] == "1001")
     games.append({
         **original_1001,
-        "source_key": "test:1001-duplicate",
+        "game_nr": "9001",
         "time": "16:30",
         "guest": "Duplicate Tournament Team",
     })
     db.sync_games(session, games, h.SEASON)
-    game_data = next(game for game in games if game["game_nr"] == 1001)
+    game_data = next(game for game in games if game["game_nr"] == "1001")
     playing = session.query(db.Team).filter_by(name=game_data["ak"]).one()
     responsible = session.query(db.Team).filter(db.Team.id != playing.id).first()
     unrelated = session.query(db.Team).filter(
@@ -44,10 +44,8 @@ with h.Session(ENGINE) as session:
     outsider = db.Person(name="Outside Test", team=unrelated)
     session.add_all([admin, alice, duplicate, outsider])
     session.commit()
-    game = session.query(db.Game).filter_by(source_key="test:1001").one()
-    duplicate_game = session.query(db.Game).filter_by(
-        source_key="test:1001-duplicate"
-    ).one()
+    game = session.query(db.Game).filter_by(game_nr="1001").one()
+    duplicate_game = session.query(db.Game).filter_by(game_nr="9001").one()
     GAME_ID = game.id
     DUPLICATE_GAME_ID = duplicate_game.id
     ADMIN_ID, ALICE_ID, DUPLICATE_ID, OUTSIDER_ID = (

@@ -14,7 +14,7 @@
       <select id="audit-game" name="game_id">
         <option value="">Alle Spiele</option>
         {% for game in games %}
-        <option value="{{ game.id }}" {% if selected_game == game.id %}selected{% endif %}>{{ game.game_nr }} · {{ game.date }} {{ game.time or '' }} · {{ game.ak or '?' }} · {{ game.home or '?' }} – {{ game.guest or '?' }}</option>
+        <option value="{{ game.id }}" {% if selected_game == game.id %}selected{% endif %}>{{ game.game_nr }} · {{ game.date }} {{ game.time or '' }} · {% if game.ak and 'spf' in game.ak|lower %}Spielfest {{ game.ak }}{% else %}{{ game.ak or '?' }} · {{ game.home or '?' }} – {{ game.guest or '?' }}{% endif %}</option>
         {% endfor %}
       </select>
     </div>

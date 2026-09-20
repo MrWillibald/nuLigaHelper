@@ -7,7 +7,7 @@
     <div class="game-time">{{ g.time }}</div>
     <div class="game-teams">
       <span class="hex" style="background:{{ g.color }}"></span>
-      <span>{{ g.home }} &ndash; {{ g.guest }}</span>
+      <span>{% if g.spielfest %}Spielfest {{ g.ak }}{% else %}{{ g.home }} &ndash; {{ g.guest }}{% endif %}</span>
     </div>
     <div class="game-meta">{{ g.ak }} &middot; Halle {{ g.hall }} &middot; Nr. {{ g.nr }}</div>
   </div>

@@ -24,6 +24,7 @@ import backup
 import common
 import contact_validation as contacts
 import db
+import game_identity_migration
 
 
 def get_db_path(args) -> str:
@@ -46,6 +47,31 @@ def open_session(args):
 def cmd_init(args):
     _, engine = open_session(args)
     print(f"Database initialized at {engine.url}")
+
+
+def cmd_migrate_game_identity(args):
+    if not args.confirm_stopped:
+        raise SystemExit(
+            "Refusing migration without --confirm-stopped. Stop all web and daily "
+            "database users first."
+        )
+    path = db.resolve_db_path(get_db_path(args))
+    try:
+        result = game_identity_migration.migrate(path)
+    except game_identity_migration.MigrationError as exc:
+        raise SystemExit(f"Game identity migration failed: {exc}") from exc
+    plan = result.plan
+    print(f"Migrated database: {result.database_path}")
+    print(f"Backup: {result.backup_path}")
+    print(
+        f"Games: {plan.legacy_game_count} -> {plan.resulting_game_count}; "
+        f"Spielfeste: {plan.spielfest_groups}; "
+        f"collapsed rows: {plan.redundant_spielfest_rows}"
+    )
+    print(
+        f"Preserved assignments: {plan.assignment_count}; "
+        f"audit rows: {plan.audit_count}"
+    )
 
 
 def _restore_error_message(error: backup.RestoreError) -> str:
@@ -236,7 +262,7 @@ def cmd_list_games(args):
         assignments = ", ".join(f"{a.role}: {a.person.name}" for a in g.assignments) or "-"
         print(
             f"ID {g.id:<5} Nr.{g.game_nr:<7} {g.date or '?'} {g.time or '?':<8} {g.ak or '?':<5} "
-            f"{g.home or '?'} - {g.guest or '?'}\n"
+            f"{db.game_display_name(g)}\n"
             f"         Verantwortlich: {g.jteam or '-'} | {assignments}"
         )
 
@@ -313,6 +339,17 @@ def build_parser():
     sub.add_parser("init").set_defaults(func=cmd_init)
 
     p = sub.add_parser(
+        "migrate-game-identity",
+        help="Back up and migrate the stopped legacy game-identity database",
+    )
+    p.add_argument(
+        "--confirm-stopped",
+        action="store_true",
+        help="Confirm that all web and daily database users are stopped",
+    )
+    p.set_defaults(func=cmd_migrate_game_identity)
+
+    p = sub.add_parser(
         "restore-snapshot",
         help="Validate and restore a standalone SQLite snapshot while services are stopped",
     )
@@ -346,7 +383,7 @@ def build_parser():
 
     p = sub.add_parser("list-games", help="List games and their assignments")
     p.add_argument("--date", help="Only games on this date (dd.mm.yyyy)")
-    p.add_argument("--number", type=int, help="Only games with this display number")
+    p.add_argument("--number", help="Only games with this canonical number")
     p.set_defaults(func=cmd_list_games)
 
     p = sub.add_parser("assign", help="Assign a person to a game role")

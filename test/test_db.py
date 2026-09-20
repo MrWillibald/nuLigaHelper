@@ -13,6 +13,7 @@ import uuid
 
 import helpers as h
 import db
+import scraper
 from datetime import datetime
 from sqlalchemy.exc import IntegrityError
 
@@ -37,9 +38,9 @@ def _assert_empty(events):
         f"expected no events, got {events}"
 
 
-def _game_by_source_key(session, source_key):
+def _game_by_number(session, game_nr, season=h.SEASON):
     return session.query(db.Game).filter_by(
-        season_year=h.SEASON, source_key=source_key).one()
+        season_year=season, game_nr=str(game_nr)).one()
 
 
 def test_bootstrap_creates_only_support_team():
@@ -86,13 +87,13 @@ def test_sync_reports_shift_referee_and_new_game_events():
         modified[0]["date"], modified[0]["time"] = "06.09.2026", "18:15"
         modified[1]["score"] = "27:25 §77"
         modified.append({
-            **modified[0], "source_key": "test:9999", "game_nr": 9999, "ak": "miA"
+            **modified[0], "game_nr": "9999", "ak": "miA"
         })
         events = _events_for(session, modified)
 
-        assert [(s.game_nr, s.new_date) for s in events.shifts] == [(1003, "06.09.2026")]
-        assert [r.game_nr for r in events.referee_alerts] == [1001]
-        assert [event.game_nr for event in events.new_games] == [9999]
+        assert [(s.game_nr, s.new_date) for s in events.shifts] == [("1003", "06.09.2026")]
+        assert [r.game_nr for r in events.referee_alerts] == ["1001"]
+        assert [event.game_nr for event in events.new_games] == ["9999"]
 
         # third run: nothing changed -> no repeated notifications
         _assert_empty(_events_for(session, modified))
@@ -116,7 +117,7 @@ def test_chronological_ordering_includes_month_and_year():
         rows = session.query(db.Game).filter_by(season_year=h.SEASON).all()
         rows.sort(key=db.game_sort_key)
         nrs = [g.game_nr for g in rows]
-        assert nrs == [1001, 1002, 1004, 1003, 1005, 2001], nrs
+        assert nrs == ["1001", "1002", "1004", "1003", "1005", "2001"], nrs
         same_day = [g.time for g in rows if g.date == "03.10.2026"]
         assert same_day == ["10:00", "17:30"], "times must be ordered within a day"
 
@@ -126,7 +127,7 @@ def test_delete_person_removes_their_assignments():
     with h.Session(engine) as session:
         games = h.sync_sample_games(session)
         person = db.get_or_create_person(session, "Alice", email="alice@x.de")
-        game = _game_by_source_key(session, games[0]["source_key"])
+        game = _game_by_number(session, games[0]["game_nr"])
         db.assign_person(session, game, person, db.ROLE_TIMEKEEPER)
         session.commit()
 
@@ -139,7 +140,7 @@ def test_set_role_assignments_replaces_all_slots_of_a_role():
     engine = _make_engine()
     with h.Session(engine) as session:
         games = h.sync_sample_games(session)
-        game = _game_by_source_key(session, games[0]["source_key"])
+        game = _game_by_number(session, games[0]["game_nr"])
         alice = db.get_or_create_person(session, "Alice")
         bob = db.get_or_create_person(session, "Bob")
 
@@ -157,7 +158,7 @@ def test_assign_person_blocks_a_second_task_for_the_same_game():
     engine = _make_engine()
     with h.Session(engine) as session:
         games = h.sync_sample_games(session)
-        game = _game_by_source_key(session, games[0]["source_key"])
+        game = _game_by_number(session, games[0]["game_nr"])
         alice = db.get_or_create_person(session, "Alice")
 
         db.assign_person(session, game, alice, db.ROLE_TIMEKEEPER)
@@ -185,24 +186,20 @@ def test_duplicate_names_are_valid_distinct_identities():
         assert first.id != second.id
 
 
-def test_duplicate_game_numbers_keep_distinct_identity_and_events():
+def test_same_number_in_another_season_keeps_distinct_identity():
     engine = _make_engine()
     with h.Session(engine) as session:
         base = {
             "day": "Sa", "date": "05.09.2026", "time": "10:00",
-            "hall": 280340, "game_nr": 555, "ak": "GE",
-            "home": "TuS Raubling", "score": "",
+            "hall": 280340, "game_nr": "555", "ak": "GE",
+            "home": "TuS Raubling", "guest": "Team A", "score": "",
         }
-        first_row = {**base, "source_key": "meeting:101", "guest": "Team A"}
-        second_row = {
-            **base, "source_key": "meeting:102", "time": "11:00", "guest": "Team B",
-        }
-        created = db.sync_games(session, [first_row, second_row], h.SEASON)
-        assert len(created.new_games) == 2
-        first = session.query(db.Game).filter_by(source_key="meeting:101").one()
-        second = session.query(db.Game).filter_by(source_key="meeting:102").one()
-        assert first.game_nr == second.game_nr == 555 and first.id != second.id
-
+        db.sync_games(session, [base], h.SEASON)
+        later = {**base, "date": "05.09.2027", "guest": "Team B"}
+        db.sync_games(session, [later], h.SEASON + 1)
+        first = _game_by_number(session, "555", h.SEASON)
+        second = _game_by_number(session, "555", h.SEASON + 1)
+        assert first.id != second.id
         team = db.get_or_create_team(session, "Responsible")
         helper = db.Person(name="Helper")
         session.add(helper)
@@ -211,24 +208,16 @@ def test_duplicate_game_numbers_keep_distinct_identity_and_events():
         db.assign_person(session, first, helper, db.ROLE_TIMEKEEPER)
         session.commit()
 
-        repeated = db.sync_games(session, [first_row, second_row], h.SEASON)
+        repeated = db.sync_games(session, [base], h.SEASON)
         _assert_empty(repeated)
-        shifted_first = {**first_row, "date": "06.09.2026", "time": "12:00"}
-        referee_second = {**second_row, "hall": 280345, "score": "§77"}
-        changed = db.sync_games(
-            session, [shifted_first, referee_second], h.SEASON
-        )
+        shifted_first = {**base, "date": "06.09.2026", "time": "12:00"}
+        changed = db.sync_games(session, [shifted_first], h.SEASON)
         assert [event.game_id for event in changed.shifts] == [first.id]
-        assert [event.game_id for event in changed.referee_alerts] == [second.id]
         assert first.team_id == team.id
         assert first.assignment_by_role(db.ROLE_TIMEKEEPER).person_id == helper.id
-        assert second.hall == 280345
-
-        removed = db.sync_games(session, [shifted_first], h.SEASON)
-        assert [event.game_id for event in removed.removed_games] == [second.id]
 
 
-def test_duplicate_source_key_is_rejected_before_sync_mutation():
+def test_duplicate_game_number_is_rejected_before_sync_mutation_and_by_schema():
     engine = _make_engine()
     with h.Session(engine) as session:
         original = h.sample_games()[0]
@@ -238,18 +227,17 @@ def test_duplicate_source_key_is_rejected_before_sync_mutation():
         try:
             db.sync_games(session, [original, collision], h.SEASON)
         except ValueError as exc:
-            assert original["source_key"] in str(exc)
+            assert original["game_nr"] in str(exc)
             session.rollback()
         else:
-            raise AssertionError("duplicate source keys must fail before synchronization")
+            raise AssertionError("duplicate numbers must fail before synchronization")
         assert session.query(db.Game).count() == before
         stored = session.query(db.Game).one()
         assert stored.guest == original["guest"]
 
         duplicate = db.Game(
             season_year=h.SEASON,
-            source_key=original["source_key"],
-            game_nr=9999,
+            game_nr=original["game_nr"],
         )
         session.add(duplicate)
         try:
@@ -257,7 +245,46 @@ def test_duplicate_source_key_is_rejected_before_sync_mutation():
         except IntegrityError:
             session.rollback()
         else:
-            raise AssertionError("season/source key uniqueness must be enforced by SQLite")
+            raise AssertionError("season/game number uniqueness must be enforced by SQLite")
+
+
+def test_spielfest_lifecycle_uses_one_aggregate_and_date_change_is_new_identity():
+    engine = _make_engine()
+    with h.Session(engine) as session:
+        rows = [
+            {
+                "day": "Sa", "date": "28.11.2026", "time": time,
+                "hall": 280345, "game_nr": str(number), "ak": "SPF Mini",
+                "home": "Home", "guest": f"Guest {number}", "score": "§77",
+            }
+            for number, time in ((1, "09:00"), (3, "09:40"), (4, "10:00"))
+        ]
+        aggregate = scraper.collapse_spielfeste(rows)
+        created = db.sync_games(session, aggregate, h.SEASON)
+        assert len(created.new_games) == 1 and not created.referee_alerts
+        game = session.query(db.Game).one()
+        helper = db.Person(name="SPF Helper")
+        session.add(helper)
+        db.assign_person(session, game, helper, db.ROLE_TIMEKEEPER)
+        session.commit()
+
+        changed_rows = [{**row, "guest": "Changed", "game_nr": str(i + 20)}
+                        for i, row in enumerate(reversed(rows))]
+        repeated = db.sync_games(
+            session, scraper.collapse_spielfeste(changed_rows), h.SEASON
+        )
+        _assert_empty(repeated)
+        assert game.assignment_by_role(db.ROLE_TIMEKEEPER).person_id == helper.id
+
+        moved_rows = [{**row, "date": "29.11.2026"} for row in rows]
+        moved = db.sync_games(
+            session, scraper.collapse_spielfeste(moved_rows), h.SEASON
+        )
+        assert len(moved.new_games) == 1 and len(moved.removed_games) == 1
+        new_game = session.query(db.Game).filter_by(
+            game_nr="SPF:2026-11-29:spf mini"
+        ).one()
+        assert new_game.assignments == []
 
 
 def test_registration_state_reaches_active_roster_membership():
@@ -285,7 +312,7 @@ def test_slot_claim_release_conflicts_and_audit_survives_person_deletion():
     engine = _make_engine()
     with h.Session(engine) as session:
         games = h.sync_sample_games(session)
-        game = _game_by_source_key(session, games[0]["source_key"])
+        game = _game_by_number(session, games[0]["game_nr"])
         person = db.get_or_create_person(session, "Alex")
         db.claim_slot(session, game, db.ROLE_SALE, 0, None, person)
         session.commit()
@@ -338,11 +365,11 @@ def test_deactivation_keeps_past_and_audits_future_release():
         person = db.Person(name="Alex", team=team)
         actor = db.Person(name="Admin", is_admin=True)
         past = db.Game(
-            season_year=h.SEASON, source_key="test:9001", game_nr=9001,
+            season_year=h.SEASON, game_nr="9001",
             date="01.01.2020"
         )
         future = db.Game(
-            season_year=h.SEASON, source_key="test:9002", game_nr=9002,
+            season_year=h.SEASON, game_nr="9002",
             date="31.12.2099"
         )
         session.add_all([person, actor, past, future])

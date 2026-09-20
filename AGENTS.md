@@ -76,12 +76,13 @@ test/run_tests.sh                          # whole suite, must stay green
 - **Teams are fully automatic**: derived from the scraped age classes (`ak`,
   e.g. "BL mD") plus exactly one seeded support team ("Supporter"). Users cannot
   create/edit/delete teams; the CLI only resolves existing ones.
-- **Scraped game identity is `(season_year, source_key)`, never `game_nr`.** Prefer
-  nuLiga's `meeting` query parameter for `source_key`; the scraper fallback hashes
-  normalized game number, age class, home and guest, excluding mutable scheduling
-  fields. Game numbers may repeat and remain display/filter data. Internal mutations
-  and event consumers use `Game.id`; ambiguous source keys abort before sync mutates
-  the ORM. CLI and admin choices include date, time, age class and matchup context.
+- **Scraped game identity is `(season_year, game_nr)`.** Ordinary game numbers are
+  canonical decimal text; nuLiga meeting links and descriptive fields never participate
+  in identity. SPF rows are the sole reuse exception: the scraper collapses every date
+  plus full normalized SPF age group into one task-relevant game with a textual pseudo
+  number such as `SPF:2026-11-28:spf mini`, earliest start time and no invented matchup.
+  A moved Spielfest intentionally has a new identity. Internal mutations and events use
+  `Game.id`; duplicate ordinary numbers and inconsistent SPF groups abort before sync.
 - **Games are never pre-assigned** to their own age-class team – that team is
   busy playing. The responsible team ("Verantwortlich") is chosen per game
   and may stay empty.
@@ -135,9 +136,11 @@ test/run_tests.sh                          # whole suite, must stay green
   Both can fire for the same game in one sync.
 - Seasons run July–June (`common.season_year_for`). New scraped games whose `ak`
   != "GE" trigger one admin info-mail (tournament numbers churn weekly).
-- **No DB migration layer by intent**: after schema changes delete the `.db`
-  file and let the next run recreate it. The owner decides when persistence
-  across changes is needed – ask before adding migration machinery.
+- **No general DB migration layer by intent.** The reviewed source-key-to-game-number
+  transition is the sole current exception: legacy startup fails closed and the operator
+  runs `manage_db.py migrate-game-identity --confirm-stopped`, which preflights, backs up,
+  transactionally rebuilds `games` and verifies relationships. Do not add another
+  migration or recreate a production database without explicit owner approval.
 - The newspaper-article feature lives in `Notifier.send_article` but its call
   site in `main.py` is commented out.
 

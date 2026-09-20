@@ -65,7 +65,7 @@ class Notifier:
         subject: str,
         mail_body: str,
         sms_body: str,
-        game_nr: int,
+        game_nr: str,
         mail_id: str | None = None,
         mail_password: str | None = None,
     ) -> int:
@@ -100,6 +100,19 @@ class Notifier:
     def _person_receiver(person: db.Person, task: str) -> dict:
         """Build a receiver dict from a Person instance."""
         return {"name": person.name, "email": person.email, "phone": person.phone, "task": task}
+
+    @staticmethod
+    def _spielfest_task_text(
+        name: str, date: str, role: str, game: db.Game, timing: str,
+        partner: str | None = None,
+    ) -> str:
+        partner_text = f" Du arbeitest mit {partner} zusammen." if partner else ""
+        return (
+            f"Hallo {name},\n\ndu bist {timing} ({date}) für den Dienst {role} "
+            f"beim Spielfest {game.ak or ''} eingeteilt. Das Spielfest beginnt um "
+            f"{game.time or ''}.{partner_text} Bitte sei rechtzeitig in der Halle.\n\n"
+            "Viele Grüße Max"
+        )
 
     def send_account_message(
         self,
@@ -159,17 +172,29 @@ class Notifier:
                     game.assignment_by_role(db.ROLE_SECRETARY),
                 )
             ]
+            if db.is_spielfest(game):
+                body = (
+                    f"Hallo {mv.name},\n\naus deiner Mannschaft "
+                    f"{game.judge_team_name or ''} übernehmen morgen ({date}) "
+                    f"{judge_names[0]} und {judge_names[1]} die Verantwortung beim "
+                    f"Spielfest {game.ak or ''}. Das Spielfest beginnt um "
+                    f"{game.time or ''}.\n\nViele Grüße Max"
+                )
+                mail_body = sms_body = body
+            else:
+                mail_body = self.mailMV.format(
+                    mv.name, game.judge_team_name or "", date, *judge_names,
+                    game.ak, game.home, game.guest, game.time,
+                )
+                sms_body = self.textMV.format(
+                    mv.name, game.judge_team_name or "", date, *judge_names,
+                    game.ak, game.time,
+                )
             cnt += self._dispatch(
                 self._person_receiver(mv, "MV Verantwortlich"),
                 subject=self.mailMVSubject,
-                mail_body=self.mailMV.format(
-                    mv.name, game.judge_team_name or "", date, *judge_names,
-                    game.ak, game.home, game.guest, game.time,
-                ),
-                sms_body=self.textMV.format(
-                    mv.name, game.judge_team_name or "", date, *judge_names,
-                    game.ak, game.time,
-                ),
+                mail_body=mail_body,
+                sms_body=sms_body,
                 game_nr=game.game_nr,
             )
 
@@ -195,17 +220,25 @@ class Notifier:
             partners = [a for a in sales if a is not assignment]
             partner_name = partners[0].person.name if partners else ""
             receiver = self._person_receiver(assignment.person, db.ROLE_SALE)
+            if db.is_spielfest(game):
+                mail_body = sms_body = self._spielfest_task_text(
+                    receiver["name"], date, db.ROLE_SALE, game,
+                    "nächste Woche", partner_name,
+                )
+            else:
+                mail_body = self.mailEarlyTask.format(
+                    receiver["name"], date, db.ROLE_SALE, game.ak, game.home, game.guest,
+                    partner_name, game.time, partner_name,
+                )
+                sms_body = self.textEarlyTask.format(
+                    receiver["name"], date, db.ROLE_SALE, game.ak,
+                    partner_name, game.time, partner_name,
+                )
             cnt += self._dispatch(
                 receiver,
                 subject=f"Vorbereitung Dienst {db.ROLE_SALE}",
-                mail_body=self.mailEarlyTask.format(
-                    receiver["name"], date, db.ROLE_SALE, game.ak, game.home, game.guest,
-                    partner_name, game.time, partner_name,
-                ),
-                sms_body=self.textEarlyTask.format(
-                    receiver["name"], date, db.ROLE_SALE, game.ak,
-                    partner_name, game.time, partner_name,
-                ),
+                mail_body=mail_body,
+                sms_body=sms_body,
                 game_nr=game.game_nr,
                 mail_id=self.mail_saleID,
                 mail_password=self.mail_salePassword,
@@ -241,13 +274,23 @@ class Notifier:
             if assignment is None:
                 continue
             receiver = self._person_receiver(assignment.person, role)
+            if db.is_spielfest(game):
+                timing = "morgen" if mail_text == self.mailTask else "nächste Woche"
+                mail_body = sms_body = self._spielfest_task_text(
+                    receiver["name"], date, role, game, timing
+                )
+            else:
+                mail_body = mail_text.format(
+                    receiver["name"], date, role, game.ak, game.home, game.guest, game.time
+                )
+                sms_body = sms_text.format(
+                    receiver["name"], date, role, game.ak, game.time
+                )
             cnt += self._dispatch(
                 receiver,
                 subject=f"Benachrichtigung Dienst {role}",
-                mail_body=mail_text.format(
-                    receiver["name"], date, role, game.ak, game.home, game.guest, game.time
-                ),
-                sms_body=sms_text.format(receiver["name"], date, role, game.ak, game.time),
+                mail_body=mail_body,
+                sms_body=sms_body,
                 game_nr=game.game_nr,
             )
         return cnt
@@ -273,17 +316,27 @@ class Notifier:
                 if assignment is None:
                     continue
                 receiver = self._person_receiver(assignment.person, role)
+                if db.is_spielfest(game):
+                    mail_body = sms_body = (
+                        f"Hallo {receiver['name']},\n\ndein Dienst {role} beim "
+                        f"Spielfest {game.ak or ''} wurde verschoben: nicht mehr am "
+                        f"{shift.old_date} um {shift.old_time}, sondern am "
+                        f"{shift.new_date} um {shift.new_time}.\n\nViele Grüße Max"
+                    )
+                else:
+                    mail_body = self.mailShifted.format(
+                        receiver["name"], role, game.ak, game.home, game.guest,
+                        shift.old_date, shift.old_time, shift.new_date, shift.new_time,
+                    )
+                    sms_body = self.textShifted.format(
+                        receiver["name"], role,
+                        shift.old_date, shift.old_time, shift.new_date, shift.new_time,
+                    )
                 cnt += self._dispatch(
                     receiver,
                     subject=f"Benachrichtigung Verschiebung Dienst {role}",
-                    mail_body=self.mailShifted.format(
-                        receiver["name"], role, game.ak, game.home, game.guest,
-                        shift.old_date, shift.old_time, shift.new_date, shift.new_time,
-                    ),
-                    sms_body=self.textShifted.format(
-                        receiver["name"], role,
-                        shift.old_date, shift.old_time, shift.new_date, shift.new_time,
-                    ),
+                    mail_body=mail_body,
+                    sms_body=sms_body,
                     game_nr=game.game_nr,
                 )
         return cnt

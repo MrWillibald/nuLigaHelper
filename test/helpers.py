@@ -98,21 +98,19 @@ def sample_games() -> list[dict]:
     """
     base = {"day": "Sa", "hall": 280340, "home": "TuS Raubling", "score": ""}
     games = [
-        {**base, "date": "03.10.2026", "time": "17:30", "game_nr": 1003,
+        {**base, "date": "03.10.2026", "time": "17:30", "game_nr": "1003",
          "ak": "BL F", "guest": "TSV Brannenburg"},
-        {**base, "date": "05.09.2026", "time": "15:00", "game_nr": 1001,
+        {**base, "date": "05.09.2026", "time": "15:00", "game_nr": "1001",
          "ak": "BL mD", "guest": "SBC Traunstein"},
         {**base, "day": "So", "hall": 280345, "date": "14.03.2027", "time": "12:00",
-         "game_nr": 2001, "ak": "GE", "home": "TuS Raubling", "guest": "Turnier"},
-        {**base, "date": "28.09.2026", "time": "09:00", "game_nr": 1002,
+         "game_nr": "2001", "ak": "GE", "home": "TuS Raubling", "guest": "Turnier"},
+        {**base, "date": "28.09.2026", "time": "09:00", "game_nr": "1002",
          "ak": "BL M", "guest": "SV Anzing"},
-        {**base, "date": "03.10.2026", "time": "10:00", "game_nr": 1004,
+        {**base, "date": "03.10.2026", "time": "10:00", "game_nr": "1004",
          "ak": "BK wD", "guest": "HT München"},
-        {**base, "date": "01.11.2026", "time": "18:00", "game_nr": 1005,
+        {**base, "date": "01.11.2026", "time": "18:00", "game_nr": "1005",
          "ak": "BL mC", "guest": "TSV Übersee"},
     ]
-    for game in games:
-        game["source_key"] = f"test:{game['game_nr']}"
     return games
 
 

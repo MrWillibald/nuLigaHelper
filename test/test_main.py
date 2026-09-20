@@ -47,7 +47,7 @@ def _events():
         shifts=[
             db.ShiftEvent(
                 game_id=1,
-                game_nr=1001,
+                game_nr="1001",
                 old_date="01.09.2026",
                 old_time="10:00",
                 new_date="02.09.2026",
@@ -55,9 +55,9 @@ def _events():
             )
         ],
         referee_alerts=[
-            db.RefereeEvent(game_id=1, game_nr=1001, date="02.09.2026", time="11:00")
+            db.RefereeEvent(game_id=1, game_nr="1001", date="02.09.2026", time="11:00")
         ],
-        new_games=[db.GameEvent(1, 1001, "test:1001", "BL mD")],
+        new_games=[db.GameEvent(1, "1001", "BL mD")],
     )
 
 
@@ -204,7 +204,7 @@ def _fake_job(
         assert state["lock_active"], "scraping happened before the lock"
         assert not state["sessions"], "scraping happened with a database session open"
         state["order"].append("scrape")
-        return [{"source_key": "offline"}]
+        return [{"game_nr": "1001"}]
 
     def session_factory(_engine):
         session = _FakeSession(state, f"session{len(state['sessions'])}")
@@ -280,10 +280,10 @@ def _fake_job(
         yield state
 
 
-def test_new_game_filter_keeps_duplicate_numbers_independent():
+def test_new_game_filter_excludes_tournament_age_group():
     events = db.SyncEvents(new_games=[
-        db.GameEvent(1, 555, "meeting:101", "GE"),
-        db.GameEvent(2, 555, "meeting:102", "BL mD"),
+        db.GameEvent(1, "555", "GE"),
+        db.GameEvent(2, "556", "BL mD"),
     ])
     result = main.reportable_new_games(events)
     assert [event.game_id for event in result] == [2]

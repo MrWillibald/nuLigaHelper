@@ -60,11 +60,11 @@ def test_duplicate_names_are_discovered_and_selected_by_id():
         first = db.Person(name="Same Name", team=team)
         second = db.Person(name="Same Name", team=team)
         first_game = db.Game(
-            season_year=h.SEASON, source_key="meeting:101", game_nr=1234,
+            season_year=h.SEASON, game_nr="1234",
             date="30.12.2099", time="10:00", ak="GE", home="Home", guest="Team A",
         )
         second_game = db.Game(
-            season_year=h.SEASON, source_key="meeting:102", game_nr=1234,
+            season_year=h.SEASON, game_nr="1235",
             date="31.12.2099", time="11:00", ak="GE", home="Home", guest="Team B",
         )
         session.add_all([first, second, first_game, second_game])
@@ -74,9 +74,9 @@ def test_duplicate_names_are_discovered_and_selected_by_id():
 
     listing = _run(path, "search-person", "Same")
     assert f"ID {first_id}" in listing and f"ID {second_id}" in listing
-    games = _run(path, "--season", h.SEASON, "list-games", "--number", 1234)
-    assert f"ID {first_game_id}" in games and f"ID {second_game_id}" in games
-    assert "Team A" in games and "Team B" in games
+    games = _run(path, "--season", h.SEASON, "list-games", "--number", "1234")
+    assert f"ID {first_game_id}" in games and f"ID {second_game_id}" not in games
+    assert "Team A" in games and "Team B" not in games
     _run(
         path, "--season", h.SEASON, "assign", second_game_id,
         db.ROLE_TIMEKEEPER, second_id,

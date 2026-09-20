@@ -4,10 +4,10 @@
 # Scraper for the BHV/nuLiga Hallenspielplan (home games only)
 # ---------------------------------------------------------------
 
-import hashlib
 import io
 import logging
-from urllib.parse import parse_qs, urlsplit
+import re
+from datetime import datetime
 
 import pandas as pd
 import requests
@@ -17,7 +17,7 @@ NULIGA_URL = (
 )
 
 GAME_FIELDS = [
-    "source_key", "day", "date", "time", "hall", "game_nr", "ak", "home", "guest", "score",
+    "day", "date", "time", "hall", "game_nr", "ak", "home", "guest", "score",
 ]
 
 
@@ -26,7 +26,7 @@ def fetch_home_games(config: dict, season_year: int) -> list[dict]:
     Scrape all home games of the club from the nuLiga Hallenspielplan.
 
     Returns a list of dicts with keys:
-    source_key, day, date, time, hall, game_nr, ak, home, guest, score
+    day, date, time, hall, game_nr, ak, home, guest, score
     """
     logging.info("Read current home game plan from BHV Hallenspielplan website")
 
@@ -45,37 +45,76 @@ def fetch_home_games(config: dict, season_year: int) -> list[dict]:
     return parse_home_games(result.content.decode("utf-8"), config["hallIds"])
 
 
-def _meeting_key(row) -> str | None:
-    meeting_ids = set()
-    for value in row:
-        if not isinstance(value, tuple) or not value[1]:
+def normalize_age_group(value: str) -> str:
+    """Return the stable normalized age-group text used by SPF identities."""
+    return " ".join(value.split()).casefold()
+
+
+def is_spielfest_age_group(value: str | None) -> bool:
+    """Whether an age group contains the standalone marker ``SPF``."""
+    return bool(re.search(r"(?<!\w)spf(?!\w)", value or "", re.IGNORECASE))
+
+
+def spielfest_game_number(date_text: str, age_group: str) -> str:
+    """Build the canonical pseudo number for one SPF date/age-group event."""
+    try:
+        iso_date = datetime.strptime(date_text, "%d.%m.%Y").date().isoformat()
+    except ValueError as exc:
+        raise ValueError(f"Ungültiges Spielfest-Datum: {date_text!r}") from exc
+    normalized_age_group = normalize_age_group(age_group)
+    if not normalized_age_group:
+        raise ValueError("Leere Spielfest-Altersklasse.")
+    return f"SPF:{iso_date}:{normalized_age_group}"
+
+
+def collapse_spielfeste(games: list[dict]) -> list[dict]:
+    """Collapse individual SPF matches into one task-bearing event per date/AK."""
+    ordinary: list[dict] = []
+    groups: dict[tuple[str, str], list[dict]] = {}
+    for game in games:
+        if not is_spielfest_age_group(game.get("ak")):
+            ordinary.append(game)
             continue
-        query = parse_qs(urlsplit(value[1]).query)
-        for key, values in query.items():
-            if key.casefold() == "meeting":
-                meeting_ids.update(v for v in values if v)
-    if len(meeting_ids) > 1:
-        raise ValueError(f"Mehrere nuLiga-IDs in einer Spielzeile: {sorted(meeting_ids)}")
-    return f"meeting:{next(iter(meeting_ids))}" if meeting_ids else None
+        key = (game.get("date", ""), normalize_age_group(game.get("ak", "")))
+        groups.setdefault(key, []).append(game)
 
-
-def _fallback_source_key(game: dict) -> str:
-    def normalized(value) -> str:
-        return " ".join(str(value).split()).casefold()
-
-    identity = "\x1f".join(
-        normalized(game[field]) for field in ("game_nr", "ak", "home", "guest")
-    )
-    return f"fallback:{hashlib.sha256(identity.encode('utf-8')).hexdigest()}"
+    collapsed: list[dict] = []
+    for (date_text, normalized_ak), rows in groups.items():
+        pseudo_number = spielfest_game_number(date_text, normalized_ak)
+        halls = {row.get("hall") for row in rows}
+        days = {" ".join(str(row.get("day", "")).split()) for row in rows}
+        if len(halls) != 1 or None in halls or len(days) != 1 or "" in days:
+            raise ValueError(
+                f"Widersprüchliche Spielfest-Daten {pseudo_number}: {rows!r}"
+            )
+        timed_rows = []
+        for row in rows:
+            try:
+                parsed_time = datetime.strptime(row.get("time", ""), "%H:%M").time()
+            except ValueError as exc:
+                raise ValueError(
+                    f"Ungültige Spielfest-Zeit {pseudo_number}: {rows!r}"
+                ) from exc
+            timed_rows.append((parsed_time, row))
+        earliest = min(timed_rows, key=lambda item: item[0])[1]
+        collapsed.append({
+            "day": next(iter(days)),
+            "date": date_text,
+            "time": earliest["time"],
+            "hall": next(iter(halls)),
+            "game_nr": pseudo_number,
+            "ak": " ".join(str(rows[0]["ak"]).split()),
+            "home": "Spielfest",
+            "guest": "",
+            "score": "",
+        })
+    return ordinary + collapsed
 
 
 def parse_home_games(html_text: str, hall_ids: list[str]) -> list[dict]:
     """Parse a nuLiga result page without performing network access."""
     html = io.StringIO(html_text)
-    table = pd.read_html(
-        html, header=0, attrs={"class": "result-set"}, extract_links="body"
-    )[0]
-    meeting_keys = table.apply(_meeting_key, axis=1)
+    table = pd.read_html(html, header=0, attrs={"class": "result-set"})[0]
     table = table.map(lambda value: value[0] if isinstance(value, tuple) else value)
 
     # Drop obsolete columns and rename
@@ -102,13 +141,13 @@ def parse_home_games(html_text: str, hall_ids: list[str]) -> list[dict]:
         return "" if pd.isna(value) else str(value).strip()
 
     games = []
-    for rec in table[GAME_FIELDS[1:]].to_dict("records"):
+    for rec in table[GAME_FIELDS].to_dict("records"):
         game = {
             "day": _clean(rec["day"]),
             "date": _clean(rec["date"]),
             "time": _clean(rec["time"]),
             "hall": int(rec["hall"]),
-            "game_nr": int(rec["game_nr"]),
+            "game_nr": str(int(rec["game_nr"])),
             "ak": _clean(rec["ak"]),
             "home": _clean(rec["home"]),
             "guest": _clean(rec["guest"]),
@@ -116,19 +155,15 @@ def parse_home_games(html_text: str, hall_ids: list[str]) -> list[dict]:
         }
         games.append(game)
 
-    # to_dict() drops the source row index, so assign keys in filtered-row order.
-    filtered_keys = list(meeting_keys.loc[table.index])
-    for game, meeting_key in zip(games, filtered_keys):
-        game["source_key"] = meeting_key or _fallback_source_key(game)
-
-    by_key = {}
+    games = collapse_spielfeste(games)
+    by_key: dict[str, dict] = {}
     for game in games:
-        previous = by_key.get(game["source_key"])
+        previous = by_key.get(game["game_nr"])
         if previous is not None:
             raise ValueError(
                 "Mehrdeutige Spielidentität "
-                f"{game['source_key']}: {previous!r} / {game!r}"
+                f"{game['game_nr']}: {previous!r} / {game!r}"
             )
-        by_key[game["source_key"]] = game
+        by_key[game["game_nr"]] = game
     logging.info(f"Current home game plan loaded: {len(games)} home games")
     return games

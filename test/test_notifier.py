@@ -19,6 +19,7 @@
 import helpers as h
 import db
 import notifier
+import scraper
 
 GAME_DATE = "05.09.2026"
 
@@ -47,7 +48,7 @@ def _setup(fully_assigned: bool = False):
     session = h.Session(engine)
     h.sync_sample_games(session)
 
-    game = session.query(db.Game).filter_by(source_key="test:1001").one()
+    game = session.query(db.Game).filter_by(game_nr="1001").one()
     team = session.query(db.Team).filter_by(name="BL mD").one()  # own ak team
     game.team_id = team.id
     game.jteam = "BL mD"
@@ -140,7 +141,7 @@ def test_pre_notifications_skip_sale_roles_of_the_first_game():
 
 def test_shift_notifications_reach_all_assigned_helpers_except_missing_contacts():
     session, game, n, rec = _setup()
-    shifts = [db.ShiftEvent(game_id=game.id, game_nr=1001,
+    shifts = [db.ShiftEvent(game_id=game.id, game_nr="1001",
                             old_date="04.09.2026", old_time="15:00",
                             new_date="06.09.2026", new_time="18:00")]
     # helper roles only (no MV): 5 valid contacts, Caro has none
@@ -150,31 +151,32 @@ def test_shift_notifications_reach_all_assigned_helpers_except_missing_contacts(
 def test_referee_alert_targets_support_mail_and_sms():
     session, game, n, rec = _setup()
     event = db.RefereeEvent(
-        game_id=game.id, game_nr=1001, date=GAME_DATE, time="15:00"
+        game_id=game.id, game_nr="1001", date=GAME_DATE, time="15:00"
     )
     # config defines two targets (one phone, one e-mail); the MV only
     # has a phone number and is therefore not appended to the mail targets
     assert n.notify_referee_alert(event) == 2
 
 
-def test_duplicate_number_events_notify_only_the_exact_game():
+def test_same_number_in_different_seasons_notifies_only_the_exact_game():
     engine = h.make_engine()
     session = h.Session(engine)
     rows = [
         {
-            "source_key": "meeting:101", "day": "Sa", "date": GAME_DATE,
-            "time": "10:00", "hall": 280340, "game_nr": 555, "ak": "BL mD",
+            "day": "Sa", "date": GAME_DATE,
+            "time": "10:00", "hall": 280340, "game_nr": "555", "ak": "BL mD",
             "home": "TuS Raubling", "guest": "Team A", "score": "",
         },
         {
-            "source_key": "meeting:102", "day": "Sa", "date": GAME_DATE,
-            "time": "11:00", "hall": 280340, "game_nr": 555, "ak": "BL mC",
+            "day": "Sa", "date": "05.09.2027",
+            "time": "11:00", "hall": 280340, "game_nr": "555", "ak": "BL mC",
             "home": "TuS Raubling", "guest": "Team B", "score": "",
         },
     ]
-    db.sync_games(session, rows, h.SEASON)
-    first = session.query(db.Game).filter_by(source_key="meeting:101").one()
-    second = session.query(db.Game).filter_by(source_key="meeting:102").one()
+    db.sync_games(session, [rows[0]], h.SEASON)
+    db.sync_games(session, [rows[1]], h.SEASON + 1)
+    first = session.query(db.Game).filter_by(season_year=h.SEASON, game_nr="555").one()
+    second = session.query(db.Game).filter_by(season_year=h.SEASON + 1, game_nr="555").one()
     first_helper = db.Person(name="First Helper", email="first@x.de")
     second_helper = db.Person(name="Second Helper", email="second@x.de")
     first_team = db.get_or_create_team(session, "First Team")
@@ -194,7 +196,7 @@ def test_duplicate_number_events_notify_only_the_exact_game():
     recorder = TextRecorder()
     n.send_Mail, n.send_SMS = recorder.mail, recorder.sms
     shift = db.ShiftEvent(
-        game_id=first.id, game_nr=555, old_date=GAME_DATE, old_time="10:00",
+        game_id=first.id, game_nr="555", old_date=GAME_DATE, old_time="10:00",
         new_date="06.09.2026", new_time="12:00",
     )
     assert n.notify_shifts([shift]) == 1
@@ -204,11 +206,35 @@ def test_duplicate_number_events_notify_only_the_exact_game():
     recorder = TextRecorder()
     n.send_Mail, n.send_SMS = recorder.mail, recorder.sms
     alert = db.RefereeEvent(
-        game_id=second.id, game_nr=555, date=GAME_DATE, time="11:00"
+        game_id=second.id, game_nr="555", date="05.09.2027", time="11:00"
     )
     assert n.notify_referee_alert(alert) == 3
     recipients = " ".join(address for address, _, _ in recorder.mails)
     assert "Second MV" in recipients and "First MV" not in recipients
+
+
+def test_spielfest_notifications_describe_the_aggregate_event():
+    engine = h.make_engine()
+    session = h.Session(engine)
+    rows = [{
+        "day": "Sa", "date": GAME_DATE, "time": "10:00", "hall": 280340,
+        "game_nr": "1", "ak": "SPF Mini", "home": "Team A",
+        "guest": "Team B", "score": "§77",
+    }]
+    db.sync_games(session, scraper.collapse_spielfeste(rows), h.SEASON)
+    game = session.query(db.Game).one()
+    helper = db.Person(name="SPF Helper", email="spf@example.test")
+    session.add(helper)
+    db.assign_person(session, game, helper, db.ROLE_TIMEKEEPER)
+    session.commit()
+
+    n = notifier.Notifier(h.load_club_config(), session, h.SEASON)
+    recorder = TextRecorder()
+    n.send_Mail, n.send_SMS = recorder.mail, recorder.sms
+    assert n.notify_game_day(GAME_DATE) == 1
+    assert "Spielfest SPF Mini" in recorder.all_text()
+    assert "gegen Team" not in recorder.all_text()
+    assert n.notify_referees_for_date(GAME_DATE) == 0
 
 
 if __name__ == "__main__":

@@ -44,7 +44,7 @@ with h.Session(ENGINE) as session:
     own_game.team_id = own_team.id
     other_game.team_id = other_team.id
     past_game = db.Game(
-        season_year=h.SEASON, source_key="test:9900", game_nr=9900,
+        season_year=h.SEASON, game_nr="9900",
         date="01.01.2020", team=own_team
     )
     session.add(past_game)

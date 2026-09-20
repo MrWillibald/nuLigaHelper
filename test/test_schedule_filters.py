@@ -23,8 +23,8 @@ guest = app.test_client()
 
 with h.Session(ENGINE) as session:
     games = h.sample_games()
-    later = next(game for game in games if game["game_nr"] == 1001).copy()
-    later.update(source_key="test:9001", game_nr=9001, date="01.11.2026",
+    later = next(game for game in games if game["game_nr"] == "1001").copy()
+    later.update(game_nr="9001", date="01.11.2026",
                  guest="Zweiter Gegner")
     games.append(later)
     db.sync_games(session, games, h.SEASON)
@@ -36,8 +36,8 @@ with h.Session(ENGINE) as session:
                            email="private@example.test")
     session.add_all([first, second, unassigned])
     session.flush()
-    first_game = session.query(db.Game).filter_by(source_key="test:1001").one()
-    later_game = session.query(db.Game).filter_by(source_key="test:9001").one()
+    first_game = session.query(db.Game).filter_by(game_nr="1001").one()
+    later_game = session.query(db.Game).filter_by(game_nr="9001").one()
     first_game.team_id = support.id
     later_game.team_id = support.id
     db.assign_person(session, first_game, first, db.ROLE_TIMEKEEPER)

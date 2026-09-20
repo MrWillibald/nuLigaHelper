@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 
 import contact_validation as contacts
@@ -59,10 +60,15 @@ DEFAULT_DB_PATH = "nuliga_helper.db"
 SQLITE_TIMEOUT_SECONDS = 5.0
 SQLITE_BUSY_TIMEOUT_MS = 5000
 SQLITE_SYNCHRONOUS_FULL = 2
+GAME_IDENTITY_SCHEMA_VERSION = 2
 
 
 class SQLiteInitializationError(RuntimeError):
     """Raised when the configured SQLite runtime invariants cannot be established."""
+
+
+class DatabaseMigrationRequiredError(SQLiteInitializationError):
+    """Raised when a legacy game-identity schema requires explicit migration."""
 
 
 class AssignmentTemporarilyUnavailableError(RuntimeError):
@@ -202,6 +208,17 @@ def init_db(engine) -> None:
                 raise SQLiteInitializationError(
                     "SQLite startup safety checks failed: " + ", ".join(mismatches)
                 )
+            game_columns = {
+                row[1] for row in connection.exec_driver_sql(
+                    "PRAGMA table_info(games)"
+                ).fetchall()
+            }
+            if "source_key" in game_columns:
+                raise DatabaseMigrationRequiredError(
+                    "Die Datenbank verwendet die alte Spielidentität. Stoppe Webdienst "
+                    "und Tagesjob und führe 'manage_db.py migrate-game-identity "
+                    "--confirm-stopped' aus."
+                )
     except SQLiteInitializationError:
         raise
     except OperationalError as exc:
@@ -215,6 +232,9 @@ def init_db(engine) -> None:
 
     try:
         with engine.connect() as connection:
+            connection.exec_driver_sql(
+                f"PRAGMA user_version={GAME_IDENTITY_SCHEMA_VERSION}"
+            )
             violations = connection.exec_driver_sql(
                 "PRAGMA foreign_key_check"
             ).fetchall()
@@ -337,13 +357,12 @@ class Game(Base):
 
     __tablename__ = "games"
     __table_args__ = (
-        UniqueConstraint("season_year", "source_key", name="uq_season_source_key"),
+        UniqueConstraint("season_year", "game_nr", name="uq_season_game_nr"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     season_year: Mapped[int] = mapped_column(Integer)
-    source_key: Mapped[str] = mapped_column(String(200))
-    game_nr: Mapped[int] = mapped_column(Integer)
+    game_nr: Mapped[str] = mapped_column(String(100))
 
     day: Mapped[str | None] = mapped_column(String(20), nullable=True)
     date: Mapped[str | None] = mapped_column(String(20), nullable=True)
@@ -492,7 +511,7 @@ class AuthAbuseCounter(Base):
 @dataclass
 class ShiftEvent:
     game_id: int
-    game_nr: int
+    game_nr: str
     old_date: str
     old_time: str
     new_date: str
@@ -502,7 +521,7 @@ class ShiftEvent:
 @dataclass
 class RefereeEvent:
     game_id: int
-    game_nr: int
+    game_nr: str
     date: str
     time: str
 
@@ -510,8 +529,7 @@ class RefereeEvent:
 @dataclass
 class GameEvent:
     game_id: int
-    game_nr: int
-    source_key: str
+    game_nr: str
     ak: str
 
 
@@ -538,28 +556,28 @@ def sync_games(session: Session, scraped: list[dict], season_year: int) -> SyncE
     - Games no longer present in the scrape stay untouched but are logged.
 
     `scraped` items must be dicts with keys:
-    source_key, day, date, time, hall, game_nr, ak, home, guest, score
+    day, date, time, hall, game_nr, ak, home, guest, score
     """
     events = SyncEvents()
-    source_keys = [rec.get("source_key") for rec in scraped]
-    if any(not key for key in source_keys):
-        raise ValueError("Jedes Spiel benötigt eine source_key.")
-    duplicate_keys = sorted({key for key in source_keys if source_keys.count(key) > 1})
+    game_numbers = [str(rec.get("game_nr", "")).strip() for rec in scraped]
+    if any(not number for number in game_numbers):
+        raise ValueError("Jedes Spiel benötigt eine Spielnummer.")
+    duplicate_keys = sorted({key for key in game_numbers if game_numbers.count(key) > 1})
     if duplicate_keys:
-        conflicts = [rec for rec in scraped if rec.get("source_key") in duplicate_keys]
+        conflicts = [rec for rec in scraped if str(rec.get("game_nr", "")).strip() in duplicate_keys]
         raise ValueError(
             f"Mehrdeutige Spielidentität {duplicate_keys}: {conflicts!r}"
         )
     existing = {
-        g.source_key: g
+        g.game_nr: g
         for g in session.scalars(select(Game).where(Game.season_year == season_year))
     }
     new_games: list[Game] = []
 
     for rec in scraped:
-        source_key = rec["source_key"]
+        rec = {**rec, "game_nr": str(rec["game_nr"]).strip()}
         game_nr = rec["game_nr"]
-        game = existing.get(source_key)
+        game = existing.get(game_nr)
 
         if game is None:
             game = Game(season_year=season_year, **rec)
@@ -592,11 +610,11 @@ def sync_games(session: Session, scraped: list[dict], season_year: int) -> SyncE
         for f in ("day", "date", "time", "hall", "ak", "home", "guest", "score"):
             setattr(game, f, rec[f])
 
-    scraped_keys = set(source_keys)
-    for source_key in sorted(set(existing) - scraped_keys):
-        game = existing[source_key]
+    scraped_keys = set(game_numbers)
+    for game_nr in sorted(set(existing) - scraped_keys):
+        game = existing[game_nr]
         events.removed_games.append(
-            GameEvent(game.id, game.game_nr, game.source_key, game.ak or "")
+            GameEvent(game.id, game.game_nr, game.ak or "")
         )
         logging.warning(f"Game {game.game_nr} not contained in online plan anymore")
 
@@ -606,7 +624,7 @@ def sync_games(session: Session, scraped: list[dict], season_year: int) -> SyncE
 
     session.flush()
     events.new_games.extend(
-        GameEvent(game.id, game.game_nr, game.source_key, game.ak or "")
+        GameEvent(game.id, game.game_nr, game.ak or "")
         for game in new_games
     )
     session.commit()
@@ -629,6 +647,23 @@ def get_games_on_date(session: Session, date: str) -> list[Game]:
     )
 
 
+def is_spielfest(game_or_age_group: Game | str | None) -> bool:
+    """Return whether a game/age group represents a collapsed SPF event."""
+    age_group = (
+        game_or_age_group.ak
+        if isinstance(game_or_age_group, Game)
+        else game_or_age_group
+    )
+    return bool(re.search(r"(?<!\w)spf(?!\w)", age_group or "", re.IGNORECASE))
+
+
+def game_display_name(game: Game) -> str:
+    """Human-facing event name without exposing synthetic matchup placeholders."""
+    if is_spielfest(game):
+        return f"Spielfest {game.ak or ''}".strip()
+    return f"{game.home or '?'} – {game.guest or '?'}"
+
+
 def game_sort_key(game: "Game") -> tuple:
     """
     Chronological sort key for games with German dd.mm.yyyy date strings
@@ -644,7 +679,12 @@ def game_sort_key(game: "Game") -> tuple:
         time_key = (int(time_parts[0]), int(time_parts[1]))
     else:
         time_key = (99, 99)
-    return (d, time_key, game.game_nr, game.id or 0)
+    number_key = (
+        (0, int(game.game_nr))
+        if str(game.game_nr).isdigit()
+        else (1, str(game.game_nr).casefold())
+    )
+    return (d, time_key, number_key, game.id or 0)
 
 
 def get_or_create_person(session: Session, name: str, email: str | None = None,
@@ -787,7 +827,7 @@ def _slot_assignment(game: Game, role: str, slot: int) -> Assignment | None:
 def _game_snapshot(game: Game) -> str:
     return (
         f"{game.game_nr} | {game.date or ''} {game.time or ''} | "
-        f"{game.home or ''} - {game.guest or ''}"
+        f"{game_display_name(game)}"
     )
 
 

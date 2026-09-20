@@ -21,7 +21,7 @@ def _new_database():
     with h.Session(engine) as setup:
         games = h.sync_sample_games(setup)
         game = setup.query(db.Game).filter_by(
-            source_key=games[0]["source_key"]
+            game_nr=games[0]["game_nr"]
         ).one()
         people = [db.Person(name=name) for name in ("First", "Second", "Third")]
         setup.add_all(people)

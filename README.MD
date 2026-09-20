@@ -49,7 +49,7 @@ Access is derived from database facts on every request:
 
 Teams are fully automatic: they are derived from the scraped age classes (`ak`, e.g. "BL mD") plus one support team ("Supporter") for persons without an active team. Teams cannot be created or edited manually. The responsible team is chosen per game; it is never pre-assigned, since the team playing the game should not be pre-booked for its own support tasks. In the dropdowns, members of the responsible team and the support team appear normally; members of other teams and of the playing team itself are greyed out but can still be selected (with a hint).
 
-There is no schema-migration layer. During development, a database may be recreated after a schema change; once real production data exists, preserve it and make schema upgrades only through a separately reviewed migration plan. The SQLite runtime settings below do not change the table schema and do not require recreating the database.
+There is no general schema-migration framework. During development, a database may be recreated after a schema change; once real production data exists, preserve it and make schema upgrades only through a separately reviewed migration plan. The source-key to canonical-game-number transition is the one approved exception and uses the explicit `migrate-game-identity` command documented below. The SQLite runtime settings below do not change the table schema and do not require recreating the database.
 
 Authentication does not make the Flask development server suitable for public use.
 The host-specific Gunicorn, systemd, Caddy and environment configuration is
@@ -90,6 +90,34 @@ Restoration is an offline operation. Copying only a live WAL-mode main file is n
 
 Before deploying these settings to an existing database, stop writers, preserve the current database together with any sidecars, run the full offline suite, and start one process to perform the integrity preflight. For rollback, stop every database user first and restore a validated snapshot or the complete preserved database set; never replace only the main file while WAL users are active.
 
+### Migrate legacy game identity
+
+Databases created before canonical game-number identity contain a non-null
+`games.source_key` column. New application startup detects that schema and exits with
+migration instructions; it never upgrades production data implicitly.
+
+1. Stop the web process and daily timer/job and verify no database writer remains.
+2. Run the guarded migration against the configured database:
+
+   ```bash
+   python3 manage_db.py --db /absolute/path/nuliga_helper.db \
+       migrate-game-identity --confirm-stopped
+   ```
+
+3. The command performs a read-only preflight, reports ambiguous ordinary numbers or
+   conflicting Spielfest task data without changing the database, and creates a dated
+   SQLite-API backup before starting its transaction.
+4. A successful migration converts ordinary numbers to text, collapses all SPF matches
+   with the same date and full age group into one Spielfest, preserves safe game IDs,
+   assignments and audit references, rebuilds the constraint as
+   `(season_year, game_nr)`, and runs row-count, integrity and foreign-key checks.
+5. Record the printed backup path, start one application process, verify the plan,
+   assignments and audit page, then re-enable the daily timer.
+
+If any step fails, keep every writer stopped. The database transaction is rolled back;
+retain the failed file for diagnosis and restore the printed pre-migration backup before
+redeploying the previous application. Do not attempt an in-place reverse migration.
+
 `NULIGAHELPER_SECRET` is mandatory for both the webapp and daily job. Set it in the environment or keep the raw value in the gitignored `.nuligahelper_secret` file used by both launch scripts. Keep it stable: changing it invalidates every session. `NULIGAHELPER_DB` is an optional SQLite-path override locally; production requires `NULIGAHELPER_ENV=production`, an absolute `NULIGAHELPER_DB`, and exact `NULIGAHELPER_TRUSTED_HOSTS` entries.
 
 # Testing
@@ -104,7 +132,9 @@ or individually via `python3 test/test_db.py` etc., or with pytest (`pytest test
 
 # Database schema
 
-- `games`: one row per scraped home game, identified within a season by a stable nuLiga source key; game numbers are display data and may repeat
+- `games`: one task-relevant plan entry identified by `(season_year, game_nr)`; ordinary
+  numbers are decimal text, while SPF matches on one date for one full age group collapse
+  into a pseudo number such as `SPF:2026-11-28:spf mini`
 - `teams`: derived automatically from the scraped age classes plus one support team; each team optionally references its MV (Mannschaftsverantwortlicher)
 - `persons`: stable internal identity, mutable/non-unique name, contact/team, account state and admin flag
 - `assignments`: one stable role/slot link between a game and person
@@ -132,7 +162,7 @@ python3 manage_db.py assign 42 Zeitnehmer 1
 python3 manage_db.py set-jteam 42 "Damen 1"
 ```
 
-Run `contact-preflight` before deploying contact normalization to an existing database; it reports invalid values, canonical changes and collisions without writing anything. Person IDs are shown by `list-persons` and `search-person`; names are display data and may repeat. Existing-person commands (`assign`, `unassign`, `set-mv`, `grant-admin`) therefore take the person ID. Game numbers may also repeat: `list-games` shows the internal game ID together with its schedule context, and `assign`, `unassign` and `set-jteam` take that game ID. `--number` only filters the list.
+Run `contact-preflight` before deploying contact normalization to an existing database; it reports invalid values, canonical changes and collisions without writing anything. Person IDs are shown by `list-persons` and `search-person`; names are display data and may repeat. Existing-person commands (`assign`, `unassign`, `set-mv`, `grant-admin`) therefore take the person ID. Canonical game numbers are unique within a season: `list-games` shows the internal game ID together with its schedule context, and `assign`, `unassign` and `set-jteam` take that game ID. `--number` accepts either an ordinary decimal number or an SPF pseudo number and only filters the list.
 
 Games are inserted automatically on the first run after scraping. Run the daily job via `./run.sh` (or export `NULIGAHELPER_SECRET` before `python3 main.py`). nuLigaHelper will scrape all available data from the nuLiga Hallenspielplan, sync it into the SQLite database and send all due notifications. A backup of the database is uploaded to Dropbox after every run.
 All actions are logged in the file `helper.log`.
