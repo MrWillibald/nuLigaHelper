@@ -2,100 +2,168 @@
 
 ## Purpose
 
-Defines stable identity and unambiguous selection for scraped games so valid meetings
-with repeated display numbers coexist without losing assignments or lifecycle events.
+Defines season-scoped canonical game-number identity, Spielfest aggregation, safe
+lifecycle handling and unambiguous administrative selection for task-relevant games.
 
 ## Requirements
 
-### Requirement: Game number is display data rather than identity
+### Requirement: Canonical game number defines game identity
 
-The system SHALL allow multiple games in the same season to carry the same game number
-when they represent distinct nuLiga meetings. Each such game SHALL retain its own
-responsible team, task assignments, audit history and notification state.
+The system SHALL identify each ordinary game within a season exclusively by its
+scraped game number. Changes to nuLiga meeting identifiers, links, matchup text,
+scheduling fields, hall or score MUST NOT create another stored game while that
+season and game number remain unchanged.
 
-#### Scenario: Tournament games share a number
+#### Scenario: Source metadata changes
 
-- **WHEN** a scrape contains two distinct home games in the same season with the same
-  game number
-- **THEN** both games are stored and displayed
-- **AND** changes to one game's assignments or responsible team do not affect the other
+- **WHEN** a known ordinary game is scraped with the same season and game number but a
+  changed or missing nuLiga meeting identifier
+- **THEN** the existing stored game is updated
+- **AND** no additional game is created
 
-#### Scenario: Duplicate number persists across syncs
+#### Scenario: Ordinary game shifts
 
-- **WHEN** the same two duplicate-number games appear in a later scrape
-- **THEN** each scraped game updates the same stored game it represented previously
-- **AND** neither game is reported as newly added merely because its number is duplicated
+- **WHEN** a known ordinary game is scraped with the same season and game number but a
+  changed date or time
+- **THEN** its existing entry, responsible team, assignments and audit references remain
+  associated with that game
+- **AND** the shift is reported for that game
 
-### Requirement: Scraped games have stable source identity
+#### Scenario: Number is reused in another season
 
-The system SHALL associate every accepted scraped game with a source identity that is
-stable across changes to scheduling fields. Date, time, hall and score changes SHALL NOT
-create a new game identity.
+- **WHEN** the same ordinary game number occurs in two different seasons
+- **THEN** each season retains its own game entry
 
-#### Scenario: Game date or time shifts
+### Requirement: Spielfest matches collapse into one task-relevant game
 
-- **WHEN** a known game appears with a changed date or time but the same source identity
-- **THEN** the stored game is updated rather than replaced
-- **AND** its responsible team, assignments and audit references remain attached
+The system SHALL recognize SPF age groups case-insensitively and collapse all scraped
+SPF matches with the same date and full normalized age group into one task-relevant
+Spielfest game in the plan. The individual SPF matchups SHALL NOT create separate task
+slots or separate plan entries.
 
-#### Scenario: Score or hall changes
+#### Scenario: Several SPF matches form one Spielfest
 
-- **WHEN** a known game appears with a changed score or hall but the same source identity
-- **THEN** the changed fields are synchronized onto the existing game
+- **WHEN** a scrape contains multiple SPF matches on one date with the same full age
+  group
+- **THEN** the plan contains exactly one Spielfest game for that date and age group
+- **AND** it has one shared set of helper tasks
 
-### Requirement: Ambiguous source identity fails safely
+#### Scenario: Two Spielfeste use the same match numbers
 
-The system SHALL NOT merge distinct scraped rows when it cannot establish which stored
-game each row represents. An unresolved source-identity collision SHALL stop the sync
-with a diagnostic that identifies the conflicting rows, without committing a partial
-sync.
+- **WHEN** SPF match numbers are reused at Spielfeste on different dates
+- **THEN** each date produces one distinct Spielfest game
+- **AND** neither date produces one entry per individual match
 
-#### Scenario: Fallback identity collides
+#### Scenario: Different SPF age groups share a date
 
-- **WHEN** two distinct rows in one scrape produce the same fallback source identity and
-  no unique nuLiga identifier distinguishes them
-- **THEN** the sync is refused with a collision error
-- **AND** neither row overwrites or absorbs the other
+- **WHEN** two full SPF age groups have matches on the same date
+- **THEN** each age group produces its own Spielfest game and task set
 
-### Requirement: Game lifecycle events retain exact identity
+### Requirement: Spielfest game number is deterministic
 
-The system SHALL carry the exact game identity through new-game, shift, missing-referee
-and removed-game events. Event handling SHALL NOT resolve a game from its game number
-alone.
+Each collapsed Spielfest SHALL receive a textual pseudo game number derived
+deterministically from its date and full normalized age group. The pseudo number SHALL
+serve as that Spielfest's season-scoped game identity.
 
-#### Scenario: One duplicate-number game shifts
+#### Scenario: Repeated scrape of a Spielfest
 
-- **WHEN** only one of two games sharing a number changes date or time
-- **THEN** the shift event refers to that exact game
-- **AND** notifications are sent only to helpers assigned to that game
+- **WHEN** the same SPF date and age group are scraped again with changed individual
+  match numbers, opponents, scores or ordering
+- **THEN** the same Spielfest game is updated
+- **AND** its assignments and responsible team remain attached
 
-#### Scenario: One duplicate-number game disappears
+#### Scenario: Spielfest date changes
 
-- **WHEN** one of two games sharing a number is absent from a later complete scrape
-- **THEN** only the absent game is reported as removed
+- **WHEN** SPF matches for an age group move to a different date
+- **THEN** the new date produces a new pseudo game number and a new game identity
+- **AND** assignments from the previous identity are not transferred automatically
 
-#### Scenario: One duplicate-number game lacks a referee
+### Requirement: Spielfest aggregation fails safely on inconsistent scheduling data
 
-- **WHEN** one of two games sharing a number transitions to a missing-referee state
-- **THEN** the alert resolves the affected game and its responsible parties unambiguously
+Rows combined into one Spielfest SHALL agree on fields that describe the shared event.
+The system SHALL reject an inconsistent group before synchronizing any games rather
+than selecting arbitrary values.
 
-### Requirement: Existing games are selected unambiguously
+#### Scenario: SPF group contains conflicting halls
 
-Administrative interfaces SHALL identify an existing game by its stable internal
-identifier rather than by game number. Lists and filters SHALL display enough scheduling
-and matchup context to distinguish games that share a number, while the internal
-identifier itself need not be exposed on public pages.
+- **WHEN** SPF rows with the same date and age group contain different halls
+- **THEN** synchronization is refused with a diagnostic identifying the conflicting
+  Spielfest rows
+- **AND** no partial game synchronization is committed
 
-#### Scenario: CLI selects a duplicate-number game
+#### Scenario: SPF group has several start times
 
-- **WHEN** an administrator lists or searches games before assigning a person or setting
-  the responsible team
-- **THEN** each result includes its internal ID, game number, date, time, age class and
-  matchup
+- **WHEN** a valid SPF group contains matches at different times
+- **THEN** the collapsed Spielfest uses the earliest match time as its plan time
+
+### Requirement: Existing databases migrate without silent task-data loss
+
+The system SHALL provide a backup-first migration from source-key game identity to
+season-scoped canonical game-number identity. The migration SHALL preserve game IDs
+where a survivor can be selected safely, retain unaffected relationships and audit
+history, and stop for manual reconciliation when merging would be ambiguous.
+
+#### Scenario: Existing SPF rows have no conflicting task data
+
+- **WHEN** several stored SPF rows belong to one date and age group and their responsible
+  team and assignments can be combined without conflict
+- **THEN** they are migrated to one Spielfest game with a pseudo game number
+- **AND** retained assignments and audit references point to that game
+
+#### Scenario: SPF rows contain conflicting task data
+
+- **WHEN** stored SPF rows to be collapsed have incompatible responsible teams,
+  duplicate task slots or assignments that violate one-task-per-person
+- **THEN** migration stops with a reconciliation report
+- **AND** it does not silently discard or overwrite task data
+
+#### Scenario: Ordinary stored rows share a game number
+
+- **WHEN** multiple ordinary stored rows in one season have the same game number
+- **THEN** migration stops and identifies those rows for manual survivor selection
+- **AND** the canonical uniqueness constraint is not installed over unresolved data
+
+### Requirement: Lifecycle events use canonical local identity
+
+The system SHALL carry the affected local game identity through new-game, shift,
+missing-referee and removed-game events. Event handling SHALL NOT resolve an existing
+game from mutable source metadata, and an SPF event SHALL refer to its single collapsed
+Spielfest game.
+
+#### Scenario: One ordinary game shifts
+
+- **WHEN** a known ordinary game changes date or time
+- **THEN** the shift event refers to that exact stored game
+- **AND** notifications are sent only to helpers assigned to it
+
+#### Scenario: One ordinary game disappears
+
+- **WHEN** an ordinary game number is absent from a later complete scrape for its season
+- **THEN** that game is reported as removed
+
+#### Scenario: Spielfest rows change without changing the aggregate identity
+
+- **WHEN** individual SPF rows change but their date and full age group do not
+- **THEN** lifecycle processing continues to refer to the existing collapsed Spielfest
+  game
+
+### Requirement: Administrative selection uses internal game identity
+
+Administrative interfaces SHALL mutate an existing game by its stable internal ID.
+Lists and filters SHALL show ordinary game numbers with enough scheduling context and
+SHALL present a collapsed SPF group as one Spielfest game rather than as its individual
+matches.
+
+#### Scenario: CLI selects an ordinary game
+
+- **WHEN** an administrator lists or searches games before changing assignments or the
+  responsible team
+- **THEN** each ordinary result includes its internal ID, canonical number, date, time,
+  age group and matchup
 - **AND** the mutation command accepts the selected internal ID
 
-#### Scenario: Audit filter lists duplicate-number games
+#### Scenario: Administrative picker contains a Spielfest
 
-- **WHEN** an admin opens a game picker containing repeated game numbers
-- **THEN** each option includes enough date, time, age-class and matchup context to select
-  the intended game
+- **WHEN** an administrator opens a game picker for a date containing SPF matches
+- **THEN** it contains one clearly labelled Spielfest option per full SPF age group
+- **AND** selecting it manages the shared Spielfest task slots
