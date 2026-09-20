@@ -208,6 +208,35 @@ def _person_team(persons: list[dict], person_id: int) -> int | None:
     return next((p["team_id"] for p in persons if p["id"] == person_id), None)
 
 
+def _ordered_person_options(
+    persons: list[dict], responsible_team_id: int | None,
+    support_team_id: int | None, playing_team_id: int | None,
+) -> list[dict]:
+    """Return per-game assignment options grouped by suitability."""
+    options = []
+    for person in persons:
+        team_id = person["team_id"]
+        if playing_team_id is not None and team_id == playing_team_id:
+            sort_group = 4
+        elif responsible_team_id is not None and team_id == responsible_team_id:
+            sort_group = 1
+        elif support_team_id is not None and team_id == support_team_id:
+            sort_group = 2
+        else:
+            sort_group = 3
+        options.append({
+            **person,
+            "sort_group": sort_group,
+            "sort_name": person["name"].casefold(),
+        })
+    return sorted(
+        options,
+        key=lambda person: (
+            person["sort_group"], person["sort_name"], person["id"]
+        ),
+    )
+
+
 def create_app() -> Flask:
     app = Flask(__name__)
     production = _production_mode()
@@ -1292,6 +1321,9 @@ def create_app() -> Flask:
                     options = [persons_by_id[viewer.id]] if viewer.id in persons_by_id else []
                 else:
                     options = []
+                options = _ordered_person_options(
+                    options, responsible_team_id, support_id, playing_team_id
+                )
                 slots.append({
                     "label": label,
                     "role": role,

@@ -61,11 +61,18 @@ function removePersonOption(card, currentSelect, personId) {
   });
 }
 
+function comparePersonOptions(left, right) {
+  const groupDifference = Number(left.dataset.sortGroup) - Number(right.dataset.sortGroup);
+  if (groupDifference !== 0) return groupDifference;
+  const nameDifference = left.dataset.sortName.localeCompare(right.dataset.sortName);
+  if (nameDifference !== 0) return nameDifference;
+  return Number(left.dataset.sortId) - Number(right.dataset.sortId);
+}
+
 function insertOptionSorted(select, option) {
-  const label = option.textContent.trim();
   const options = Array.from(select.options);
   let pos = 1; // keep the "offen" placeholder first
-  while (pos < options.length && options[pos].textContent.trim().localeCompare(label) < 0) {
+  while (pos < options.length && comparePersonOptions(options[pos], option) < 0) {
     pos++;
   }
   select.insertBefore(option, options[pos] || null);

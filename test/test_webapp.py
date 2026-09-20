@@ -5,6 +5,8 @@ import os
 import tempfile
 from datetime import datetime, timedelta
 
+from lxml import html
+
 import helpers as h
 import db
 import webapp
@@ -31,9 +33,13 @@ with h.Session(ENGINE) as session:
     db.sync_games(session, games, h.SEASON)
     game_data = next(game for game in games if game["game_nr"] == "1001")
     playing = session.query(db.Team).filter_by(name=game_data["ak"]).one()
-    responsible = session.query(db.Team).filter(db.Team.id != playing.id).first()
+    responsible = session.query(db.Team).filter(
+        db.Team.id != playing.id,
+        db.Team.is_support.is_(False),
+    ).first()
     unrelated = session.query(db.Team).filter(
-        db.Team.id.notin_([playing.id, responsible.id])
+        db.Team.id.notin_([playing.id, responsible.id]),
+        db.Team.is_support.is_(False),
     ).first()
     support = db.get_support_team(session)
     admin = db.Person(
@@ -62,6 +68,32 @@ def _json(url, body):
 
 def _form(url, body=None, **kwargs):
     return client.post(url, data=h.csrf_data(body, CSRF), **kwargs)
+
+
+def test_00_person_options_are_grouped_and_sorted_deterministically():
+    persons = [
+        {"id": 9, "name": "Zulu", "team_id": 1},
+        {"id": 5, "name": "alpha", "team_id": 1},
+        {"id": 3, "name": "alpha", "team_id": 1},
+        {"id": 4, "name": "Beta", "team_id": 2},
+        {"id": 7, "name": "Aaron", "team_id": 3},
+        {"id": 8, "name": "Nobody", "team_id": None},
+        {"id": 6, "name": "Charlie", "team_id": 4},
+    ]
+    ordered = webapp._ordered_person_options(persons, 1, 2, 4)
+    assert [(person["sort_group"], person["id"]) for person in ordered] == [
+        (1, 3), (1, 5), (1, 9),
+        (2, 4),
+        (3, 7), (3, 8),
+        (4, 6),
+    ]
+    no_responsible = webapp._ordered_person_options(persons, None, 2, 4)
+    assert all(person["sort_group"] != 1 for person in no_responsible)
+    overlap = webapp._ordered_person_options(persons, 1, 1, 1)
+    assert all(
+        person["sort_group"] == 4
+        for person in overlap if person["team_id"] == 1
+    ), "playing-team membership must take precedence over other categories"
 
 
 def test_01_admin_sign_in_exposes_controls_without_contacts_on_schedule():
@@ -100,6 +132,25 @@ def test_02_responsible_team_and_claim_release_flow():
     assert release.get_json() == {"ok": True}
 
 
+def test_02_task_dropdown_groups_all_four_categories_and_keeps_hints():
+    page = html.fromstring(client.get("/").get_data(as_text=True))
+    card = page.get_element_by_id(f"game-{GAME_ID}")
+    select = card.xpath('.//select[@data-role="Zeitnehmer"]')[0]
+    options = select.xpath('./option[@value!=""]')
+    assert [int(option.get("value")) for option in options] == [
+        DUPLICATE_ID, ADMIN_ID, OUTSIDER_ID, ALICE_ID,
+    ]
+    assert [option.get("data-sort-group") for option in options] == [
+        "1", "2", "3", "4",
+    ]
+    assert all(option.get("data-sort-name") is not None for option in options)
+    assert all(option.get("data-sort-id") == option.get("value") for option in options)
+    assert "foreign-option" in options[2].get("class", "")
+    assert "außerhalb" in options[2].text_content()
+    assert "option-playing" in options[3].get("class", "")
+    assert "spielt selbst" in options[3].text_content()
+
+
 def test_03_existing_rules_and_advisory_warning_remain():
     first = _json("/api/assignment/claim", {
         "game_id": GAME_ID, "role": db.ROLE_TIMEKEEPER, "slot": 0,
@@ -116,6 +167,33 @@ def test_03_existing_rules_and_advisory_warning_remain():
         "expected_person_id": None, "person_id": OUTSIDER_ID,
     })
     assert outside.get_json()["warning"] == "Person gehört nicht zum verantwortlichen Team."
+
+
+def test_03_taken_people_are_hidden_except_in_their_current_slots():
+    page = html.fromstring(client.get("/").get_data(as_text=True))
+    card = page.get_element_by_id(f"game-{GAME_ID}")
+    selects = {
+        select.get("data-role"): select
+        for select in card.xpath('.//select[@data-role]')
+        if select.get("data-role") != db.ROLE_SALE
+    }
+
+    def option_ids(role):
+        return {
+            int(option.get("value"))
+            for option in selects[role].xpath('./option[@value!=""]')
+        }
+
+    assert ALICE_ID in option_ids(db.ROLE_TIMEKEEPER)
+    assert selects[db.ROLE_TIMEKEEPER].xpath(
+        f'./option[@value="{ALICE_ID}" and @selected]'
+    )
+    assert OUTSIDER_ID in option_ids(db.ROLE_SECURITY)
+    assert selects[db.ROLE_SECURITY].xpath(
+        f'./option[@value="{OUTSIDER_ID}" and @selected]'
+    )
+    assert ALICE_ID not in option_ids(db.ROLE_SECRETARY)
+    assert OUTSIDER_ID not in option_ids(db.ROLE_SECRETARY)
 
 
 def test_03_sparse_sale_slot_keeps_its_stored_position():
@@ -228,6 +306,10 @@ def test_08_csrf_is_required_for_json_and_forms():
     assert "response.status === 401" in javascript
     assert "response.status === 409" in javascript
     assert "Deine Sitzung ist abgelaufen" in javascript
+    assert "left.dataset.sortGroup" in javascript
+    assert "left.dataset.sortName.localeCompare" in javascript
+    assert "left.dataset.sortId" in javascript
+    assert "insertOptionSorted(s, clone.cloneNode(true))" in javascript
 
 
 def test_09_delete_warns_about_deactivation_and_cascades_with_audit():
