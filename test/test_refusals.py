@@ -163,7 +163,8 @@ def test_03_mv_scope_requires_own_team_and_responsible_game():
     ).status_code == 403
 
 
-def test_04_admin_can_approve_fallback_and_correct_past_game():
+@patch("notifier.Notifier.send_account_message", return_value=1)
+def test_04_admin_can_approve_fallback_and_correct_past_game(_send_account_message):
     client, token = _client("admin")
     approved = client.post(
         f"/registrierungen/{IDS['pending_support']}/approve",

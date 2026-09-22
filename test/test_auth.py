@@ -59,13 +59,18 @@ def _capture_messages():
         assert not self.session.new
         assert not self.session.dirty
         assert not self.session.deleted
+        channel = (
+            "email" if person.email and "@" in person.email
+            else "sms" if person.phone and "+" in person.phone
+            else "skipped"
+        )
         messages.append({
             "person_id": person.id,
-            "channel": "fallback",
+            "channel": channel,
             "subject": subject,
-            "body": mail_body or sms_body,
+            "body": mail_body if channel == "email" else sms_body,
         })
-        return 1
+        return int(channel != "skipped")
 
     def fake_via(self, person, channel, subject, body):
         assert not self.session.new
@@ -370,13 +375,41 @@ def test_registration_code_replacement_verification_and_admin_approval():
         second_team = db.get_or_create_team(session, "BL mC")
         support = db.get_support_team(session)
         mv = db.Person(name="MV", email="mv@example.test", teams=[team])
-        admin = db.Person(name="Admin", email="admin-approval@example.test", teams=[support], is_admin=True)
-        session.add_all([mv, admin])
+        admin = db.Person(
+            name="Admin Mail", email="admin-approval@example.test",
+            phone="+491701111111", teams=[support], is_admin=True,
+        )
+        failing_admin = db.Person(
+            name="Admin SMS", phone="+491702222222", teams=[support],
+            is_admin=True,
+        )
+        contactless_admin = db.Person(
+            name="Admin ohne Kontakt", teams=[support], is_admin=True,
+        )
+        inactive_admin = db.Person(
+            name="Inaktiver Admin", email="inactive-admin@example.test",
+            teams=[support], is_admin=True, account_status=db.ACCOUNT_INACTIVE,
+        )
+        session.add_all([
+            mv, admin, failing_admin, contactless_admin, inactive_admin,
+        ])
         session.flush()
         team.mv_person_id = mv.id
         session.commit()
         team_id, second_team_id, mv_id, admin_id = team.id, second_team.id, mv.id, admin.id
+        active_admin_ids = [admin.id, failing_admin.id, contactless_admin.id]
+        failing_admin_id = failing_admin.id
+        inactive_admin_id = inactive_admin.id
     messages, originals = _capture_messages()
+    captured_fallback = notifier.Notifier.send_account_message
+
+    def fail_one_admin(self, person, subject, mail_body, sms_body):
+        result = captured_fallback(self, person, subject, mail_body, sms_body)
+        if person.id == failing_admin_id:
+            raise RuntimeError("synthetic provider failure")
+        return result
+
+    notifier.Notifier.send_account_message = fail_one_admin
     try:
         client = app.test_client()
         csrf = _csrf(client, "/registrieren")
@@ -424,13 +457,21 @@ def test_registration_code_replacement_verification_and_admin_approval():
             person = session.get(db.Person, person_id)
             assert person.account_status == db.ACCOUNT_VERIFIED
             assert person not in db.get_all_persons(session)
-        assert any(
-            message["channel"] == "fallback"
-            and message["person_id"] == admin_id
-            and "BL mD" in message["body"]
-            and "BL mC" in message["body"]
-            for message in messages
-        )
+        admin_messages = [
+            message for message in messages
+            if message["subject"] == "Neue Registrierung"
+        ]
+        assert [message["person_id"] for message in admin_messages] == active_admin_ids
+        assert inactive_admin_id not in {
+            message["person_id"] for message in admin_messages
+        }
+        assert [message["channel"] for message in admin_messages] == [
+            "email", "sms", "skipped",
+        ]
+        for message in admin_messages:
+            assert "New Helper" in message["body"]
+            assert "BL mD" in message["body"] and "BL mC" in message["body"]
+            assert "Helfer verwalten" in message["body"]
         mv_client = app.test_client()
         mv_csrf = h.sign_in(mv_client, mv_id)
         assert mv_client.post(
@@ -448,6 +489,130 @@ def test_registration_code_replacement_verification_and_admin_approval():
             assert approved.account_status == db.ACCOUNT_ACTIVE
             assert set(db.membership_team_ids(approved)) == {team_id, second_team_id}
         assert client.get("/personen").status_code == 200
+    finally:
+        _restore_messages(originals)
+
+
+def test_approval_welcome_is_post_commit_preferred_best_effort_and_once_only():
+    app, engine = _new_app()
+    with h.Session(engine) as session:
+        team = db.get_or_create_team(session, "BL mD")
+        admin = db.Person(
+            name="Admin", email="admin@example.test", is_admin=True, teams=[team]
+        )
+        mail_user = db.Person(
+            name="Mail User", email="mail-user@example.test",
+            phone="+491701111111", account_status=db.ACCOUNT_VERIFIED,
+            teams=[team],
+        )
+        sms_user = db.Person(
+            name="SMS User", phone="+491702222222",
+            account_status=db.ACCOUNT_VERIFIED, teams=[team],
+        )
+        rejected_user = db.Person(
+            name="Rejected User", email="rejected@example.test",
+            account_status=db.ACCOUNT_VERIFIED, teams=[team],
+        )
+        stale_user = db.Person(
+            name="Already Active", email="active@example.test",
+            account_status=db.ACCOUNT_ACTIVE, teams=[team],
+        )
+        contactless_user = db.Person(
+            name="No Contact", account_status=db.ACCOUNT_VERIFIED, teams=[team]
+        )
+        failing_user = db.Person(
+            name="Provider Failure", email="failure@example.test",
+            account_status=db.ACCOUNT_VERIFIED, teams=[team],
+        )
+        session.add_all([
+            admin, mail_user, sms_user, rejected_user, stale_user,
+            contactless_user, failing_user,
+        ])
+        session.commit()
+        ids = {
+            "admin": admin.id,
+            "mail": mail_user.id,
+            "sms": sms_user.id,
+            "rejected": rejected_user.id,
+            "stale": stale_user.id,
+            "contactless": contactless_user.id,
+            "failing": failing_user.id,
+        }
+
+    messages, originals = _capture_messages()
+    try:
+        client = app.test_client()
+        csrf = h.sign_in(client, ids["admin"])
+
+        assert client.post(
+            f"/registrierungen/{ids['mail']}/approve",
+            data=h.csrf_data(token=csrf),
+        ).status_code == 302
+        welcome = messages[-1]
+        assert welcome["person_id"] == ids["mail"]
+        assert welcome["channel"] == "email"
+        assert welcome["subject"] == "Registrierung freigegeben"
+        assert (
+            "herzlich willkommen beim nuLigaHelper des TuS Raubling Handball!"
+            in welcome["body"]
+        )
+        assert "Registrierung wurde freigegeben" in welcome["body"]
+        assert "anmelden" in welcome["body"]
+        assert "offene Dienste im Heimspielplan übernehmen" in welcome["body"]
+
+        welcome_count = len(messages)
+        assert client.post(
+            f"/registrierungen/{ids['mail']}/approve",
+            data=h.csrf_data(token=csrf),
+        ).status_code == 404
+        assert len(messages) == welcome_count
+
+        assert client.post(
+            f"/registrierungen/{ids['sms']}/approve",
+            data=h.csrf_data(token=csrf),
+        ).status_code == 302
+        assert messages[-1]["person_id"] == ids["sms"]
+        assert messages[-1]["channel"] == "sms"
+
+        before_noops = len(messages)
+        assert client.post(
+            f"/registrierungen/{ids['rejected']}/reject",
+            data=h.csrf_data(token=csrf),
+        ).status_code == 302
+        assert client.post(
+            f"/registrierungen/{ids['stale']}/approve",
+            data=h.csrf_data(token=csrf),
+        ).status_code == 404
+        assert len(messages) == before_noops
+
+        assert client.post(
+            f"/registrierungen/{ids['contactless']}/approve",
+            data=h.csrf_data(token=csrf),
+        ).status_code == 302
+        assert messages[-1]["person_id"] == ids["contactless"]
+        assert messages[-1]["channel"] == "skipped"
+
+        def fail_delivery(self, person, subject, mail_body, sms_body):
+            assert not self.session.new
+            assert not self.session.dirty
+            assert not self.session.deleted
+            assert person.id == ids["failing"]
+            raise RuntimeError("synthetic provider failure")
+
+        notifier.Notifier.send_account_message = fail_delivery
+        assert client.post(
+            f"/registrierungen/{ids['failing']}/approve",
+            data=h.csrf_data(token=csrf),
+        ).status_code == 302
+
+        with h.Session(engine) as session:
+            assert session.get(
+                db.Person, ids["rejected"]
+            ).account_status == db.ACCOUNT_REJECTED
+            for key in ("mail", "sms", "contactless", "failing"):
+                assert session.get(
+                    db.Person, ids[key]
+                ).account_status == db.ACCOUNT_ACTIVE
     finally:
         _restore_messages(originals)
 
@@ -698,10 +863,14 @@ def test_legacy_code_urls_redirect_and_old_email_links_still_consume():
     with h.Session(engine) as session:
         login_person = db.Person(name="Legacy Login", email="legacy@example.test")
         team = db.get_or_create_team(session, "BL mD")
+        admin = db.Person(
+            name="Legacy Admin", email="legacy-admin@example.test",
+            is_admin=True, teams=[team],
+        )
+        session.add_all([login_person, admin])
         verify_person = db.register_person(
             session, "Legacy Register", [team], email="register@example.test"
         )
-        session.add_all([login_person, verify_person])
         session.flush()
         now = datetime.now()
         login_nonce = "legacy-login-nonce"
@@ -725,7 +894,7 @@ def test_legacy_code_urls_redirect_and_old_email_links_still_consume():
             ),
         ])
         session.commit()
-        verify_person_id = verify_person.id
+        verify_person_id, admin_id = verify_person.id, admin.id
     serializer = URLSafeTimedSerializer(
         os.environ["NULIGAHELPER_SECRET"], salt="nuligahelper-auth"
     )
@@ -738,22 +907,34 @@ def test_legacy_code_urls_redirect_and_old_email_links_still_consume():
         "purpose": "verify",
     })
 
-    client = app.test_client()
-    assert client.get("/login/code").location.endswith("/login")
-    assert client.get("/registrieren/code").location.endswith("/registrieren")
-    assert client.get(f"/login/token/{login_token}").status_code == 302
-    assert client.get(f"/login/token/{login_token}").status_code == 400
+    messages, originals = _capture_messages()
+    try:
+        client = app.test_client()
+        assert client.get("/login/code").location.endswith("/login")
+        assert client.get("/registrieren/code").location.endswith("/registrieren")
+        assert client.get(f"/login/token/{login_token}").status_code == 302
+        assert client.get(f"/login/token/{login_token}").status_code == 400
 
-    registrant = app.test_client()
-    response = registrant.get(
-        f"/registrieren/verifizieren/{verify_token}"
-    )
-    assert response.status_code == 200
-    with h.Session(engine) as session:
-        assert (
-            session.get(db.Person, verify_person_id).account_status
-            == db.ACCOUNT_VERIFIED
+        registrant = app.test_client()
+        response = registrant.get(
+            f"/registrieren/verifizieren/{verify_token}"
         )
+        assert response.status_code == 200
+        assert any(
+            message["person_id"] == admin_id
+            and message["subject"] == "Neue Registrierung"
+            and "Legacy Register" in message["body"]
+            and "BL mD" in message["body"]
+            and "Helfer verwalten" in message["body"]
+            for message in messages
+        )
+        with h.Session(engine) as session:
+            assert (
+                session.get(db.Person, verify_person_id).account_status
+                == db.ACCOUNT_VERIFIED
+            )
+    finally:
+        _restore_messages(originals)
 
 
 def test_auth_markup_is_labelled_ordered_and_works_without_javascript():

@@ -1047,7 +1047,7 @@ def create_app() -> Flask:
                 )
             db.verify_person(get_session(), person)
             get_session().commit()
-            _notify_registration_approver(person)
+            _notify_registration_approvers(person)
             _establish_session(person)
             return redirect(url_for("registration_status"))
 
@@ -1155,25 +1155,54 @@ def create_app() -> Flask:
             ), 400
         db.verify_person(get_session(), person)
         get_session().commit()
-        _notify_registration_approver(person)
+        _notify_registration_approvers(person)
         return render_template(
             "message.html",
             message="Kontakt bestätigt. Die Freigabe steht noch aus.",
         )
 
-    def _notify_registration_approver(person: db.Person) -> None:
-        approver = get_session().query(db.Person).filter(
-            db.Person.is_admin.is_(True),
-            db.Person.account_status == db.ACCOUNT_ACTIVE,
-        ).order_by(db.Person.id).first()
-        if approver is not None:
-            team_label = db.membership_label(person)
+    def _notify_registration_approvers(person: db.Person) -> None:
+        team_label = db.membership_label(person)
+        approvers = get_session().scalars(
+            select(db.Person).where(
+                db.Person.is_admin.is_(True),
+                db.Person.account_status == db.ACCOUNT_ACTIVE,
+            ).order_by(db.Person.id)
+        )
+        for approver in approvers:
             _safe_account_message(
                 approver,
                 "Neue Registrierung",
-                f"{person.name} wartet auf Freigabe für {team_label}.",
-                f"Neue Registrierung: {person.name} ({team_label}).",
+                (
+                    f"Hallo {approver.name},\n\n"
+                    f"{person.name} hat den Kontakt bestätigt und wartet auf "
+                    f"Freigabe für: {team_label}.\n\n"
+                    "Bitte prüfe die Registrierung unter \"Helfer verwalten\"."
+                ),
+                (
+                    f"Hallo {approver.name}, neue Registrierung von {person.name} "
+                    f"für {team_label}. Bitte unter \"Helfer verwalten\" prüfen."
+                ),
             )
+
+    def _notify_registration_approved(person: db.Person) -> None:
+        greeting = (
+            "herzlich willkommen beim nuLigaHelper des TuS Raubling Handball!"
+        )
+        _safe_account_message(
+            person,
+            "Registrierung freigegeben",
+            (
+                f"Hallo {person.name},\n\n{greeting}\n\n"
+                "Deine Registrierung wurde freigegeben. Du kannst dich jetzt "
+                "anmelden und offene Dienste im Heimspielplan übernehmen."
+            ),
+            (
+                f"Hallo {person.name}, {greeting} Deine Registrierung wurde "
+                "freigegeben. Melde dich an und übernimm offene Dienste im "
+                "Heimspielplan."
+            ),
+        )
 
     @app.route("/registrierung/status")
     def registration_status():
@@ -1196,6 +1225,8 @@ def create_app() -> Flask:
         else:
             return api_error("Ungültige Entscheidung.")
         get_session().commit()
+        if decision == "approve":
+            _notify_registration_approved(person)
         return redirect(url_for("persons"))
 
     def person_options(session) -> list[dict]:
