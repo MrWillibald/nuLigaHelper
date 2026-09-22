@@ -58,7 +58,7 @@
 
   <h3 class="stat-title">Offene Dienste</h3>
   {% if gaps %}
-  <p class="hint">{{ gaps | length }} anstehende Spiele haben noch unbesetzte Dienste:</p>
+  <p class="hint">{{ gaps | length }} anstehende Spiele oder Tagesblöcke haben noch unbesetzte Dienste:</p>
   <div class="data-table-wrap">
   <table class="data-table responsive-table stat-table gap-table">
     <thead><tr><th>Spiel</th><th>Termin</th><th>Team</th><th>Fehlt</th></tr></thead>
@@ -79,7 +79,7 @@
   </table>
   </div>
   {% else %}
-  <p class="hint">Alle anstehenden Spiele sind vollständig besetzt. 🎉</p>
+  <p class="hint">Alle anstehenden Spiele und Tagesblöcke sind vollständig besetzt. 🎉</p>
   {% endif %}
 </section>
 {% endblock %}

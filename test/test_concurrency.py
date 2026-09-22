@@ -60,6 +60,28 @@ def _claim(path, game_id, person_id, role, slot, barrier, results, key):
         engine.dispose()
 
 
+def _claim_block(path, block_id, person_id, barrier, results, key):
+    engine = _engine(path)
+    try:
+        with h.Session(engine) as session:
+            session.connection().exec_driver_sql("BEGIN")
+            block = session.get(db.DayBlock, block_id)
+            person = session.get(db.Person, person_id)
+            barrier.wait()
+            try:
+                db.claim_block_slot(session, block, 0, None, person)
+                session.commit()
+                results[key] = ("winner", person_id)
+            except db.SlotConflictError as exc:
+                session.rollback()
+                results[key] = ("conflict", exc.current_person_id)
+            except Exception as exc:
+                session.rollback()
+                results[key] = ("error", exc)
+    finally:
+        engine.dispose()
+
+
 def test_wal_reader_can_overlap_an_independent_writer():
     path, _ids = _new_database()
     reader_engine = _engine(path)
@@ -210,6 +232,46 @@ def test_concurrent_stale_claims_commit_exactly_one_winner_and_audit():
             assert len(assignments) == 1 and assignments[0].person_id == winners[0]
             assert session.query(db.AssignmentAudit).filter_by(
                 game_id=game_id, action="claim"
+            ).count() == 1
+    finally:
+        engine.dispose()
+
+
+def test_concurrent_block_claims_commit_one_winner_and_one_block_audit():
+    path, (game_id, first_id, second_id, _third_id) = _new_database()
+    lookup = _engine(path)
+    try:
+        with h.Session(lookup) as session:
+            game = session.get(db.Game, game_id)
+            block_id = db.get_day_blocks(session, game.season_year, game.date)[0].id
+    finally:
+        lookup.dispose()
+    barrier = threading.Barrier(2)
+    results = {}
+    threads = [
+        threading.Thread(
+            target=_claim_block,
+            args=(path, block_id, person_id, barrier, results, str(person_id)),
+        )
+        for person_id in (first_id, second_id)
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(8)
+        assert not thread.is_alive()
+    winners = [value[1] for value in results.values() if value[0] == "winner"]
+    conflicts = [value[1] for value in results.values() if value[0] == "conflict"]
+    assert len(winners) == 1 and conflicts == winners, results
+    engine = _engine(path)
+    try:
+        with h.Session(engine) as session:
+            assignment = session.query(db.BlockAssignment).filter_by(
+                block_id=block_id, slot=0
+            ).one()
+            assert assignment.person_id == winners[0]
+            assert session.query(db.AssignmentAudit).filter_by(
+                block_id=block_id, action="claim"
             ).count() == 1
     finally:
         engine.dispose()

@@ -1,10 +1,4 @@
-# Schedule Overview Specification
-
-## Purpose
-
-Defines how visitors find relevant home games and distinguish completed dates from upcoming dates on the public game overview.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Overview filters games by team and assigned helper
 
@@ -46,6 +40,8 @@ contain matching content.
 - **THEN** that date remains visible
 - **AND** its games remain subject to any selected team filters
 
+## ADDED Requirements
+
 ### Requirement: Day task blocks bookend each visible game date
 
 The overview SHALL render the preparation block before the first displayed game of its
@@ -76,43 +72,3 @@ identify cleanup.
 - **THEN** assigned block helper names are visible
 - **AND** the response contains no block person IDs, roster payload, contact data, or
   assignment controls
-
-### Requirement: Filters are usable by all schedule viewers
-
-The overview SHALL allow guests and signed-in viewers to apply and clear filters. The person filter SHALL be a case-insensitive name search over assigned people visible on game cards. The guest response SHALL contain no roster payload, person IDs, or contact data. When no games match, the overview SHALL show a clear German empty result message and a way to clear the filters; when the season has no games at all, it SHALL retain a distinct no-games message.
-
-#### Scenario: Guest filters by assigned name
-
-- **WHEN** a guest searches for an assigned person's name
-- **THEN** matching game cards are shown without a roster, person IDs, or contact data in the response
-
-#### Scenario: No matching games
-
-- **WHEN** filters exclude every game in the season
-- **THEN** the overview explains that no games match and offers a clear-filter action
-
-#### Scenario: Clear filters
-
-- **WHEN** a visitor clears the active filters
-- **THEN** all games for the current season appear in their normal upcoming and past sections
-
-### Requirement: Past games remain available in a muted expandable section
-
-Games whose date is before the application's effective current day SHALL appear in a separate past-games section that is collapsed by default and can be expanded and collapsed by the visitor. Games on the current day SHALL remain in the upcoming section. Past games SHALL have a visually muted but readable treatment consistent with the rest of the overview. Filtering SHALL apply to both sections, and the past section's label SHALL reflect the number of matching past game days.
-
-#### Scenario: Open and close past games
-
-- **WHEN** a visitor opens the overview with past games
-- **THEN** past game cards are initially hidden behind a labeled expand control
-- **AND** activating the control reveals them and activating it again hides them
-
-#### Scenario: Effective date boundary
-
-- **WHEN** a game's date is the effective current day
-- **THEN** that game is shown with upcoming games
-
-#### Scenario: Filter past games
-
-- **WHEN** a visitor applies a filter that matches only past games
-- **THEN** the collapsed past section indicates the number of matching past game days
-- **AND** expanding it reveals those matching games without unrelated dates or month headings

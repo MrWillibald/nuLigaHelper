@@ -6,6 +6,7 @@
 
 import logging
 import smtplib
+from datetime import datetime
 from email.utils import formataddr
 from email.message import EmailMessage
 
@@ -33,6 +34,37 @@ class Notifier:
 
         self.__dict__.update(config["twilio"])
         self.__dict__.update(config["texts"])
+        self.mailPreparationTask = getattr(
+            self,
+            "mailPreparationTask",
+            "Hallo {},\n\nam {} übernimmst du {}. Du arbeitest mit {} zusammen. "
+            "Treffpunkt ist um {}.\n\nViele Grüße",
+        )
+        self.textPreparationTask = getattr(
+            self,
+            "textPreparationTask",
+            "Hallo {}, am {} übernimmst du {} mit {}. Treffpunkt: {}.",
+        )
+        self.mailBlockPreTask = getattr(
+            self,
+            "mailBlockPreTask",
+            "Hallo {},\n\nnächste Woche ({}) übernimmst du {} um {}.\n\nViele Grüße",
+        )
+        self.textBlockPreTask = getattr(
+            self,
+            "textBlockPreTask",
+            "Hallo {}, nächste Woche ({}) übernimmst du {} um {}.",
+        )
+        self.mailBlockTask = getattr(
+            self,
+            "mailBlockTask",
+            "Hallo {},\n\nmorgen ({}) übernimmst du {} um {}.\n\nViele Grüße",
+        )
+        self.textBlockTask = getattr(
+            self,
+            "textBlockTask",
+            "Hallo {}, morgen ({}) übernimmst du {} um {}.",
+        )
 
         self.session = session
 
@@ -149,7 +181,7 @@ class Notifier:
         )
 
     # ---------------------------------------------------------------------------
-    # Game-day notifications (judges, shop, security, cleaning + MV)
+    # Game-day notifications (judges, shop, security, support + MV)
     # ---------------------------------------------------------------------------
 
     def notify_game_day(self, date: str) -> int:
@@ -200,50 +232,102 @@ class Notifier:
 
         return cnt
 
+    def _block_time_text(self, block: db.DayBlock) -> str:
+        calculated = db.calculated_block_time(block)
+        if calculated is None:
+            return "noch offen"
+        text = calculated.strftime("%H:%M")
+        try:
+            home_date = datetime.strptime(block.date, "%d.%m.%Y").date()
+        except ValueError:
+            home_date = None
+        if home_date is not None and calculated.date() != home_date:
+            text += f" am {calculated.strftime('%d.%m.%Y')}"
+        return text
+
+    def _blocks_for_date(self, date: str) -> list[db.DayBlock]:
+        return db.get_day_blocks(self.session, self._season_year, date)
+
+    def notify_blocks_day_before(self, date: str) -> int:
+        """Notify every occupied preparation and cleanup slot one day ahead."""
+        count = 0
+        for block in self._blocks_for_date(date):
+            time_text = self._block_time_text(block)
+            for assignment in sorted(block.assignments, key=lambda item: item.slot):
+                task = block.label
+                receiver = self._person_receiver(assignment.person, task)
+                count += self._dispatch(
+                    receiver,
+                    subject=f"Benachrichtigung Dienst {task}",
+                    mail_body=self.mailBlockTask.format(
+                        receiver["name"], date, task, time_text
+                    ),
+                    sms_body=self.textBlockTask.format(
+                        receiver["name"], date, task, time_text
+                    ),
+                    game_nr=f"block:{block.id}",
+                )
+        return count
+
     # ---------------------------------------------------------------------------
-    # Early service notifications (one week ahead, first game only)
+    # Early preparation notifications (one week ahead)
     # ---------------------------------------------------------------------------
 
     def notify_service_early(self, date: str) -> int:
-        """Send early catering preparation notifications for the first game of the day."""
-        games = db.get_games_on_date(self.session, date)
-        if not games:
+        """Send the special one-week reminder to preparation-block helpers."""
+        blocks = [
+            block for block in self._blocks_for_date(date)
+            if block.phase == db.BLOCK_PREPARATION
+        ]
+        if not blocks:
             return 0
-
-        game = games[0]
-        sales = game.assignments_by_role(db.ROLE_SALE)[:2]
-        if len(sales) < 2:
-            logging.warning(f"Less than two 'Verkauf' helpers assigned for game {game.game_nr}")
-
-        cnt = 0
-        for assignment in sales:
-            partners = [a for a in sales if a is not assignment]
-            partner_name = partners[0].person.name if partners else ""
-            receiver = self._person_receiver(assignment.person, db.ROLE_SALE)
-            if db.is_spielfest(game):
-                mail_body = sms_body = self._spielfest_task_text(
-                    receiver["name"], date, db.ROLE_SALE, game,
-                    "nächste Woche", partner_name,
-                )
-            else:
-                mail_body = self.mailEarlyTask.format(
-                    receiver["name"], date, db.ROLE_SALE, game.ak, game.home, game.guest,
-                    partner_name, game.time, partner_name,
-                )
-                sms_body = self.textEarlyTask.format(
-                    receiver["name"], date, db.ROLE_SALE, game.ak,
-                    partner_name, game.time, partner_name,
-                )
-            cnt += self._dispatch(
+        block = blocks[0]
+        assignments = sorted(block.assignments, key=lambda item: item.slot)
+        count = 0
+        time_text = self._block_time_text(block)
+        for assignment in assignments:
+            partner_names = ", ".join(
+                other.person.name for other in assignments if other.id != assignment.id
+            ) or "niemandem"
+            task = block.label
+            receiver = self._person_receiver(assignment.person, task)
+            count += self._dispatch(
                 receiver,
-                subject=f"Vorbereitung Dienst {db.ROLE_SALE}",
-                mail_body=mail_body,
-                sms_body=sms_body,
-                game_nr=game.game_nr,
+                subject=f"Vorbereitung Dienst {task}",
+                mail_body=self.mailPreparationTask.format(
+                    receiver["name"], date, task, partner_names, time_text
+                ),
+                sms_body=self.textPreparationTask.format(
+                    receiver["name"], date, task, partner_names, time_text
+                ),
+                game_nr=f"block:{block.id}",
                 mail_id=self.mail_saleID,
                 mail_password=self.mail_salePassword,
             )
-        return cnt
+        return count
+
+    def notify_cleanup_early(self, date: str) -> int:
+        """Send an ordinary one-week reminder to occupied cleanup slots."""
+        count = 0
+        for block in self._blocks_for_date(date):
+            if block.phase != db.BLOCK_CLEANUP:
+                continue
+            time_text = self._block_time_text(block)
+            for assignment in sorted(block.assignments, key=lambda item: item.slot):
+                task = block.label
+                receiver = self._person_receiver(assignment.person, task)
+                count += self._dispatch(
+                    receiver,
+                    subject=f"Benachrichtigung Dienst {task}",
+                    mail_body=self.mailBlockPreTask.format(
+                        receiver["name"], date, task, time_text
+                    ),
+                    sms_body=self.textBlockPreTask.format(
+                        receiver["name"], date, task, time_text
+                    ),
+                    game_nr=f"block:{block.id}",
+                )
+        return count
 
     # ---------------------------------------------------------------------------
     # Pre-notifications (one week ahead)
@@ -254,12 +338,11 @@ class Notifier:
         cnt = 0
         games = db.get_games_on_date(self.session, date)
 
-        # Shop roles are excluded for the first game (notified via notify_service_early)
-        for idx, game in enumerate(games):
-            roles = list(db.GAME_DAY_ROLES)
-            if idx == 0:
-                roles = [r for r in roles if r != db.ROLE_SALE]
-            cnt += self._notify_game_helpers(game, date, self.mailPreTask, self.textPreTask, roles)
+        for game in games:
+            cnt += self._notify_game_helpers(
+                game, date, self.mailPreTask, self.textPreTask,
+                list(db.GAME_DAY_ROLES),
+            )
 
         return cnt
 
@@ -269,8 +352,12 @@ class Notifier:
     ) -> int:
         """Send task notifications to all helpers of a single game."""
         cnt = 0
+        occurrences: dict[str, int] = {}
         for role in roles or db.GAME_DAY_ROLES:
-            assignment = game.assignment_by_role(role)
+            index = occurrences.get(role, 0)
+            occurrences[role] = index + 1
+            assignments = game.assignments_by_role(role)
+            assignment = assignments[index] if index < len(assignments) else None
             if assignment is None:
                 continue
             receiver = self._person_receiver(assignment.person, role)
@@ -311,8 +398,12 @@ class Notifier:
                 f"Old date: {shift.old_date} {shift.old_time} — "
                 f"New date: {shift.new_date} {shift.new_time}"
             )
+            occurrences: dict[str, int] = {}
             for role in db.GAME_DAY_ROLES:
-                assignment = game.assignment_by_role(role)
+                index = occurrences.get(role, 0)
+                occurrences[role] = index + 1
+                assignments = game.assignments_by_role(role)
+                assignment = assignments[index] if index < len(assignments) else None
                 if assignment is None:
                     continue
                 receiver = self._person_receiver(assignment.person, role)

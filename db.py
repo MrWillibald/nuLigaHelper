@@ -13,9 +13,9 @@ import time
 
 import contact_validation as contacts
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
-from sqlalchemy import Boolean, Column, DateTime, Index, Integer, String, ForeignKey, Table, UniqueConstraint, create_engine, delete, event, select
+from sqlalchemy import Boolean, CheckConstraint, Column, DateTime, Index, Integer, String, ForeignKey, Table, UniqueConstraint, create_engine, delete, event, select
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import (
     DeclarativeBase,
@@ -35,7 +35,10 @@ ROLE_TIMEKEEPER = "Zeitnehmer"
 ROLE_SECRETARY = "Sekretär"
 ROLE_SALE = "Verkauf"
 ROLE_SECURITY = "Ordnungsdienst"
-ROLE_CLEANING = "Reinigung"
+ROLE_SUPPORT = "Unterstützung"
+# Compatibility alias for callers which import the old constant name. Stored and
+# displayed current assignments always use ROLE_SUPPORT.
+ROLE_CLEANING = ROLE_SUPPORT
 
 # Standard receiver order for game-day notifications
 GAME_DAY_ROLES = [
@@ -44,7 +47,7 @@ GAME_DAY_ROLES = [
     ROLE_SALE,
     ROLE_SALE,
     ROLE_SECURITY,
-    ROLE_CLEANING,
+    ROLE_SUPPORT,
 ]
 
 # Slot count per role; keys define the display order for open-task lists
@@ -53,7 +56,21 @@ ROLE_SLOT_COUNT = {
     ROLE_SECRETARY: 1,
     ROLE_SALE: 2,
     ROLE_SECURITY: 1,
-    ROLE_CLEANING: 1,
+    ROLE_SUPPORT: 1,
+}
+
+# Optional duties stay assignable and notifiable but do not make a game incomplete.
+REQUIRED_ROLE_SLOT_COUNT = {
+    role: slots for role, slots in ROLE_SLOT_COUNT.items() if role != ROLE_SUPPORT
+}
+
+BLOCK_PREPARATION = "preparation"
+BLOCK_CLEANUP = "cleanup"
+BLOCK_PHASES = (BLOCK_PREPARATION, BLOCK_CLEANUP)
+BLOCK_SLOT_COUNT = 3
+BLOCK_PHASE_LABELS = {
+    BLOCK_PREPARATION: "Vorbereitung",
+    BLOCK_CLEANUP: "Aufräumen",
 }
 
 DEFAULT_DB_PATH = "nuliga_helper.db"
@@ -417,6 +434,9 @@ class Person(Base):
         order_by="Team.name, Team.id",
     )
     assignments: Mapped[list["Assignment"]] = relationship(back_populates="person")
+    block_assignments: Mapped[list["BlockAssignment"]] = relationship(
+        back_populates="person"
+    )
 
     def __repr__(self):
         return f"<Person {self.name!r}>"
@@ -511,10 +531,65 @@ class Assignment(Base):
         )
 
 
+class DayBlock(Base):
+    """One automatic preparation or cleanup block for a home-game date."""
+
+    __tablename__ = "day_blocks"
+    __table_args__ = (
+        UniqueConstraint(
+            "season_year", "date", "phase", name="uq_day_block_season_date_phase"
+        ),
+        CheckConstraint(
+            "phase IN ('preparation', 'cleanup')", name="ck_day_block_phase"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    season_year: Mapped[int] = mapped_column(Integer)
+    date: Mapped[str] = mapped_column(String(20))
+    phase: Mapped[str] = mapped_column(String(20))
+    assignments: Mapped[list["BlockAssignment"]] = relationship(
+        back_populates="block", cascade="all, delete-orphan"
+    )
+
+    @property
+    def label(self) -> str:
+        return BLOCK_PHASE_LABELS[self.phase]
+
+    def assignment_for_slot(self, slot: int) -> "BlockAssignment | None":
+        return next((item for item in self.assignments if item.slot == slot), None)
+
+
+class BlockAssignment(Base):
+    """A person assigned to one slot of a day block."""
+
+    __tablename__ = "block_assignments"
+    __table_args__ = (
+        UniqueConstraint("block_id", "person_id", name="uq_block_person"),
+        UniqueConstraint("block_id", "slot", name="uq_block_slot"),
+        CheckConstraint("slot >= 0 AND slot < 3", name="ck_block_assignment_slot"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    block_id: Mapped[int] = mapped_column(ForeignKey("day_blocks.id"))
+    person_id: Mapped[int] = mapped_column(ForeignKey("persons.id"))
+    slot: Mapped[int] = mapped_column(Integer)
+
+    block: Mapped[DayBlock] = relationship(back_populates="assignments")
+    person: Mapped[Person] = relationship(back_populates="block_assignments")
+
+
 class AssignmentAudit(Base):
     """Append-only snapshot of one assignment mutation."""
 
     __tablename__ = "assignment_audit"
+    __table_args__ = (
+        CheckConstraint(
+            "(game_snapshot IS NOT NULL AND block_snapshot IS NULL) OR "
+            "(game_snapshot IS NULL AND block_snapshot IS NOT NULL)",
+            name="ck_assignment_audit_one_target",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     changed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
@@ -527,11 +602,15 @@ class AssignmentAudit(Base):
         ForeignKey("persons.id"), nullable=True
     )
     game_id: Mapped[int | None] = mapped_column(ForeignKey("games.id"), nullable=True)
+    block_id: Mapped[int | None] = mapped_column(
+        ForeignKey("day_blocks.id", ondelete="SET NULL"), nullable=True
+    )
     role: Mapped[str] = mapped_column(String(40))
     slot: Mapped[int] = mapped_column(Integer)
     actor_name: Mapped[str] = mapped_column(String(120))
     affected_person_name: Mapped[str] = mapped_column(String(120))
-    game_snapshot: Mapped[str] = mapped_column(String(300))
+    game_snapshot: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    block_snapshot: Mapped[str | None] = mapped_column(String(300), nullable=True)
 
 
 class AuthToken(Base):
@@ -693,6 +772,15 @@ def sync_games(session: Session, scraped: list[dict], season_year: int) -> SyncE
         get_or_create_team(session, ak)
 
     session.flush()
+    reconcile_day_blocks(
+        session,
+        season_year,
+        {
+            str(record.get("date") or "").strip()
+            for record in scraped
+            if str(record.get("date") or "").strip()
+        },
+    )
     events.new_games.extend(
         GameEvent(game.id, game.game_nr, game.ak or "")
         for game in new_games
@@ -715,6 +803,61 @@ def get_games_on_date(session: Session, date: str) -> list[Game]:
     return list(
         session.scalars(select(Game).where(Game.date == date).order_by(Game.time, Game.game_nr))
     )
+
+
+def get_day_blocks(
+    session: Session, season_year: int, block_date: str
+) -> list[DayBlock]:
+    """Return a date's blocks in preparation/cleanup order."""
+    blocks = list(
+        session.scalars(
+            select(DayBlock).where(
+                DayBlock.season_year == season_year, DayBlock.date == block_date
+            )
+        )
+    )
+    order = {phase: index for index, phase in enumerate(BLOCK_PHASES)}
+    return sorted(blocks, key=lambda block: (order.get(block.phase, 99), block.id))
+
+
+def block_slot_label(block_or_phase: DayBlock | str, slot: int) -> str:
+    phase = block_or_phase.phase if isinstance(block_or_phase, DayBlock) else block_or_phase
+    if phase not in BLOCK_PHASE_LABELS or not 0 <= slot < BLOCK_SLOT_COUNT:
+        raise ValueError("Ungültiger Aufgabenplatz.")
+    return f"{BLOCK_PHASE_LABELS[phase]} {slot + 1}"
+
+
+def calculated_block_time(
+    block: DayBlock, games: list[Game] | None = None
+) -> datetime | None:
+    """Calculate a block boundary time, retaining adjacent calendar dates."""
+    if games is None:
+        session = Session.object_session(block)
+        if session is None:
+            return None
+        games = get_games_on_date(session, block.date)
+        games = [game for game in games if game.season_year == block.season_year]
+    try:
+        base_date = datetime.strptime(block.date, "%d.%m.%Y")
+    except (TypeError, ValueError):
+        return None
+    candidates = []
+    for game in games:
+        token = (game.time or "").split()
+        match = re.fullmatch(r"(\d{1,2}):(\d{2})", token[0] if token else "")
+        if not match:
+            continue
+        hour, minute = map(int, match.groups())
+        if hour > 23 or minute > 59:
+            continue
+        candidates.append(base_date.replace(hour=hour, minute=minute))
+    if not candidates:
+        return None
+    if block.phase == BLOCK_PREPARATION:
+        return min(candidates) - timedelta(minutes=90)
+    if block.phase == BLOCK_CLEANUP:
+        return max(candidates) + timedelta(minutes=60)
+    return None
 
 
 def is_spielfest(game_or_age_group: Game | str | None) -> bool:
@@ -1155,6 +1298,230 @@ def release_slot(
             raise
 
 
+def _validate_block_slot(block: DayBlock, slot: int) -> None:
+    if block.phase not in BLOCK_PHASES or not 0 <= slot < BLOCK_SLOT_COUNT:
+        raise ValueError("Ungültiger Aufgabenplatz.")
+
+
+def _stored_block_slot(
+    session: Session, block_id: int, slot: int
+) -> BlockAssignment | None:
+    return session.scalars(
+        select(BlockAssignment).where(
+            BlockAssignment.block_id == block_id,
+            BlockAssignment.slot == slot,
+        )
+    ).first()
+
+
+def _block_snapshot(block: DayBlock) -> str:
+    return f"{block.date} | {BLOCK_PHASE_LABELS.get(block.phase, block.phase)}"
+
+
+def _audit_block_assignment(
+    session: Session,
+    assignment: BlockAssignment,
+    action: str,
+    actor: Person | None,
+    actor_tier: str,
+) -> None:
+    session.add(
+        AssignmentAudit(
+            actor_person_id=actor.id if actor else None,
+            actor_tier=actor_tier,
+            action=action,
+            affected_person_id=assignment.person_id,
+            block_id=assignment.block_id,
+            role=assignment.block.label,
+            slot=assignment.slot,
+            actor_name=actor.name if actor else "System",
+            affected_person_name=assignment.person.name,
+            block_snapshot=_block_snapshot(assignment.block),
+        )
+    )
+
+
+def claim_block_slot(
+    session: Session,
+    block: DayBlock,
+    slot: int,
+    expected_person_id: int | None,
+    person: Person,
+    actor: Person | None = None,
+    actor_tier: str = "system",
+) -> BlockAssignment:
+    """Claim one day-block slot with bounded compare-and-swap semantics."""
+    _validate_block_slot(block, slot)
+    block_id, person_id = block.id, person.id
+    actor_id = actor.id if actor else None
+    deadline = time.monotonic() + SQLITE_TIMEOUT_SECONDS
+    while True:
+        try:
+            current = _stored_block_slot(session, block_id, slot)
+            current_id = current.person_id if current else None
+            if current_id != expected_person_id:
+                raise SlotConflictError(current_id)
+            if current is not None:
+                if current.person_id == person_id:
+                    return current
+                raise SlotConflictError(current.person_id)
+            stored_block = session.get(DayBlock, block_id)
+            stored_person = session.get(Person, person_id)
+            if stored_block is None or stored_person is None:
+                raise ValueError("Tagesblock oder Person wurde nicht gefunden.")
+            if stored_person.account_status != ACCOUNT_ACTIVE:
+                raise ValueError("Diese Person kann nicht eingeteilt werden.")
+            other = session.scalars(
+                select(BlockAssignment).where(
+                    BlockAssignment.block_id == block_id,
+                    BlockAssignment.person_id == person_id,
+                )
+            ).first()
+            if other is not None:
+                raise ValueError(
+                    f"{stored_person.name} ist für diesen Tagesblock bereits als "
+                    f"'{stored_block.label}' eingeteilt."
+                )
+            assignment = BlockAssignment(
+                block=stored_block, person=stored_person, slot=slot
+            )
+            session.add(assignment)
+            session.flush()
+            _audit_block_assignment(
+                session,
+                assignment,
+                "claim",
+                session.get(Person, actor_id) if actor_id else None,
+                actor_tier,
+            )
+            session.flush()
+            return assignment
+        except OperationalError as exc:
+            session.rollback()
+            _wait_for_assignment_retry(deadline, exc)
+        except IntegrityError:
+            session.rollback()
+            current = _stored_block_slot(session, block_id, slot)
+            current_id = current.person_id if current else None
+            if current_id != expected_person_id:
+                raise SlotConflictError(current_id) from None
+            other = session.scalars(
+                select(BlockAssignment).where(
+                    BlockAssignment.block_id == block_id,
+                    BlockAssignment.person_id == person_id,
+                )
+            ).first()
+            if other is not None:
+                stored_person = session.get(Person, person_id)
+                raise ValueError(
+                    f"{stored_person.name if stored_person else 'Die Person'} ist für "
+                    "diesen Tagesblock bereits eingeteilt."
+                ) from None
+            raise
+
+
+def release_block_slot(
+    session: Session,
+    block: DayBlock,
+    slot: int,
+    expected_person_id: int | None,
+    actor: Person | None = None,
+    actor_tier: str = "system",
+    action: str = "release",
+) -> Person | None:
+    """Release one day-block slot with bounded compare-and-swap semantics."""
+    _validate_block_slot(block, slot)
+    block_id = block.id
+    actor_id = actor.id if actor else None
+    deadline = time.monotonic() + SQLITE_TIMEOUT_SECONDS
+    while True:
+        try:
+            current = _stored_block_slot(session, block_id, slot)
+            current_id = current.person_id if current else None
+            if current_id != expected_person_id:
+                raise SlotConflictError(current_id)
+            if current is None:
+                return None
+            person = current.person
+            audit = AssignmentAudit(
+                actor_person_id=actor_id,
+                actor_tier=actor_tier,
+                action=action,
+                affected_person_id=current.person_id,
+                block_id=current.block_id,
+                role=current.block.label,
+                slot=current.slot,
+                actor_name=actor.name if actor else "System",
+                affected_person_name=person.name,
+                block_snapshot=_block_snapshot(current.block),
+            )
+            result = session.execute(
+                delete(BlockAssignment).where(
+                    BlockAssignment.id == current.id,
+                    BlockAssignment.block_id == block_id,
+                    BlockAssignment.slot == slot,
+                    BlockAssignment.person_id == expected_person_id,
+                ).execution_options(synchronize_session=False)
+            )
+            if getattr(result, "rowcount", None) != 1:
+                session.rollback()
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise AssignmentTemporarilyUnavailableError()
+                time.sleep(min(0.05, remaining))
+                continue
+            session.add(audit)
+            session.flush()
+            session.expire(current.block, ["assignments"])
+            return person
+        except OperationalError as exc:
+            session.rollback()
+            _wait_for_assignment_retry(deadline, exc)
+        except IntegrityError:
+            session.rollback()
+            raise
+
+
+def reconcile_day_blocks(
+    session: Session, season_year: int, active_dates: set[str]
+) -> None:
+    """Ensure two blocks per active date and audit removal for vanished dates."""
+    existing = list(
+        session.scalars(select(DayBlock).where(DayBlock.season_year == season_year))
+    )
+    by_key = {(block.date, block.phase): block for block in existing}
+    for block_date in sorted(active_dates):
+        for phase in BLOCK_PHASES:
+            if (block_date, phase) not in by_key:
+                session.add(
+                    DayBlock(season_year=season_year, date=block_date, phase=phase)
+                )
+    session.flush()
+    for block in existing:
+        if block.date in active_dates:
+            continue
+        removed = 0
+        for assignment in list(block.assignments):
+            release_block_slot(
+                session,
+                block,
+                assignment.slot,
+                assignment.person_id,
+                actor_tier="system",
+                action="remove",
+            )
+            removed += 1
+        logging.info(
+            "day_block_removed season_year=%s date=%s phase=%s removed_assignments=%s",
+            block.season_year,
+            block.date,
+            block.phase,
+            removed,
+        )
+        session.delete(block)
+    session.flush()
+
+
 def set_role_assignments(session: Session, game: Game, role: str,
                           person_ids: list[int], actor: Person | None = None,
                           actor_tier: str = "system") -> None:
@@ -1199,6 +1566,9 @@ def delete_person(
     for assignment in list(person.assignments):
         _audit_assignment(session, assignment, "unassign", actor, actor_tier)
         assignment.game.assignments.remove(assignment)
+    for assignment in list(person.block_assignments):
+        _audit_block_assignment(session, assignment, "unassign", actor, actor_tier)
+        assignment.block.assignments.remove(assignment)
     session.flush()
     for entry in session.scalars(
         select(AssignmentAudit).where(AssignmentAudit.actor_person_id == person.id)
@@ -1239,6 +1609,20 @@ def deactivate_person(
                 actor,
                 actor_tier,
             )
+    for assignment in list(person.block_assignments):
+        try:
+            block_date = datetime.strptime(assignment.block.date, "%d.%m.%Y").date()
+        except ValueError:
+            block_date = date.max
+        if block_date >= today:
+            release_block_slot(
+                session,
+                assignment.block,
+                assignment.slot,
+                person.id,
+                actor,
+                actor_tier,
+            )
     person.account_status = ACCOUNT_INACTIVE
     session.commit()
 
@@ -1266,7 +1650,7 @@ def set_team_mv(session: Session, team: Team, person: Person | None) -> None:
 def missing_slots(game: Game) -> dict[str, int]:
     """Open task slots of a game as {role: missing_count}, in display order."""
     result = {}
-    for role, slots in ROLE_SLOT_COUNT.items():
+    for role, slots in REQUIRED_ROLE_SLOT_COUNT.items():
         missing = max(0, slots - len(game.assignments_by_role(role)))
         if missing:
             result[role] = missing

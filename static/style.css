@@ -74,6 +74,14 @@ option.foreign-option{color:#a0a6b5}
 option.option-playing{color:#c77700}
 select.select-warn{border-color:#e8b23c;background:#fffaf0}
 .game-card.saved{animation:savedflash .9s ease}
+.task-block-card{--block-accent:var(--navy)}
+.task-block-preparation{--block-accent:#a0e656}
+.task-block-cleanup{--block-accent:#ffb752}
+.task-block-card .game-time{display:flex;gap:8px;align-items:baseline}
+.task-block-card .game-time small{font-size:.72rem;color:var(--muted)}
+.task-block-icon{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;
+  background:var(--block-accent);color:var(--navy);font-weight:900}
+.task-block-no-time .game-time{color:#8b5b00}
 @keyframes savedflash{0%{box-shadow:0 0 0 3px var(--women)}100%{box-shadow:none}}
 
 .past-details{margin-top:8px;border:1px solid var(--line);border-radius:18px;

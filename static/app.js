@@ -47,8 +47,16 @@ function flashCard(gameId) {
   card.classList.add("saved");
 }
 
+function flashBlock(blockId) {
+  const card = document.getElementById("block-" + blockId);
+  if (!card) return;
+  card.classList.remove("saved");
+  void card.offsetWidth;
+  card.classList.add("saved");
+}
+
 function otherRoleSelects(card, currentSelect) {
-  return Array.from(card.querySelectorAll("select[data-role]")).filter(
+  return Array.from(card.querySelectorAll("select[data-role], select[data-block-assignment]")).filter(
     (s) => s !== currentSelect
   );
 }
@@ -89,7 +97,7 @@ function addPersonOption(card, currentSelect, option) {
 
 // Expose the small, side-effect-free option helpers for the DOM regression test.
 globalThis.nuLigaOptionTools = {
-  comparePersonOptions, insertOptionSorted, addPersonOption,
+  comparePersonOptions, insertOptionSorted, addPersonOption, removePersonOption,
 };
 
 const prevOptions = new WeakMap();
@@ -142,6 +150,45 @@ document.querySelectorAll("select[data-role]").forEach((select) => {
       showToast("Dienst gespeichert", true);
       select.classList.remove("select-warn");
     }
+  });
+});
+
+document.querySelectorAll("select[data-block-assignment]").forEach((select) => {
+  select.addEventListener("focus", () => {
+    prevOptions.set(select, select.selectedOptions[0]);
+  });
+  select.addEventListener("change", async () => {
+    const previous = prevOptions.get(select);
+    const previousId = previous && previous.value ? Number(previous.value) : null;
+    const newId = select.value ? Number(select.value) : null;
+    const requestBody = {
+      block_id: Number(select.dataset.block),
+      slot: Number(select.dataset.slot),
+      expected_person_id: previousId,
+    };
+    let result = { ok: true };
+    if (previousId !== null) {
+      result = await postJSON("/api/block-assignment/release", requestBody);
+    }
+    if (result.ok && newId !== null) {
+      result = await postJSON("/api/block-assignment/claim", {
+        ...requestBody, expected_person_id: null, person_id: newId,
+      });
+    }
+    if (!result.ok) {
+      select.value = previousId === null ? "" : String(previousId);
+      showToast(result.error || "Fehler beim Speichern", false);
+      if (result.loginRequired) setTimeout(() => { window.location.href = "/login"; }, 1200);
+      if (result.conflict || previousId !== null) {
+        setTimeout(() => { window.location.reload(); }, 500);
+      }
+      return;
+    }
+    const card = document.getElementById("block-" + select.dataset.block);
+    if (newId) removePersonOption(card, select, newId);
+    if (previousId !== null && previousId !== newId) addPersonOption(card, select, previous);
+    flashBlock(select.dataset.block);
+    showToast("Tagesdienst gespeichert", true);
   });
 });
 

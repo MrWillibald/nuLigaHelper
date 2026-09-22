@@ -10,11 +10,14 @@
 
   <form method="get" class="audit-filter-card">
     <div class="filter-field audit-game-filter">
-      <label for="audit-game">Spiel</label>
-      <select id="audit-game" name="game_id">
-        <option value="">Alle Spiele</option>
+      <label for="audit-target">Ziel</label>
+      <select id="audit-target" name="target">
+        <option value="">Alle Spiele und Tagesblöcke</option>
         {% for game in games %}
-        <option value="{{ game.id }}" {% if selected_game == game.id %}selected{% endif %}>{{ game.game_nr }} · {{ game.date }} {{ game.time or '' }} · {% if game.ak and 'spf' in game.ak|lower %}Spielfest {{ game.ak }}{% else %}{{ game.ak or '?' }} · {{ game.home or '?' }} – {{ game.guest or '?' }}{% endif %}</option>
+        <option value="game-{{ game.id }}" {% if selected_target == 'game-' ~ game.id %}selected{% endif %}>Spiel {{ game.game_nr }} · {{ game.date }} {{ game.time or '' }} · {% if game.ak and 'spf' in game.ak|lower %}Spielfest {{ game.ak }}{% else %}{{ game.ak or '?' }} · {{ game.home or '?' }} – {{ game.guest or '?' }}{% endif %}</option>
+        {% endfor %}
+        {% for block in blocks %}
+        <option value="block-{{ block.id }}" {% if selected_target == 'block-' ~ block.id %}selected{% endif %}>Tagesblock · {{ block.date }} · {{ block.label }}</option>
         {% endfor %}
       </select>
     </div>
@@ -35,7 +38,7 @@
 
   <div class="data-table-wrap">
     <table class="data-table responsive-table audit-table">
-      <thead><tr><th>Zeit</th><th>Akteur</th><th>Aktion</th><th>Person</th><th>Spiel</th><th>Dienst</th></tr></thead>
+      <thead><tr><th>Zeit</th><th>Akteur</th><th>Aktion</th><th>Person</th><th>Ziel</th><th>Dienst</th></tr></thead>
       <tbody>
         {% for entry in entries %}
         <tr class="audit-entry">
@@ -43,7 +46,7 @@
           <td data-label="Akteur"><strong>{{ entry.actor_name }}</strong><span class="audit-tier-badge">{{ entry.actor_tier }}</span></td>
           <td data-label="Aktion"><span class="audit-action-badge audit-action-{{ entry.action }}">{{ entry.action }}</span></td>
           <td data-label="Person">{{ entry.affected_person_name }}</td>
-          <td data-label="Spiel">{{ entry.game_snapshot }}</td>
+          <td data-label="Spiel">{{ entry.block_snapshot or entry.game_snapshot }}</td>
           <td data-label="Dienst"><strong>{{ entry.role }}</strong> · Platz {{ entry.slot + 1 }}</td>
         </tr>
         {% else %}

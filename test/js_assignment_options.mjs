@@ -21,16 +21,25 @@ class FakeOption {
   removeAttribute(name) {
     if (name === "selected") this.selected = false;
   }
+  remove() {
+    if (!this.owner) return;
+    const index = this.owner.options.indexOf(this);
+    if (index >= 0) this.owner.options.splice(index, 1);
+  }
 }
 
 class FakeSelect {
-  constructor(options) { this.options = options; }
+  constructor(options) {
+    this.options = options;
+    this.options.forEach((option) => { option.owner = this; });
+  }
   querySelector(selector) {
     const match = selector.match(/value="([^"]+)"/);
     return match ? this.options.find((option) => option.value === match[1]) : null;
   }
   insertBefore(option, before) {
     const index = before ? this.options.indexOf(before) : this.options.length;
+    option.owner = this;
     this.options.splice(index, 0, option);
   }
 }
@@ -64,4 +73,18 @@ for (const select of [first, second]) {
 }
 if (first.options.map((option) => option.value).join(",") !== ",2,7,9") {
   throw new Error("released person was inserted at the wrong position");
+}
+
+// A block is one independent assignment container: claiming in one card removes
+// the person only from sibling slots, not from another block or a game card.
+const claimed = new FakeSelect([placeholder(), released.cloneNode()]);
+const sibling = new FakeSelect([placeholder(), released.cloneNode()]);
+const otherContainer = new FakeSelect([placeholder(), released.cloneNode()]);
+const blockCard = { querySelectorAll: () => [claimed, sibling] };
+globalThis.nuLigaOptionTools.removePersonOption(blockCard, claimed, 7);
+if (sibling.querySelector('option[value="7"]')) {
+  throw new Error("claimed block person remained available in a sibling slot");
+}
+if (!otherContainer.querySelector('option[value="7"]')) {
+  throw new Error("block claim leaked into another assignment container");
 }

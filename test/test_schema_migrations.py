@@ -83,7 +83,7 @@ def test_schema_inspection_recognizes_known_and_unknown_revisions():
 def test_alembic_configuration_has_one_head_and_no_database_url():
     config = schema_migrations.alembic_config()
     assert not config.get_main_option("sqlalchemy.url")
-    assert schema_migrations.head_revisions() == ("0002_multi_team_membership",)
+    assert schema_migrations.head_revisions() == ("0003_game_day_task_blocks",)
 
 
 def test_explicit_initialization_creates_stamps_seeds_and_then_refuses_reuse():
@@ -336,6 +336,82 @@ def test_membership_revision_preserves_union_identities_and_relationships():
                 "SELECT mv_person_id FROM teams WHERE id=3"
             ).fetchone() == (5,)
             assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
+
+
+def test_day_block_revision_seeds_dates_renames_current_role_and_preserves_audit_text():
+    with tempfile.TemporaryDirectory() as raw_directory:
+        path = Path(raw_directory) / "day-block-baseline.db"
+        create_legacy_database(path)
+        with sqlite3.connect(path) as connection:
+            connection.execute(
+                "INSERT INTO persons (id, name, is_admin, account_status) "
+                "VALUES (1, 'Helper', 0, 'active')"
+            )
+            connection.execute(
+                "INSERT INTO games (id, season_year, game_nr, date, time) "
+                "VALUES (10, 2026, '1001', '05.09.2026', '10:00')"
+            )
+            connection.execute(
+                "INSERT INTO assignments (id, game_id, person_id, role, slot) "
+                "VALUES (20, 10, 1, 'Reinigung', 0)"
+            )
+            connection.execute(
+                "INSERT INTO assignment_audit "
+                "(id, changed_at, actor_tier, action, game_id, role, slot, "
+                "actor_name, affected_person_name, game_snapshot) VALUES "
+                "(30, '2026-01-01', 'system', 'claim', 10, 'Reinigung', 0, "
+                "'System', 'Helper', 'historical snapshot')"
+            )
+            connection.commit()
+
+        _run_cli(path, "migrate-schema", "--confirm-stopped")
+        with sqlite3.connect(path) as connection:
+            assert connection.execute(
+                "SELECT phase FROM day_blocks ORDER BY phase"
+            ).fetchall() == [("cleanup",), ("preparation",)]
+            assert connection.execute(
+                "SELECT role FROM assignments WHERE id=20"
+            ).fetchone() == ("Unterstützung",)
+            assert connection.execute(
+                "SELECT role, game_snapshot, block_snapshot FROM assignment_audit "
+                "WHERE id=30"
+            ).fetchone() == ("Reinigung", "historical snapshot", None)
+            audit_columns = {
+                row[1] for row in connection.execute("PRAGMA table_info(assignment_audit)")
+            }
+            assert {"block_id", "block_snapshot"} <= audit_columns
+
+
+def test_day_block_revision_fails_closed_on_role_collision_and_retains_snapshot():
+    with tempfile.TemporaryDirectory() as raw_directory:
+        path = Path(raw_directory) / "collision-baseline.db"
+        create_legacy_database(path)
+        with sqlite3.connect(path) as connection:
+            connection.executemany(
+                "INSERT INTO persons (id, name, is_admin, account_status) "
+                "VALUES (?, ?, 0, 'active')",
+                [(1, "Old"), (2, "New")],
+            )
+            connection.execute(
+                "INSERT INTO games (id, season_year, game_nr, date) "
+                "VALUES (10, 2026, '1001', '05.09.2026')"
+            )
+            connection.executemany(
+                "INSERT INTO assignments (id, game_id, person_id, role, slot) "
+                "VALUES (?, 10, ?, ?, 0)",
+                [(20, 1, "Reinigung"), (21, 2, "Unterstützung")],
+            )
+            connection.commit()
+
+        error = _system_exit(
+            lambda: _run_cli(path, "migrate-schema", "--confirm-stopped")
+        )
+        message = str(error)
+        assert "role collisions" in message
+        assert "Retained backup:" in message
+        retained = Path(message.split("Retained backup: ", 1)[1].split(". ", 1)[0])
+        assert retained.exists()
+        assert schema_migrations.inspect_schema(retained).kind == "baseline"
 
 
 def test_fresh_head_has_no_metadata_drift_and_detects_synthetic_mismatch():

@@ -27,11 +27,14 @@ test/run_tests.sh
 |--------------------|--------------------------------------------------------------------------|
 | `helpers.py`       | Shared setup: import paths, temp databases, sample games, mini runner    |
 | `test_db.py`       | Bootstrap, sync events (new/shift/§77/removed), ordering, cascades       |
+| `test_day_blocks.py` | Day-block lifecycle, timing, CAS, audit and optional game duties       |
+| `test_day_blocks_web.py` | Block authorization, privacy, filtering, statistics and audit UI |
 | `test_notifier.py` | Mail/SMS dispatch counts and texts (recorded, never sent)                |
 | `test_webapp.py`   | Schedule rendering, inline assignment API, persons CRUD, statistics      |
 | `test_sqlite_runtime.py` | SQLite WAL, foreign-key, timeout and startup invariants             |
 | `test_production_runtime.py` | Production config and proxy/host/cookie/body/header behavior |
-| `test_concurrency.py` | Assignment CAS, audit atomicity and bounded WAL contention             |
+| `test_concurrency.py` | Game/block assignment CAS, audit atomicity and bounded WAL contention  |
+| `test_schema_migrations.py` | Fingerprints, snapshots, Alembic upgrades and migration preflights |
 | `test_daily_lock.py` | Per-database process lock for non-overlapping daily runs                 |
 | `test_backup.py`   | Online snapshots, Dropbox retention, staged failures and safe restore     |
 | `test_main.py`     | Daily orchestration order, transaction boundaries and failure status      |
@@ -42,7 +45,7 @@ test/run_tests.sh
 - The webapp tests build on each other and run top to bottom within their file
   (like a user clicking through the interface once).
 - Databases live in the system temp directory and are recreated on every run;
-  there is no schema-migration logic to test by design (see main README).
+  migration tests build only synthetic baseline and versioned databases.
 - Dropbox, scraper, mail and SMS behavior is faked; backup tests use only local
   synthetic SQLite files and fake Dropbox clients.
 - File-backed test databases use the same WAL/foreign-key/busy-timeout profile as

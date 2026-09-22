@@ -8,7 +8,7 @@
 # A person may only hold one task per game, so every slot has its own person:
 #   Zeitnehmer=Alice(mail)  Sekretär=Bob(sms)
 #   Verkauf=Caro(mail)      Verkauf=Dora(sms)
-#   Ordnungsdienst=Ed(mail) Reinigung=Frida(sms, only when fully assigned)
+#   Ordnungsdienst=Ed(mail) Unterstützung=Frida(sms, only when fully assigned)
 #   Frank is MV of "BL mD" and receives the MV notification by SMS
 #   as long as tasks of the game are still open.
 #
@@ -64,14 +64,20 @@ def _setup(fully_assigned: bool = False):
     db.set_team_mv(session, team, frank)
 
     # an open task means: nobody assigned at all
-    cleaning = frida if fully_assigned else None
+    support_helper = frida if fully_assigned else None
     for role, person in [
         (db.ROLE_TIMEKEEPER, alice), (db.ROLE_SECRETARY, bob),
         (db.ROLE_SALE, caro), (db.ROLE_SALE, dora),
-        (db.ROLE_SECURITY, ed), (db.ROLE_CLEANING, cleaning),
+        (db.ROLE_SECURITY, ed), (db.ROLE_SUPPORT, support_helper),
     ]:
         if person is not None:
             db.assign_person(session, game, person, role)
+    blocks = db.get_day_blocks(session, h.SEASON, GAME_DATE)
+    preparation = next(b for b in blocks if b.phase == db.BLOCK_PREPARATION)
+    cleanup = next(b for b in blocks if b.phase == db.BLOCK_CLEANUP)
+    db.claim_block_slot(session, preparation, 0, None, caro)
+    db.claim_block_slot(session, preparation, 1, None, dora)
+    db.claim_block_slot(session, cleanup, 0, None, ed)
     session.commit()
 
     n = notifier.Notifier(h.load_club_config(), session, h.SEASON)
@@ -83,9 +89,8 @@ def _setup(fully_assigned: bool = False):
 
 def test_notify_game_day_prefers_mail_then_sms_and_skips_missing_contacts():
     session, game, n, rec = _setup()
-    # helpers: 5 assigned contacts (Caro not assigned anywhere here) plus
-    # the MV reminder for the open Reinigung slot = 6
-    assert n.notify_game_day(GAME_DATE) == 6
+    # Five occupied game tasks; optional Unterstützung does not trigger an MV.
+    assert n.notify_game_day(GAME_DATE) == 5
 
 
 def test_automatic_account_messages_prefer_mail_with_sms_as_fallback():
@@ -118,6 +123,9 @@ def test_mv_notification_only_while_tasks_are_open():
 
 def test_mv_notification_contains_judge_team_and_both_judges():
     session, game, n, rec = _setup()
+    security = game.assignment_by_role(db.ROLE_SECURITY)
+    db.release_slot(session, game, db.ROLE_SECURITY, 0, security.person_id)
+    session.commit()
     n.notify_game_day(GAME_DATE)
 
     mv_smss = [body for num, body in rec.smss if num == "+491700000002"]
@@ -127,16 +135,24 @@ def test_mv_notification_contains_judge_team_and_both_judges():
         "MV message must list both judges"
 
 
-def test_service_early_notifies_both_sales():
+def test_service_early_notifies_preparation_block_helpers():
     session, game, n, rec = _setup()
     assert n.notify_service_early(GAME_DATE) == 2
 
 
-def test_pre_notifications_skip_sale_roles_of_the_first_game():
+def test_pre_notifications_include_sale_roles_of_the_first_game():
     session, game, n, rec = _setup()
-    # first (only) game: Zeitnehmer(1) + Sekretär(1) + Ordnungsdienst(1)
-    # + Reinigung(Caro, skipped) = 3; Verkauf is deliberately excluded
-    assert n.notify_pre(GAME_DATE) == 3
+    assert n.notify_pre(GAME_DATE) == 5
+
+
+def test_block_reminders_cover_cleanup_weekly_and_all_occupied_slots_day_before():
+    session, game, n, rec = _setup()
+    assert n.notify_cleanup_early(GAME_DATE) == 1
+    assert n.notify_blocks_day_before(GAME_DATE) == 3
+    assert "Vorbereitung" in rec.all_text()
+    assert "Aufräumen" in rec.all_text()
+    assert "Vorbereitung 1" not in rec.all_text()
+    assert "Aufräumen 1" not in rec.all_text()
 
 
 def test_shift_notifications_reach_all_assigned_helpers_except_missing_contacts():

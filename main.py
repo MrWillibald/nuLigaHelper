@@ -136,6 +136,7 @@ def _send_notifications(
         tomorrow = (today + datetime.timedelta(days=1)).strftime("%d.%m.%Y")
         if db.get_games_on_date(session, tomorrow):
             cnt = notifier.notify_game_day(tomorrow)
+            cnt += notifier.notify_blocks_day_before(tomorrow)
             logging.info(f"Number of sent service notifications: {cnt}")
             logging.info("-------------------------------------------------")
 
@@ -148,6 +149,7 @@ def _send_notifications(
         next_week = (today + datetime.timedelta(days=7)).strftime("%d.%m.%Y")
         if db.get_games_on_date(session, next_week):
             cnt = notifier.notify_service_early(next_week)
+            cnt += notifier.notify_cleanup_early(next_week)
             cnt += notifier.notify_pre(next_week)
             logging.info(f"Number of sent service notifications: {cnt}")
             logging.info("-------------------------------------------------")

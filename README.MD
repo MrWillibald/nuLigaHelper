@@ -9,7 +9,8 @@ Host-specific deployment configuration and operator records are maintained priva
 - Read home games from Hallenspielplan website of nuLiga
 - Games, persons and task assignments are stored in a SQLite database (`nuliga_helper.db`)
 - The database is backed up to a dropbox account after every run
-- Tasks (Zeitnehmer, Sekretär, Verkauf, Ordnungsdienst, Reinigung) can be assigned to persons including notification addresses
+- Game tasks (Zeitnehmer, Sekretär, Verkauf, Ordnungsdienst, optional Unterstützung) can be assigned to persons including notification addresses
+- Every home-game date has three-slot Vorbereitung and Aufräumen blocks, timed 90 minutes before the first and 60 minutes after the last game start; slot numbers are display positions while statistics, reminders and audits use the shared task name, just like Verkauf
 - nuLigaHelper keeps track of all game shifts
 - Notifications are sent to all game judges one day prior to the game (if the script is run daily)
 - Notification articles can be sent to newspapers one week before the game
@@ -179,7 +180,9 @@ or individually via `python3 test/test_db.py` etc., or with pytest (`pytest test
 - `auth_tokens`: expiring, single-use registration/login nonces and six-digit e-mail/SMS codes
 - `assignment_audit`: append-only assignment-change snapshots that remain readable after deletion
 
-The MV of a game's responsible team receives an MV notification as long as tasks of that game are still unassigned.
+The MV of a game's responsible team receives an MV notification as long as required tasks of that game are still unassigned. The optional `Unterstützung` task never makes a game incomplete. Day blocks have no responsible team and therefore never create an MV reminder.
+
+Preparation and cleanup are date-level duties rather than duties of an individual game. Active members and MVs may claim or release only their own block slot; admins may manage any active person, including corrections on past dates. A person may hold one task in each block independently of any game assignment on the same date. Preparation helpers receive the special one-week reminder, cleanup helpers an ordinary one-week reminder, and all occupied block slots a day-before reminder. Game-level `Verkauf` helpers always use the normal game reminder flow.
 
 # Getting started
 

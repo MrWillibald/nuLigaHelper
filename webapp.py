@@ -157,7 +157,7 @@ SLOT_LABELS = [
     ("Verkauf 1", db.ROLE_SALE),
     ("Verkauf 2", db.ROLE_SALE),
     ("Ordnungsdienst", db.ROLE_SECURITY),
-    ("Reinigung", db.ROLE_CLEANING),
+    ("Unterstützung", db.ROLE_SUPPORT),
 ]
 
 COUNTRY_CODES = [
@@ -1290,16 +1290,7 @@ def create_app() -> Flask:
         playing_filter = selected_team(filters.get("playing_team", ""))
         responsible_filter = selected_team(filters.get("responsible_team", ""))
         person_filter = " ".join(filters.get("person", "").split()).casefold()
-        games = [
-            game for game in games
-            if (playing_filter is None
-                or playing_team_by_ak.get(game.ak or "") == playing_filter)
-            and (responsible_filter is None or game.team_id == responsible_filter)
-            and (not person_filter or any(
-                person_filter in " ".join(assignment.person.name.split()).casefold()
-                for assignment in game.assignments
-            ))
-        ]
+        all_games = games
 
         def game_view(game):
             sales = {
@@ -1396,20 +1387,106 @@ def create_app() -> Flask:
                 "past": bool(d and d < today),
             }
 
-        day_groups = []
-        for game in games:
-            view = game_view(game)
-            d = parse_date(view["date"])
-            month_label = f"{MONATE[d.month - 1]} {d.year}" if d else "Ohne Datum"
-            if not day_groups or day_groups[-1]["date"] != view["date"]:
-                day_groups.append({
-                    "type": "day",
-                    "month": month_label,
-                    "day": view["day"],
-                    "date": view["date"],
-                    "games": [],
+        def block_view(block, full_date_games):
+            calculated = db.calculated_block_time(block, full_date_games)
+            home_date = parse_date(block.date)
+            adjacent_date = (
+                calculated.strftime("%d.%m.%Y")
+                if calculated and calculated.date() != home_date
+                else ""
+            )
+            is_admin = g.tier == "admin"
+            editable_date = not home_date or home_date >= today
+            slots = []
+            for slot in range(db.BLOCK_SLOT_COUNT):
+                assignment = block.assignment_for_slot(slot)
+                occupant = assignment.person if assignment else None
+                editable = is_admin or (
+                    editable_date
+                    and viewer is not None
+                    and g.tier in {"member", "mv"}
+                    and (occupant is None or occupant.id == viewer.id)
+                )
+                if is_admin:
+                    options = persons
+                elif editable and viewer is not None and viewer.id in persons_by_id:
+                    options = [persons_by_id[viewer.id]]
+                else:
+                    options = []
+                options = sorted(
+                    (
+                        {**person, "sort_group": 0,
+                         "sort_name": person["name"].casefold()}
+                        for person in options
+                    ),
+                    key=lambda person: (person["sort_name"], person["id"]),
+                )
+                slots.append({
+                    "label": db.block_slot_label(block, slot),
+                    "slot": slot,
+                    "person_id": occupant.id if occupant else None,
+                    "person_name": occupant.name if occupant else "",
+                    "person_team_label": db.membership_label(occupant) if occupant else "",
+                    "editable": editable,
+                    "options": options,
                 })
-            day_groups[-1]["games"].append(view)
+            return {
+                "id": block.id,
+                "phase": block.phase,
+                "label": block.label,
+                "time": calculated.strftime("%H:%M") if calculated else "",
+                "time_date": adjacent_date,
+                "slots": slots,
+                "taken_person_ids": {
+                    slot["person_id"] for slot in slots if slot["person_id"] is not None
+                },
+                "past": bool(home_date and home_date < today),
+            }
+
+        day_groups = []
+        dates = []
+        for game in all_games:
+            if game.date not in dates:
+                dates.append(game.date)
+        for game_date in dates:
+            full_date_games = [game for game in all_games if game.date == game_date]
+            visible_games = [
+                game for game in full_date_games
+                if (playing_filter is None
+                    or playing_team_by_ak.get(game.ak or "") == playing_filter)
+                and (responsible_filter is None or game.team_id == responsible_filter)
+            ]
+            if not visible_games:
+                continue
+            blocks = db.get_day_blocks(session, season_year, game_date or "")
+            if person_filter:
+                block_match = any(
+                    person_filter in " ".join(a.person.name.split()).casefold()
+                    for block in blocks for a in block.assignments
+                )
+                if not block_match:
+                    visible_games = [
+                        game for game in visible_games
+                        if any(
+                            person_filter in " ".join(a.person.name.split()).casefold()
+                            for a in game.assignments
+                        )
+                    ]
+                if not visible_games:
+                    continue
+            views = [game_view(game) for game in visible_games]
+            d = parse_date(game_date)
+            month_label = f"{MONATE[d.month - 1]} {d.year}" if d else "Ohne Datum"
+            block_views = {block.phase: block_view(block, full_date_games) for block in blocks}
+            day_groups.append({
+                "type": "day",
+                "month": month_label,
+                "day": views[0]["day"],
+                "date": game_date,
+                "games": views,
+                "preparation": block_views.get(db.BLOCK_PREPARATION),
+                "cleanup": block_views.get(db.BLOCK_CLEANUP),
+            })
 
         def with_month_headers(day_list):
             result = []
@@ -1486,6 +1563,10 @@ def create_app() -> Flask:
         team_stats.sort(key=lambda t: (-t["covered"], t["name"]))
 
         season_game_ids = {gm.id for gm in games}
+        season_blocks = session.query(db.DayBlock).filter(
+            db.DayBlock.season_year == season_year
+        ).all()
+        season_block_ids = {block.id for block in season_blocks}
         person_stats = []
         for person in db.get_all_person_records(session):
             if person.account_status not in (db.ACCOUNT_ACTIVE, db.ACCOUNT_INACTIVE):
@@ -1493,15 +1574,21 @@ def create_app() -> Flask:
             assignments = [
                 a for a in person.assignments if a.game_id in season_game_ids
             ]
-            if not assignments:
+            block_assignments = [
+                a for a in person.block_assignments if a.block_id in season_block_ids
+            ]
+            if not assignments and not block_assignments:
                 continue
             role_counts: dict[str, int] = {}
             for a in assignments:
                 role_counts[a.role] = role_counts.get(a.role, 0) + 1
+            for a in block_assignments:
+                label = a.block.label
+                role_counts[label] = role_counts.get(label, 0) + 1
             person_stats.append({
                 "name": person.name,
                 "team_label": db.membership_label(person),
-                "jobs": len(assignments),
+                "jobs": len(assignments) + len(block_assignments),
                 "roles": sorted(role_counts.items(), key=lambda kv: (-kv[1], kv[0])),
             })
         person_stats.sort(key=lambda p: (-p["jobs"], p["name"]))
@@ -1514,6 +1601,7 @@ def create_app() -> Flask:
             missing_roles = db.missing_slots(game)
             if missing_roles:
                 gaps.append({
+                    "kind": "game",
                     "nr": game.game_nr,
                     "date": game.date,
                     "time": display_time(game.time),
@@ -1523,6 +1611,31 @@ def create_app() -> Flask:
                     "team_name": game.judge_team_name or "",
                     "missing": list(missing_roles.items()),
                 })
+
+        for block in season_blocks:
+            d = parse_date(block.date)
+            if d is None or d < today:
+                continue
+            occupied = {assignment.slot for assignment in block.assignments}
+            missing_count = sum(
+                1 for slot in range(db.BLOCK_SLOT_COUNT) if slot not in occupied
+            )
+            if missing_count:
+                calculated = db.calculated_block_time(block)
+                gaps.append({
+                    "kind": "block",
+                    "nr": "",
+                    "date": block.date,
+                    "time": calculated.strftime("%H:%M") if calculated else "Zeit offen",
+                    "teams": block.label,
+                    "ak": "Tagesdienst",
+                    "color": "#0a1d4e",
+                    "team_name": "–",
+                    "missing": [(block.label, missing_count)],
+                })
+        gaps.sort(key=lambda gap: (
+            parse_date(gap["date"]) or datetime.max.date(), gap["time"], gap["teams"]
+        ))
 
         return render_template(
             "statistik.html",
@@ -2002,6 +2115,90 @@ def create_app() -> Flask:
             return _assignment_unavailable_response(exc)
         return jsonify(ok=True)
 
+    def _block_assignment_request():
+        data = request.get_json(silent=True) or {}
+        session_db = get_session()
+        try:
+            block_id = int(data.get("block_id"))
+            slot = int(data.get("slot"))
+        except (TypeError, ValueError):
+            return data, session_db, None, None, api_error(
+                "Tagesblock nicht gefunden.", 404
+            )
+        block = session_db.get(db.DayBlock, block_id)
+        if block is None:
+            return data, session_db, None, None, api_error(
+                "Tagesblock nicht gefunden.", 404
+            )
+        if not 0 <= slot < db.BLOCK_SLOT_COUNT:
+            return data, session_db, None, None, api_error("Ungültiger Slot.")
+        block_date = parse_date(block.date)
+        if (
+            g.tier != "admin"
+            and block_date is not None
+            and block_date < common.effective_today()
+        ):
+            return data, session_db, None, None, api_error(
+                "Vergangene Tagesblöcke können nur Admins korrigieren.", 403
+            )
+        return data, session_db, block, slot, None
+
+    @app.post("/api/block-assignment/claim")
+    def api_block_assignment_claim():
+        data, session_db, block, slot, error = _block_assignment_request()
+        if error is not None:
+            return error
+        if "expected_person_id" not in data or data.get("expected_person_id") is not None:
+            return api_error("Ein freier Platz muss erwartet werden.")
+        try:
+            person_id = int(data.get("person_id", g.viewer.id))
+        except (TypeError, ValueError):
+            return api_error("Person nicht gefunden.", 404)
+        person = session_db.get(db.Person, person_id)
+        if person is None:
+            return api_error("Person nicht gefunden.", 404)
+        if g.tier != "admin" and person.id != g.viewer.id:
+            return api_error("Keine Berechtigung für diese Einteilung.", 403)
+        try:
+            db.claim_block_slot(
+                session_db, block, slot, None, person, g.viewer, g.tier
+            )
+            session_db.commit()
+        except db.SlotConflictError as exc:
+            session_db.rollback()
+            return _conflict_response(exc)
+        except db.AssignmentTemporarilyUnavailableError as exc:
+            session_db.rollback()
+            return _assignment_unavailable_response(exc)
+        except ValueError as exc:
+            session_db.rollback()
+            return api_error(str(exc))
+        return jsonify(ok=True, block_id=block.id)
+
+    @app.post("/api/block-assignment/release")
+    def api_block_assignment_release():
+        data, session_db, block, slot, error = _block_assignment_request()
+        if error is not None:
+            return error
+        try:
+            expected_id = int(data.get("expected_person_id"))
+        except (TypeError, ValueError):
+            return api_error("Die erwartete Person fehlt.")
+        if g.tier != "admin" and expected_id != g.viewer.id:
+            return api_error("Keine Berechtigung für diese Freigabe.", 403)
+        try:
+            db.release_block_slot(
+                session_db, block, slot, expected_id, g.viewer, g.tier
+            )
+            session_db.commit()
+        except db.SlotConflictError as exc:
+            session_db.rollback()
+            return _conflict_response(exc)
+        except db.AssignmentTemporarilyUnavailableError as exc:
+            session_db.rollback()
+            return _assignment_unavailable_response(exc)
+        return jsonify(ok=True, block_id=block.id)
+
     @app.post("/api/games/<int:game_id>/team")
     def api_game_team(game_id: int):
         if g.tier != "admin":
@@ -2030,9 +2227,14 @@ def create_app() -> Flask:
             return api_error("Keine Berechtigung.", 403)
         query = get_session().query(db.AssignmentAudit)
         game_id = request.args.get("game_id", type=int)
+        target = (request.args.get("target") or "").strip()
         person_id = request.args.get("person_id", type=int)
         if game_id is not None:
             query = query.filter(db.AssignmentAudit.game_id == game_id)
+        elif target.startswith("game-") and target[5:].isdigit():
+            query = query.filter(db.AssignmentAudit.game_id == int(target[5:]))
+        elif target.startswith("block-") and target[6:].isdigit():
+            query = query.filter(db.AssignmentAudit.block_id == int(target[6:]))
         if person_id is not None:
             query = query.filter(or_(
                 db.AssignmentAudit.actor_person_id == person_id,
@@ -2043,12 +2245,20 @@ def create_app() -> Flask:
         ).all()
         games = get_session().query(db.Game).all()
         games.sort(key=db.game_sort_key)
+        blocks = get_session().query(db.DayBlock).all()
+        blocks.sort(key=lambda block: (
+            parse_date(block.date) or datetime.max.date(),
+            db.BLOCK_PHASES.index(block.phase) if block.phase in db.BLOCK_PHASES else 99,
+            block.id,
+        ))
         return render_template(
             "audit.html",
             entries=entries,
             games=games,
+            blocks=blocks,
             persons=db.get_all_person_records(get_session()),
             selected_game=game_id,
+            selected_target=target or (f"game-{game_id}" if game_id is not None else ""),
             selected_person=person_id,
         )
 

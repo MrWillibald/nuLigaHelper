@@ -54,6 +54,36 @@
 </article>
 {% endmacro %}
 
+{% macro task_block_card(b) %}
+{% if b %}
+<article class="game-card task-block-card task-block-{{ b.phase }}{% if not b.time %} task-block-no-time{% endif %}"
+         {% if viewer %}id="block-{{ b.id }}" data-block-card="{{ b.id }}"{% endif %}>
+  <div class="game-info task-block-info">
+    <div class="game-time">{{ b.time or 'Zeit offen' }}{% if b.time_date %}<small>{{ b.time_date }}</small>{% endif %}</div>
+    <div class="game-teams"><span class="task-block-icon" aria-hidden="true">{% if b.phase == 'preparation' %}↗{% else %}↘{% endif %}</span><span>{{ b.label }}</span></div>
+    <div class="game-meta">Tagesdienst · 3 Plätze</div>
+  </div>
+  <div class="game-assign task-block-assign">
+    {% for s in b.slots %}
+    <label class="assign-field">
+      <span>{{ s.label }}</span>
+      {% if s.editable %}
+      <select data-block="{{ b.id }}" data-slot="{{ s.slot }}" data-block-assignment>
+        <option value="">&ndash; offen &ndash;</option>
+        {% for p in s.options if not (p.id in b.taken_person_ids and p.id != s.person_id) %}
+        <option value="{{ p.id }}" data-sort-group="{{ p.sort_group }}"
+                data-sort-name="{{ p.sort_name }}" data-sort-id="{{ p.id }}"
+                {% if p.id == s.person_id %}selected{% endif %}>{{ p.name }} · {{ p.team_label }}</option>
+        {% endfor %}
+      </select>
+      {% else %}<strong>{{ s.person_name or '– offen –' }}{% if s.person_name and viewer %} · {{ s.person_team_label }}{% endif %}</strong>{% endif %}
+    </label>
+    {% endfor %}
+  </div>
+</article>
+{% endif %}
+{% endmacro %}
+
 {% block content %}
 <section class="section">
   <div class="section-header"><div class="section-icon">📅</div><h2>Heimspielplan {{ season }}</h2></div>
@@ -106,7 +136,9 @@
     {% else %}
       <div class="day-block">
         <div class="day-title">{{ item.day }} {{ item.date }}</div>
+        {{ task_block_card(item.preparation) }}
         {% for g in item.games %}{{ game_card(g, teams, support_id) }}{% endfor %}
+        {{ task_block_card(item.cleanup) }}
       </div>
     {% endif %}
   {% endfor %}
@@ -120,7 +152,9 @@
       {% else %}
         <div class="day-block past">
           <div class="day-title">{{ item.day }} {{ item.date }}</div>
+          {{ task_block_card(item.preparation) }}
           {% for g in item.games %}{{ game_card(g, teams, support_id) }}{% endfor %}
+          {{ task_block_card(item.cleanup) }}
         </div>
       {% endif %}
     {% endfor %}

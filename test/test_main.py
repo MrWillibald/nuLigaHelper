@@ -141,6 +141,12 @@ class _FakeNotifier:
     def notify_service_early(self, _date):
         return self._call("notify_service_early")
 
+    def notify_cleanup_early(self, _date):
+        return self._call("notify_cleanup_early")
+
+    def notify_blocks_day_before(self, _date):
+        return self._call("notify_blocks_day_before")
+
     def notify_pre(self, _date):
         return self._call("notify_pre")
 
@@ -312,9 +318,11 @@ def test_successful_daily_path_orders_lock_sync_backup_and_notifications():
         "notify_new_games",
         "games:03.09.2026",
         "notify_game_day",
+        "notify_blocks_day_before",
         "notify_referees_for_date",
         "games:09.09.2026",
         "notify_service_early",
+        "notify_cleanup_early",
         "notify_pre",
         "session1:exit",
         "lock:exit",
@@ -428,8 +436,10 @@ def test_backup_failure_is_retained_while_notifications_continue():
         "notify_referee_alert",
         "notify_new_games",
         "notify_game_day",
+        "notify_blocks_day_before",
         "notify_referees_for_date",
         "notify_service_early",
+        "notify_cleanup_early",
         "notify_pre",
     ]
     output = logs.getvalue()
