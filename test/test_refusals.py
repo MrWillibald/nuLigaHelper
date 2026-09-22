@@ -13,6 +13,7 @@ _previous_db = os.environ["NULIGAHELPER_DB"]
 _db_path = os.path.join(h._TEST_DIR, f"refusal-{next(tempfile._get_candidate_names())}.db")
 os.environ["NULIGAHELPER_DB"] = _db_path
 try:
+    db.initialize_db(db.make_engine(_db_path))
     app = webapp.create_app()
 finally:
     os.environ["NULIGAHELPER_DB"] = _previous_db
@@ -24,16 +25,16 @@ with h.Session(ENGINE) as session:
     teams = [team for team in db.get_all_teams(session) if not team.is_support]
     own_team, other_team = teams[:2]
     support = db.get_support_team(session)
-    admin = db.Person(name="Admin", email="admin@x.test", team=support, is_admin=True)
-    mv = db.Person(name="MV", email="mv@x.test", team=own_team)
-    member = db.Person(name="Member", email="member@x.test", team=own_team)
-    other = db.Person(name="Other", email="private@x.test", team=other_team)
+    admin = db.Person(name="Admin", email="admin@x.test", teams=[support], is_admin=True)
+    mv = db.Person(name="MV", email="mv@x.test", teams=[own_team])
+    member = db.Person(name="Member", email="member@x.test", teams=[own_team, other_team])
+    other = db.Person(name="Other", email="private@x.test", teams=[other_team])
     pending_other = db.Person(
-        name="Pending Other", email="pending@x.test", desired_team=other_team,
+        name="Pending Other", email="pending@x.test", teams=[other_team],
         account_status=db.ACCOUNT_VERIFIED,
     )
     pending_support = db.Person(
-        name="Pending Support", email="support@x.test", desired_team=support,
+        name="Pending Support", email="support@x.test", teams=[support],
         account_status=db.ACCOUNT_VERIFIED,
     )
     session.add_all([admin, mv, member, other, pending_other, pending_support])

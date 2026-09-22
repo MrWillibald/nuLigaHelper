@@ -159,7 +159,7 @@ def test_legacy_startup_fails_closed_with_migration_instruction():
         _legacy_database(path)
         engine = db.make_engine(str(path))
         try:
-            db.init_db(engine)
+            db.verify_db(engine)
         except db.DatabaseMigrationRequiredError as exc:
             assert "migrate-game-identity" in str(exc)
         else:

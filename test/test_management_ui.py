@@ -14,6 +14,7 @@ _db_path = os.path.join(
 )
 os.environ["NULIGAHELPER_DB"] = _db_path
 try:
+    db.initialize_db(db.make_engine(_db_path))
     app = webapp.create_app()
 finally:
     os.environ["NULIGAHELPER_DB"] = _previous_db
@@ -25,27 +26,27 @@ with h.Session(ENGINE) as session:
     own_team, second_team, other_team = regular_teams[:3]
     support = db.get_support_team(session)
     admin = db.Person(
-        name="Admin Person", email="admin@management.test", team=support, is_admin=True
+        name="Admin Person", email="admin@management.test", teams=[support], is_admin=True
     )
-    mv = db.Person(name="Multi MV", email="mv@management.test", team=own_team)
-    member = db.Person(name="Visible Member", email="member@management.test", team=own_team)
-    other = db.Person(name="Other Active", email="private@management.test", team=other_team)
+    mv = db.Person(name="Multi MV", email="mv@management.test", teams=[own_team, second_team])
+    member = db.Person(name="Visible Member", email="member@management.test", teams=[own_team])
+    other = db.Person(name="Other Active", email="private@management.test", teams=[other_team])
     inactive = db.Person(
-        name="Hidden Inactive", team=other_team, account_status=db.ACCOUNT_INACTIVE
+        name="Hidden Inactive", teams=[other_team], account_status=db.ACCOUNT_INACTIVE
     )
     pending_own = db.Person(
-        name="Pending Own", desired_team=own_team, account_status=db.ACCOUNT_VERIFIED
+        name="Pending Own", teams=[own_team], account_status=db.ACCOUNT_VERIFIED
     )
     pending_second = db.Person(
-        name="Pending Second", desired_team=second_team,
+        name="Pending Second", teams=[second_team],
         account_status=db.ACCOUNT_VERIFIED,
     )
     pending_other = db.Person(
-        name="Pending Other", desired_team=other_team,
+        name="Pending Other", teams=[other_team],
         account_status=db.ACCOUNT_VERIFIED,
     )
     pending_support = db.Person(
-        name="Pending Support", desired_team=support,
+        name="Pending Support", teams=[support],
         account_status=db.ACCOUNT_VERIFIED,
     )
     session.add_all([
@@ -91,6 +92,10 @@ def test_01_member_filters_only_the_visible_roster_without_contact_leaks():
     assert client.post("/personen/add", data=h.csrf_data({
         "name": "Forbidden", "team_id": IDS["own_team"],
     }, token)).status_code == 403
+    assert client.post(
+        f"/personen/{IDS['member']}/teams",
+        data=h.csrf_data({"team_ids": [IDS["second_team"]]}, token),
+    ).status_code == 403
 
     by_name = client.get("/personen?name=other").get_data(as_text=True)
     assert "Other Active" in by_name and "Visible Member" not in by_name
@@ -99,6 +104,9 @@ def test_01_member_filters_only_the_visible_roster_without_contact_leaks():
         f"/personen?team_id={IDS['other_team']}"
     ).get_data(as_text=True)
     assert "Other Active" in by_team and "Visible Member" not in by_team
+    for team_id in (IDS["own_team"], IDS["second_team"]):
+        multi_team = client.get(f"/personen?team_id={team_id}").get_data(as_text=True)
+        assert "Multi MV" in multi_team
     forged_status = client.get(
         "/personen?name=Hidden&status=inactive"
     ).get_data(as_text=True)
@@ -109,7 +117,7 @@ def test_02_mv_can_create_contactless_people_for_every_managed_team_only():
     client, token = _client("mv")
     page = client.get("/personen").get_data(as_text=True)
     assert 'id="new-user-card"' in page
-    assert 'id="pending-registration-card"' in page
+    assert 'id="pending-registration-card"' not in page
     assert 'id="mv-assignment-card"' not in page
     assert client.get("/audit").status_code == 403
     form = page[page.index('id="new-user-card"'):page.index("</form>", page.index('id="new-user-card"'))]
@@ -132,8 +140,8 @@ def test_02_mv_can_create_contactless_people_for_every_managed_team_only():
             db.Person.name.in_(["Created Own", "Created Second"])
         ).order_by(db.Person.name).all()
         assert len(created) == 2
-        assert {person.team_id for person in created} == {
-            IDS["own_team"], IDS["second_team"],
+        assert {db.membership_team_ids(person) for person in created} == {
+            (IDS["own_team"],), (IDS["second_team"],),
         }
         assert all(
             person.account_status == db.ACCOUNT_ACTIVE
@@ -143,10 +151,48 @@ def test_02_mv_can_create_contactless_people_for_every_managed_team_only():
         assert session.query(db.Person).filter_by(name="Forged Other").first() is None
 
 
-def test_03_registration_decisions_follow_mv_and_admin_team_scope():
+def test_02b_mv_changes_only_managed_active_rosters_and_cannot_remove_self():
+    client, token = _client("mv")
+    page = client.get("/personen").get_data(as_text=True)
+    assert 'class="person-team-badge"' in page
+    assert f'id="team-dialog-{IDS["other"]}"' in page
+    assert 'data-team-dialog-open=' in page
+    added = client.post(
+        f"/personen/{IDS['other']}/teams",
+        data=h.csrf_data({
+            "team_ids": [IDS["own_team"], IDS["second_team"]],
+        }, token),
+    )
+    assert added.status_code == 302
+    with h.Session(ENGINE) as session:
+        other = session.get(db.Person, IDS["other"])
+        assert set(db.membership_team_ids(other)) == {
+            IDS["other_team"], IDS["own_team"], IDS["second_team"]
+        }
+
+    removed = client.post(
+        f"/personen/{IDS['other']}/teams",
+        data=h.csrf_data(token=token),
+    )
+    assert removed.status_code == 302
+    assert client.post(
+        f"/personen/{IDS['mv']}/teams",
+        data=h.csrf_data(token=token),
+    ).status_code == 403
+    assert client.post(
+        f"/personen/{IDS['inactive']}/teams/{IDS['own_team']}/add",
+        data=h.csrf_data(token=token),
+    ).status_code == 403
+    assert client.post(
+        f"/personen/{IDS['member']}/teams/{IDS['other_team']}/add",
+        data=h.csrf_data(token=token),
+    ).status_code == 403
+
+
+def test_03_registration_decisions_are_admin_only():
     mv_client, mv_token = _client("mv")
     page = mv_client.get("/personen").get_data(as_text=True)
-    assert "Pending Own" in page and "Pending Second" in page
+    assert "Pending Own" not in page and "Pending Second" not in page
     assert "Pending Other" not in page and "Pending Support" not in page
     assert mv_client.post(
         f"/registrierungen/{IDS['pending_other']}/approve",
@@ -159,15 +205,25 @@ def test_03_registration_decisions_follow_mv_and_admin_team_scope():
     assert mv_client.post(
         f"/registrierungen/{IDS['pending_own']}/approve",
         data=h.csrf_data(token=mv_token),
-    ).status_code == 302
+    ).status_code == 403
     assert mv_client.post(
         f"/registrierungen/{IDS['pending_second']}/reject",
         data=h.csrf_data(token=mv_token),
-    ).status_code == 302
+    ).status_code == 403
 
     admin_client, admin_token = _client("admin")
     admin_page = admin_client.get("/personen").get_data(as_text=True)
-    assert "Pending Other" in admin_page and "Pending Support" in admin_page
+    assert all(name in admin_page for name in (
+        "Pending Own", "Pending Second", "Pending Other", "Pending Support"
+    ))
+    assert admin_client.post(
+        f"/registrierungen/{IDS['pending_own']}/approve",
+        data=h.csrf_data(token=admin_token),
+    ).status_code == 302
+    assert admin_client.post(
+        f"/registrierungen/{IDS['pending_second']}/reject",
+        data=h.csrf_data(token=admin_token),
+    ).status_code == 302
     assert admin_client.post(
         f"/registrierungen/{IDS['pending_support']}/approve",
         data=h.csrf_data(token=admin_token),
@@ -185,6 +241,17 @@ def test_04_admin_has_all_management_cards_and_status_filtering():
     assert 'id="new-user-card"' in page
     assert 'id="pending-registration-card"' in page
     assert 'id="mv-assignment-card"' in page
+    assert 'id="new-user-team-dialog"' in page
+    assert 'data-new-team-badges' in page
+    assert 'data-team-picker-apply' in page
+    assert '<select id="new-team" name="team_ids"' not in page
+    assert '<select name="team_ids" multiple' not in page[
+        page.index('<div class="people-grid persons-grid">'):
+        page.index('<div class="management-divider">')
+    ]
+    assert page.count('class="person-team-badge"') >= 1
+    assert 'class="team-membership-dialog"' in page
+    assert page.count(f'value="{IDS["mv"]}"') >= 2
     inactive = client.get("/personen?status=inactive").get_data(as_text=True)
     inactive_roster = inactive[
         inactive.index('<div class="people-grid persons-grid">'):
@@ -199,11 +266,29 @@ def test_04_admin_has_all_management_cards_and_status_filtering():
     ]
     assert "Other Active" in active_roster and "Hidden Inactive" not in active_roster
     created = client.post("/personen/add", data=h.csrf_data({
-        "name": "Admin Other", "team_id": IDS["other_team"],
+        "name": "Admin Other", "team_ids": [IDS["other_team"], IDS["support"]],
     }, token))
     assert created.status_code == 302
+    assert client.post(
+        f"/personen/{IDS['member']}/teams",
+        data=h.csrf_data({
+            "team_ids": [IDS["own_team"], IDS["second_team"]],
+        }, token),
+    ).status_code == 302
     with h.Session(ENGINE) as session:
-        assert session.query(db.Person).filter_by(name="Admin Other").one().team_id == IDS["other_team"]
+        person = session.query(db.Person).filter_by(name="Admin Other").one()
+        assert set(db.membership_team_ids(person)) == {IDS["other_team"], IDS["support"]}
+        member = session.get(db.Person, IDS["member"])
+        assert set(db.membership_team_ids(member)) == {
+            IDS["own_team"], IDS["second_team"]
+        }
+
+    assert client.post(
+        f"/personen/{IDS['member']}/teams",
+        data=h.csrf_data(token=token),
+    ).status_code == 302
+    with h.Session(ENGINE) as session:
+        assert db.membership_team_ids(session.get(db.Person, IDS["member"])) == ()
 
 
 if __name__ == "__main__":

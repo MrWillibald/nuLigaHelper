@@ -60,7 +60,7 @@ def _setup(fully_assigned: bool = False):
     ed = db.get_or_create_person(session, "Ed", email="ed@x.de")
     frida = db.get_or_create_person(session, "Frida", phone="+491700000004")
     frank = db.get_or_create_person(session, "Frank", phone="+491700000002")
-    frank.team_id = team.id
+    frank.teams = [team]
     db.set_team_mv(session, team, frank)
 
     # an open task means: nobody assigned at all
@@ -181,8 +181,8 @@ def test_same_number_in_different_seasons_notifies_only_the_exact_game():
     second_helper = db.Person(name="Second Helper", email="second@x.de")
     first_team = db.get_or_create_team(session, "First Team")
     second_team = db.get_or_create_team(session, "Second Team")
-    first_mv = db.Person(name="First MV", email="first-mv@x.de", team=first_team)
-    second_mv = db.Person(name="Second MV", email="second-mv@x.de", team=second_team)
+    first_mv = db.Person(name="First MV", email="first-mv@x.de", teams=[first_team])
+    second_mv = db.Person(name="Second MV", email="second-mv@x.de", teams=[second_team])
     session.add_all([first_helper, second_helper, first_mv, second_mv])
     session.flush()
     first.team, second.team = first_team, second_team

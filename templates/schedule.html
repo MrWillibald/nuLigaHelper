@@ -33,21 +33,21 @@
         <option value="">&ndash; offen &ndash;</option>
         {% for p in s.options %}
         {% if not (p.id in g.taken_person_ids and p.id != s.person_id) %}
-        {% set playing = p.team_id == g.playing_team_id %}
-        {% set outside = g.team_id and p.team_id != g.team_id and p.team_id != support_id and not playing %}
+        {% set playing = g.playing_team_id in p.team_ids %}
+        {% set outside = g.team_id and g.team_id not in p.team_ids and support_id not in p.team_ids and not playing %}
         <option value="{{ p.id }}"
                 data-sort-group="{{ p.sort_group }}"
                 data-sort-name="{{ p.sort_name }}"
                 data-sort-id="{{ p.id }}"
                 {% if p.id == s.person_id %}selected{% endif %}
                 {% if playing %}class="option-playing" title="{{ p.name }} spielt in diesem Spiel selbst"
-                {% elif outside %}class="foreign-option" title="{{ p.name }} gehört zu {{ p.team_name or 'keinem Team im Spielplan' }}"{% endif %}>
-          {{ p.name }} · {{ p.team_name or 'ohne Team' }}{% if playing %} &bull; spielt selbst{% elif outside %} &bull; außerhalb{% endif %}
+                {% elif outside %}class="foreign-option" title="{{ p.name }} gehört zu {{ p.team_label }}"{% endif %}>
+          {{ p.name }} · {{ p.team_label }}{% if playing %} &bull; spielt selbst{% elif outside %} &bull; außerhalb{% endif %}
         </option>
         {% endif %}
         {% endfor %}
       </select>
-      {% else %}<strong>{{ s.person_name or '– offen –' }}{% if s.person_name %} · {{ s.person_team_name or 'ohne Team' }}{% endif %}</strong>{% endif %}
+      {% else %}<strong>{{ s.person_name or '– offen –' }}{% if s.person_name %} · {{ s.person_team_label }}{% endif %}</strong>{% endif %}
     </label>
     {% endfor %}
   </div>

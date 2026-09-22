@@ -178,7 +178,7 @@ def main():
     try:
         with daily_lock.daily_run_lock(resolved_db_path):
             engine = db.make_engine(resolved_db_path)
-            db.init_db(engine)
+            db.verify_db(engine)
 
             # Scraping is network I/O and therefore happens before a DB session opens.
             scraped = fetch_home_games(club_cfg["info"], season_year)

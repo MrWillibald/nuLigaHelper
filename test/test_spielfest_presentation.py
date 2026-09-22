@@ -14,6 +14,7 @@ def test_spielfest_is_one_labelled_plan_entry_without_fake_matchup():
     path = os.path.join(h._TEST_DIR, f"spf-web-{next(tempfile._get_candidate_names())}.db")
     os.environ["NULIGAHELPER_DB"] = path
     try:
+        db.initialize_db(db.make_engine(path))
         app = webapp.create_app()
     finally:
         os.environ["NULIGAHELPER_DB"] = previous

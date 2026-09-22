@@ -15,7 +15,7 @@ import contact_validation as contacts
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, DateTime, Index, Integer, String, ForeignKey, UniqueConstraint, create_engine, delete, event, select
+from sqlalchemy import Boolean, Column, DateTime, Index, Integer, String, ForeignKey, Table, UniqueConstraint, create_engine, delete, event, select
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import (
     DeclarativeBase,
@@ -179,12 +179,10 @@ ACCOUNT_STATUSES = {
 }
 
 
-def init_db(engine) -> None:
-    """Establish and verify SQLite runtime invariants, then initialize tables."""
+def _establish_sqlite_runtime(engine) -> None:
+    """Establish and verify the writable SQLite runtime profile."""
     try:
         with engine.connect() as connection:
-            # Keep initialization compatible with pre-existing callers while all
-            # application engines move through make_engine().
             _configure_sqlite_connection(connection.connection.driver_connection)
             mode = connection.exec_driver_sql("PRAGMA journal_mode=WAL").scalar_one()
             if str(mode).lower() != "wal":
@@ -208,17 +206,6 @@ def init_db(engine) -> None:
                 raise SQLiteInitializationError(
                     "SQLite startup safety checks failed: " + ", ".join(mismatches)
                 )
-            game_columns = {
-                row[1] for row in connection.exec_driver_sql(
-                    "PRAGMA table_info(games)"
-                ).fetchall()
-            }
-            if "source_key" in game_columns:
-                raise DatabaseMigrationRequiredError(
-                    "Die Datenbank verwendet die alte Spielidentität. Stoppe Webdienst "
-                    "und Tagesjob und führe 'manage_db.py migrate-game-identity "
-                    "--confirm-stopped' aus."
-                )
     except SQLiteInitializationError:
         raise
     except OperationalError as exc:
@@ -228,13 +215,13 @@ def init_db(engine) -> None:
             "stored on a local filesystem."
         ) from exc
 
-    Base.metadata.create_all(engine)
+
+
+def _validate_database(engine) -> None:
+    """Run post-initialization/runtime relational integrity checks."""
 
     try:
         with engine.connect() as connection:
-            connection.exec_driver_sql(
-                f"PRAGMA user_version={GAME_IDENTITY_SCHEMA_VERSION}"
-            )
             violations = connection.exec_driver_sql(
                 "PRAGMA foreign_key_check"
             ).fetchall()
@@ -253,6 +240,36 @@ def init_db(engine) -> None:
             + ". Repair the listed relationships or restore a valid backup."
         )
 
+
+def _engine_database_path(engine) -> str | None:
+    database = engine.url.database
+    if not database or database == ":memory:":
+        return None
+    return resolve_db_path(database)
+
+
+def initialize_db(engine) -> None:
+    """Create and stamp a new database; refuse every populated target."""
+    import schema_migrations
+
+    database_path = _engine_database_path(engine)
+    if database_path is not None:
+        state = schema_migrations.inspect_schema(database_path)
+        if state.kind != "empty":
+            raise SQLiteInitializationError(
+                f"Database initialization requires an absent or empty target; "
+                f"found schema state {state.kind!r}."
+            )
+
+    _establish_sqlite_runtime(engine)
+    Base.metadata.create_all(engine)
+    schema_migrations.stamp_head(engine)
+    with engine.begin() as connection:
+        connection.exec_driver_sql(
+            f"PRAGMA user_version={GAME_IDENTITY_SCHEMA_VERSION}"
+        )
+    _validate_database(engine)
+
     session = Session(engine)
     try:
         if get_support_team(session) is None:
@@ -261,6 +278,52 @@ def init_db(engine) -> None:
             logging.info(f"Support team '{SUPPORT_TEAM_NAME}' created")
     finally:
         session.close()
+
+    if database_path is not None:
+        state = schema_migrations.inspect_schema(database_path)
+        if state.kind != "head":
+            raise SQLiteInitializationError(
+                f"Fresh database validation expected Alembic head, found {state.kind!r}."
+            )
+
+
+def verify_db(engine) -> None:
+    """Verify an existing head database without creating or upgrading schema."""
+    import schema_migrations
+
+    database_path = _engine_database_path(engine)
+    if database_path is None:
+        raise SQLiteInitializationError(
+            "Runtime verification requires a file-backed SQLite database."
+        )
+    state = schema_migrations.inspect_schema(database_path)
+    if state.kind == "legacy_game_identity":
+        raise DatabaseMigrationRequiredError(
+            "Die Datenbank verwendet die alte Spielidentität. Stoppe Webdienst "
+            "und Tagesjob und führe 'manage_db.py migrate-game-identity "
+            "--confirm-stopped' aus."
+        )
+    if state.kind == "invalid":
+        details = "; ".join(state.details)
+        raise SQLiteInitializationError(
+            "SQLite foreign_key_check failed: " + details
+            + ". Repair the listed relationships or restore a valid backup."
+        )
+    if state.kind != "head":
+        details = "; ".join(state.details)
+        suffix = f" Details: {details}" if details else ""
+        raise SQLiteInitializationError(
+            f"Database schema is {state.kind!r}, not the required Alembic head. "
+            "Stop database users and run 'manage_db.py migrate-schema "
+            f"--confirm-stopped'.{suffix}"
+        )
+    _establish_sqlite_runtime(engine)
+    _validate_database(engine)
+
+
+# Backward-compatible name for explicit test/bootstrap callers. Runtime entry
+# points deliberately use verify_db() instead.
+init_db = initialize_db
 
 
 def get_support_team(session: Session) -> Team | None:
@@ -300,6 +363,14 @@ class Base(DeclarativeBase):
     pass
 
 
+person_teams = Table(
+    "person_teams",
+    Base.metadata,
+    Column("person_id", ForeignKey("persons.id", ondelete="CASCADE"), primary_key=True),
+    Column("team_id", ForeignKey("teams.id", ondelete="CASCADE"), primary_key=True),
+)
+
+
 class Team(Base):
     """A club team from the game plan or the general support team."""
 
@@ -313,7 +384,9 @@ class Team(Base):
     )
 
     persons: Mapped[list["Person"]] = relationship(
-        back_populates="team", foreign_keys="Person.team_id"
+        secondary=person_teams,
+        back_populates="teams",
+        order_by="Person.name, Person.id",
     )
     games: Mapped[list["Game"]] = relationship(back_populates="team")
     mv_person: Mapped["Person | None"] = relationship(foreign_keys=[mv_person_id])
@@ -331,10 +404,6 @@ class Person(Base):
     name: Mapped[str] = mapped_column(String(120))
     email: Mapped[str | None] = mapped_column(String(200), nullable=True, unique=True)
     phone: Mapped[str | None] = mapped_column(String(60), nullable=True, unique=True)
-    team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"), nullable=True)
-    desired_team_id: Mapped[int | None] = mapped_column(
-        ForeignKey("teams.id"), nullable=True
-    )
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     account_status: Mapped[str] = mapped_column(String(20), default=ACCOUNT_ACTIVE)
     registered_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -342,10 +411,11 @@ class Person(Base):
     verified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     approved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
-    team: Mapped[Team | None] = relationship(
-        back_populates="persons", foreign_keys=[team_id]
+    teams: Mapped[list[Team]] = relationship(
+        secondary=person_teams,
+        back_populates="persons",
+        order_by="Team.name, Team.id",
     )
-    desired_team: Mapped[Team | None] = relationship(foreign_keys=[desired_team_id])
     assignments: Mapped[list["Assignment"]] = relationship(back_populates="person")
 
     def __repr__(self):
@@ -688,7 +758,8 @@ def game_sort_key(game: "Game") -> tuple:
 
 
 def get_or_create_person(session: Session, name: str, email: str | None = None,
-                         phone: str | None = None) -> Person:
+                         phone: str | None = None,
+                         teams: list[Team] | tuple[Team, ...] | None = None) -> Person:
     """Seed a person by name; application identity must use ``Person.id``."""
     name = name.strip()
     person = session.scalars(select(Person).where(Person.name == name)).first()
@@ -702,6 +773,8 @@ def get_or_create_person(session: Session, name: str, email: str | None = None,
             person.email = email
         if phone is not None:
             person.phone = phone
+    if teams is not None:
+        replace_person_teams(session, person, [team.id for team in teams])
     return person
 
 
@@ -721,13 +794,90 @@ def get_all_person_records(session: Session) -> list[Person]:
     return list(session.scalars(select(Person).order_by(Person.name, Person.id)))
 
 
+def membership_teams(person: Person) -> tuple[Team, ...]:
+    """Return memberships in a stable, presentation-safe order."""
+    return tuple(sorted(person.teams, key=lambda team: (team.name.casefold(), team.id)))
+
+
+def membership_team_ids(person: Person) -> tuple[int, ...]:
+    return tuple(team.id for team in membership_teams(person))
+
+
+def membership_team_names(person: Person) -> tuple[str, ...]:
+    return tuple(team.name for team in membership_teams(person))
+
+
+def membership_label(person: Person, empty: str = "ohne Team") -> str:
+    names = membership_team_names(person)
+    return ", ".join(names) if names else empty
+
+
+def person_label(person: Person) -> str:
+    return f"{person.name} · {membership_label(person)}"
+
+
+def has_team(person: Person, team_or_id: Team | int | None) -> bool:
+    if team_or_id is None:
+        return False
+    team_id = team_or_id.id if isinstance(team_or_id, Team) else team_or_id
+    return any(team.id == team_id for team in person.teams)
+
+
+def replace_person_teams(
+    session: Session, person: Person, team_ids: list[int] | tuple[int, ...] | set[int]
+) -> None:
+    """Atomically replace memberships after validating the complete requested set."""
+    requested = set(team_ids)
+    if any(not isinstance(team_id, int) for team_id in requested):
+        raise ValueError("Ungültige Mannschaftsauswahl.")
+    teams = list(
+        session.scalars(select(Team).where(Team.id.in_(requested)).order_by(Team.name, Team.id))
+    ) if requested else []
+    if {team.id for team in teams} != requested:
+        raise ValueError("Mindestens eine ausgewählte Mannschaft existiert nicht.")
+    removed_ids = {team.id for team in person.teams} - requested
+    for team in session.scalars(
+        select(Team).where(
+            Team.mv_person_id == person.id,
+            Team.id.in_(removed_ids),
+        )
+    ) if removed_ids else ():
+        team.mv_person_id = None
+    person.teams = teams
+    session.flush()
+
+
+def change_managed_team_membership(
+    session: Session,
+    mv: Person,
+    person: Person,
+    team: Team,
+    *,
+    add: bool,
+) -> None:
+    """Change only one roster membership under an appointed MV's authority."""
+    if team.mv_person_id != mv.id or mv.account_status != ACCOUNT_ACTIVE:
+        raise ValueError("Diese Mannschaft darf nicht verwaltet werden.")
+    if person.account_status != ACCOUNT_ACTIVE:
+        raise ValueError("Nur aktive Personen können Mannschaften zugeordnet werden.")
+    if not add and person.id == mv.id and has_team(mv, team):
+        raise ValueError("Ein MV kann die eigene qualifizierende Mitgliedschaft nicht entfernen.")
+    existing = {membership.id: membership for membership in person.teams}
+    if add:
+        existing[team.id] = team
+    else:
+        existing.pop(team.id, None)
+    person.teams = sorted(existing.values(), key=lambda item: (item.name.casefold(), item.id))
+    session.flush()
+
+
 def get_team_members(session: Session, team: Team) -> list[Person]:
     """Return assignable members of one team."""
     return list(
         session.scalars(
             select(Person)
             .where(
-                Person.team_id == team.id,
+                Person.teams.any(Team.id == team.id),
                 Person.account_status == ACCOUNT_ACTIVE,
             )
             .order_by(Person.name, Person.id)
@@ -738,7 +888,7 @@ def get_team_members(session: Session, team: Team) -> list[Person]:
 def register_person(
     session: Session,
     name: str,
-    desired_team: Team,
+    teams: list[Team] | tuple[Team, ...],
     email: str | None = None,
     phone: str | None = None,
 ) -> Person:
@@ -747,16 +897,18 @@ def register_person(
     phone = contacts.normalize_phone(phone)
     if not email and not phone:
         raise ValueError("Mindestens eine Kontaktmöglichkeit ist erforderlich.")
+    if not teams:
+        raise ValueError("Bitte wähle mindestens eine Mannschaft.")
     person = Person(
         name=name.strip(),
         email=email,
         phone=phone,
-        desired_team=desired_team,
         account_status=ACCOUNT_REGISTERED,
         registered_at=datetime.now(),
     )
     session.add(person)
     session.flush()
+    replace_person_teams(session, person, [team.id for team in teams])
     return person
 
 
@@ -769,9 +921,8 @@ def verify_person(session: Session, person: Person, at: datetime | None = None) 
 
 
 def approve_person(session: Session, person: Person, at: datetime | None = None) -> None:
-    if person.account_status != ACCOUNT_VERIFIED or person.desired_team is None:
+    if person.account_status != ACCOUNT_VERIFIED or not person.teams:
         raise ValueError("Die Registrierung kann nicht freigegeben werden.")
-    person.team = person.desired_team
     person.account_status = ACCOUNT_ACTIVE
     person.approved_at = at or datetime.now()
     session.flush()
@@ -1104,7 +1255,7 @@ def set_team_mv(session: Session, team: Team, person: Person | None) -> None:
     Make *person* the single Mannschaftsverantwortlicher of *team*.
     The person must already be a member of the team; None clears the role.
     """
-    if person is not None and person.team_id != team.id:
+    if person is not None and not has_team(person, team):
         raise ValueError(f"{person.name} ist kein Mitglied von {team.name}")
     if person is not None and person.account_status != ACCOUNT_ACTIVE:
         raise ValueError(f"{person.name} ist nicht aktiv")

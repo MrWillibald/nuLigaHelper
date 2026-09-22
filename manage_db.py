@@ -25,6 +25,7 @@ import common
 import contact_validation as contacts
 import db
 import game_identity_migration
+import schema_migrations
 
 
 def get_db_path(args) -> str:
@@ -40,13 +41,33 @@ def get_db_path(args) -> str:
 
 def open_session(args):
     engine = db.make_engine(get_db_path(args))
-    db.init_db(engine)
+    db.verify_db(engine)
     return db.Session(engine), engine
 
 
 def cmd_init(args):
-    _, engine = open_session(args)
+    engine = db.make_engine(get_db_path(args))
+    db.initialize_db(engine)
     print(f"Database initialized at {engine.url}")
+
+
+def cmd_migrate_schema(args):
+    if not args.confirm_stopped:
+        raise SystemExit(
+            "Refusing migration without --confirm-stopped. Stop all web and daily "
+            "database users first."
+        )
+    path = db.resolve_db_path(get_db_path(args))
+    engine = db.make_engine(path)
+    try:
+        result = schema_migrations.migrate_to_head(path, engine)
+    except schema_migrations.SchemaMigrationError as exc:
+        raise SystemExit(f"Schema migration failed: {exc}") from exc
+    if result.backup_path is None:
+        print(f"Database already at schema head {result.revision}: {result.database_path}")
+    else:
+        print(f"Migrated database to schema head {result.revision}: {result.database_path}")
+        print(f"Backup: {result.backup_path}")
 
 
 def cmd_migrate_game_identity(args):
@@ -180,14 +201,15 @@ def cmd_add_person(args):
         raise SystemExit(exc.message) from exc
     person = db.Person(name=args.name.strip(), email=email, phone=phone)
     session.add(person)
+    session.flush()
     if team is not None:
-        person.team_id = team.id
-    elif person.team_id is None:
+        db.replace_person_teams(session, person, [team.id])
+    else:
         support = db.get_support_team(session)
         if support is not None:
-            person.team_id = support.id
+            db.replace_person_teams(session, person, [support.id])
     session.commit()
-    team_name = person.team.name if person.team else "-"
+    team_name = db.membership_label(person, "-")
     print(
         f"Person created: ID {person.id} {person.name} "
         f"(team={team_name}, email={person.email}, phone={person.phone})"
@@ -198,13 +220,13 @@ def cmd_list_teams(args):
     session, _ = open_session(args)
     for t in db.get_all_teams(session):
         suffix = " (Support)" if t.is_support else ""
-        print(f"{t.name}{suffix:<12} members={len(t.persons)} games={len(t.games)}")
+        print(f"{t.name}{suffix:<12} members={len(db.get_team_members(session, t))} games={len(t.games)}")
 
 
 def cmd_list_persons(args):
     session, _ = open_session(args)
     for p in session.query(db.Person).order_by(db.Person.name):
-        team_name = p.team.name if p.team else "-"
+        team_name = db.membership_label(p, "-")
         print(f"ID {p.id:<5} {p.name:<30} team={team_name:<20} email={p.email or '-':<35} phone={p.phone or '-'}")
 
 
@@ -245,8 +267,30 @@ def cmd_search_person(args):
         if needle in person.name.lower()
     ]
     for person in matches:
-        team_name = person.team.name if person.team else "-"
+        team_name = db.membership_label(person, "-")
         print(f"ID {person.id:<5} {person.name} ({team_name})")
+
+
+def cmd_set_memberships(args):
+    session, _ = open_session(args)
+    person = _resolve_person(session, args.person_id)
+    teams = [_resolve_team(session, name) for name in args.teams]
+    try:
+        db.replace_person_teams(session, person, [team.id for team in teams])
+        session.commit()
+    except ValueError as exc:
+        session.rollback()
+        raise SystemExit(str(exc)) from exc
+    print(
+        f"Memberships of ID {person.id} ({person.name}) set to "
+        f"{db.membership_label(person, '-')}"
+    )
+
+
+def cmd_show_memberships(args):
+    session, _ = open_session(args)
+    person = _resolve_person(session, args.person_id)
+    print(f"ID {person.id} {person.name}: {db.membership_label(person, '-')}")
 
 
 def cmd_list_games(args):
@@ -339,6 +383,17 @@ def build_parser():
     sub.add_parser("init").set_defaults(func=cmd_init)
 
     p = sub.add_parser(
+        "migrate-schema",
+        help="Back up and upgrade the stopped database to the current schema",
+    )
+    p.add_argument(
+        "--confirm-stopped",
+        action="store_true",
+        help="Confirm that all web and daily database users are stopped",
+    )
+    p.set_defaults(func=cmd_migrate_schema)
+
+    p = sub.add_parser(
         "migrate-game-identity",
         help="Back up and migrate the stopped legacy game-identity database",
     )
@@ -367,6 +422,20 @@ def build_parser():
     p.add_argument("--email")
     p.add_argument("--phone")
     p.set_defaults(func=cmd_add_person)
+
+    p = sub.add_parser(
+        "show-memberships", help="Show all team memberships for a person ID"
+    )
+    p.add_argument("person_id", type=int)
+    p.set_defaults(func=cmd_show_memberships)
+
+    p = sub.add_parser(
+        "set-memberships",
+        help="Replace all memberships for a person ID (omit teams to clear)",
+    )
+    p.add_argument("person_id", type=int)
+    p.add_argument("teams", nargs="*", help="Existing team names")
+    p.set_defaults(func=cmd_set_memberships)
 
     sub.add_parser("list-teams").set_defaults(func=cmd_list_teams)
 

@@ -30,18 +30,20 @@
                {% if errors.get('name') %}aria-invalid="true"{% endif %} required>
         {{ field_error('name', errors) }}
       </div>
-      <div class="auth-field">
-        <label for="team">Gewünschte Mannschaft</label>
-        <p class="auth-help" id="team-help">Wähle die Mannschaft, der du angehörst.</p>
-        <select id="team" name="team_id" aria-describedby="team-help{% if errors.get('team_id') %} team_id-error{% endif %}"
-                {% if errors.get('team_id') %}aria-invalid="true"{% endif %} required>
-          <option value="">Bitte wählen</option>
-          {% for team in teams %}
-          <option value="{{ team.id }}" {% if values.team_id|string == team.id|string %}selected{% endif %}>{{ team.name }}</option>
-          {% endfor %}
-        </select>
-        {{ field_error('team_id', errors) }}
-      </div>
+      <fieldset class="auth-field auth-team-field" aria-describedby="team-help{% if errors.get('team_ids') %} team_ids-error{% endif %}">
+        <legend>Mannschaften</legend>
+        <p class="auth-help" id="team-help">Wähle alle Mannschaften, denen du angehörst.</p>
+        <div class="auth-team-options">
+        {% for team in teams %}
+        <label class="auth-choice" for="team-{{ team.id }}">
+          <input id="team-{{ team.id }}" name="team_ids" type="checkbox" value="{{ team.id }}"
+                 {% if team.id|string in values.team_ids %}checked{% endif %}>
+          <span>{{ team.name }}</span>
+        </label>
+        {% endfor %}
+        </div>
+        {{ field_error('team_ids', errors) }}
+      </fieldset>
       <div class="auth-consent">
         <label for="consent">
           <input id="consent" name="consent" type="checkbox" value="yes"

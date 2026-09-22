@@ -24,6 +24,11 @@ os.environ.pop("NULIGAHELPER_TRUSTED_HOSTS", None)
 os.environ["NULIGAHELPER_DB"] = os.path.join(_TEST_DIR, "webapp.db")
 os.environ["NULIGAHELPER_SECRET"] = "test-only-secret-not-for-production"
 
+# Runtime entry points deliberately refuse to create a missing schema. The test
+# harness performs the explicit one-time initialization before importing webapp.
+import db as _db
+_db.initialize_db(_db.make_engine(os.environ["NULIGAHELPER_DB"]))
+
 SEASON = 2026
 
 
@@ -33,7 +38,7 @@ def make_engine():
 
     path = os.path.join(_TEST_DIR, f"{next(tempfile._get_candidate_names())}.db")
     engine = db.make_engine(path)
-    db.init_db(engine)
+    db.initialize_db(engine)
     return engine
 
 

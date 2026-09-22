@@ -87,6 +87,11 @@ function addPersonOption(card, currentSelect, option) {
   });
 }
 
+// Expose the small, side-effect-free option helpers for the DOM regression test.
+globalThis.nuLigaOptionTools = {
+  comparePersonOptions, insertOptionSorted, addPersonOption,
+};
+
 const prevOptions = new WeakMap();
 document.querySelectorAll("select[data-role]").forEach((select) => {
   select.addEventListener("focus", () => {
@@ -190,6 +195,72 @@ document.querySelectorAll("[data-delete-person]").forEach((button) => {
     token.type = "hidden"; token.name = "csrf_token";
     token.value = document.querySelector('meta[name="csrf-token"]').content;
     form.appendChild(token); document.body.appendChild(form); form.submit();
+  });
+});
+
+document.querySelectorAll("[data-team-dialog-open]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const dialog = document.getElementById(button.dataset.teamDialogOpen);
+    if (!dialog) return;
+    if (dialog.matches("[data-team-picker-dialog]")) {
+      dialog._checkedSnapshot = Array.from(
+        dialog.querySelectorAll("[data-team-picker-input]")
+      ).map((input) => input.checked);
+      dialog._pickerApplied = false;
+    }
+    dialog.showModal();
+  });
+});
+
+document.querySelectorAll(".team-membership-dialog").forEach((dialog) => {
+  const form = dialog.querySelector("form");
+  dialog.querySelectorAll("[data-team-dialog-close]").forEach((button) => {
+    button.addEventListener("click", () => dialog.close());
+  });
+  dialog.addEventListener("close", () => form?.reset());
+  dialog.addEventListener("click", (event) => {
+    if (event.target !== dialog) return;
+    const bounds = dialog.getBoundingClientRect();
+    const inside = event.clientX >= bounds.left && event.clientX <= bounds.right
+      && event.clientY >= bounds.top && event.clientY <= bounds.bottom;
+    if (!inside) dialog.close();
+  });
+});
+
+document.querySelectorAll("[data-team-picker-dialog]").forEach((dialog) => {
+  const inputs = Array.from(dialog.querySelectorAll("[data-team-picker-input]"));
+  const badgeContainer = document.querySelector("[data-new-team-badges]");
+
+  function renderTeamBadges() {
+    if (!badgeContainer) return;
+    badgeContainer.replaceChildren();
+    const selected = inputs.filter((input) => input.checked);
+    if (!selected.length) {
+      const empty = document.createElement("span");
+      empty.className = "new-user-team-empty";
+      empty.textContent = "Noch keine Mannschaft ausgewählt";
+      badgeContainer.appendChild(empty);
+      return;
+    }
+    selected.forEach((input) => {
+      const badge = document.createElement("span");
+      badge.className = "new-user-team-badge";
+      badge.textContent = input.dataset.teamName;
+      badgeContainer.appendChild(badge);
+    });
+  }
+
+  dialog.querySelector("[data-team-picker-apply]")?.addEventListener("click", () => {
+    dialog._pickerApplied = true;
+    renderTeamBadges();
+    dialog.close();
+  });
+  dialog.addEventListener("close", () => {
+    if (!dialog._pickerApplied && dialog._checkedSnapshot) {
+      inputs.forEach((input, index) => {
+        input.checked = dialog._checkedSnapshot[index];
+      });
+    }
   });
 });
 

@@ -19,7 +19,7 @@ def _database_path(name: str) -> str:
 def test_every_factory_connection_reports_the_runtime_profile():
     path = _database_path("runtime.db")
     first_engine = db.make_engine(path)
-    db.init_db(first_engine)
+    db.initialize_db(first_engine)
     second_engine = db.make_engine(path)
     try:
         with first_engine.connect() as first, second_engine.connect() as second:
@@ -42,7 +42,7 @@ def test_startup_rejects_a_database_that_cannot_enter_wal():
     engine = db.make_engine(":memory:")
     try:
         try:
-            db.init_db(engine)
+            db.initialize_db(engine)
         except db.SQLiteInitializationError as exc:
             message = str(exc)
             assert "WAL journal mode" in message and "memory" in message
@@ -55,7 +55,7 @@ def test_startup_rejects_a_database_that_cannot_enter_wal():
 
 def test_factory_connection_enforces_foreign_keys():
     engine = db.make_engine(_database_path("foreign-keys.db"))
-    db.init_db(engine)
+    db.initialize_db(engine)
     try:
         with engine.connect() as connection:
             transaction = connection.begin()
@@ -76,7 +76,7 @@ def test_factory_connection_enforces_foreign_keys():
 def test_startup_reports_preexisting_foreign_key_violations_actionably():
     path = _database_path("orphan.db")
     engine = db.make_engine(path)
-    db.init_db(engine)
+    db.initialize_db(engine)
     engine.dispose()
 
     raw = sqlite3.connect(path)
@@ -93,7 +93,7 @@ def test_startup_reports_preexisting_foreign_key_violations_actionably():
     checked_engine = db.make_engine(path)
     try:
         try:
-            db.init_db(checked_engine)
+            db.verify_db(checked_engine)
         except db.SQLiteInitializationError as exc:
             message = str(exc)
             assert "foreign_key_check" in message

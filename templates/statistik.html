@@ -40,7 +40,7 @@
       {% for p in person_stats %}
       <tr>
         <td class="stat-strong" data-label="Person">{{ p.name }}</td>
-        <td data-label="Mannschaft">{{ p.team_name or "–" }}</td>
+        <td data-label="Mannschaft">{{ p.team_label }}</td>
         <td class="stat-strong" data-label="Dienste">{{ p.jobs }}</td>
         <td data-label="Aufteilung"><div class="role-chips">
           {% for role, count in p.roles %}

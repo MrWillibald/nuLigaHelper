@@ -65,7 +65,7 @@ test/run_tests.sh                          # whole suite, must stay green
 
 - **Identity is `Person.id`, never the display name.** Names are mutable and may
   repeat. APIs and CLI mutation commands take internal IDs; person lists and
-  pickers show the team beside the name. `get_or_create_person()` is only a
+  pickers show every team beside the name. `get_or_create_person()` is only a
   seeding/test convenience.
 - **Access tiers are derived on every request**: guest (no session), member
   (active account), MV (active and referenced by `Team.mv_person_id`) and admin
@@ -76,6 +76,12 @@ test/run_tests.sh                          # whole suite, must stay green
 - **Teams are fully automatic**: derived from the scraped age classes (`ak`,
   e.g. "BL mD") plus exactly one seeded support team ("Supporter"). Users cannot
   create/edit/delete teams; the CLI only resolves existing ones.
+- **Membership is a set** through `person_teams`: a person may belong to zero,
+  one or several teams, with no player/staff distinction. Pending registrations
+  store their selected teams in the same association, while account status gates
+  roster use. Only admins approve/reject registrations. Admins replace complete
+  sets; an MV may add/remove active people only for a team they manage and may
+  not remove their own qualifying membership.
 - **Scraped game identity is `(season_year, game_nr)`.** Ordinary game numbers are
   canonical decimal text; nuLiga meeting links and descriptive fields never participate
   in identity. SPF rows are the sole reuse exception: the scraper collapses every date
@@ -86,9 +92,11 @@ test/run_tests.sh                          # whole suite, must stay green
 - **Games are never pre-assigned** to their own age-class team – that team is
   busy playing. The responsible team ("Verantwortlich") is chosen per game
   and may stay empty.
-- Dropdown highlighting per game: members of the *playing* team → greyed +
-  "spielt selbst" hint; members of other teams → greyed when a responsible team
-  is set; responsible/support members unmarked. Everything stays selectable;
+- Dropdown highlighting per game uses the complete membership set: membership
+  in the *playing* team → greyed + "spielt selbst" hint; otherwise people with
+  neither responsible nor Supporter membership → greyed when a responsible team
+  is set. Category precedence is playing, responsible, Supporter, other (rendered
+  in reverse suitability order: responsible, Supporter, other, playing). Everything stays selectable;
   duplicates within a role are rejected server-side.
 - **One task per person per game**: a person already assigned to any task of a
   game cannot be assigned to another task of the same game. Such persons are
@@ -110,7 +118,7 @@ test/run_tests.sh                          # whole suite, must stay green
   roles once (e.g. `ROLE_SLOT_COUNT.items()`), not `SLOT_LABELS` in `webapp.py`
   (which repeats Verkauf for the two UI dropdowns).
 - **Team MV**: each team can have exactly one Mannschaftsverantwortlicher
-  (`Team.mv_person`), who must be a member of that team; assign via web UI
+  (`Team.mv_person`), who must be an active member of that team; assign via web UI
   ("Helfer verwalten" → Mannschaften) or CLI (`manage_db.py set-mv`). The MV of
   a game's responsible team receives the MV notification only while the game
   still has open task slots (`db.missing_slots`). MV is not a per-game
@@ -136,11 +144,13 @@ test/run_tests.sh                          # whole suite, must stay green
   Both can fire for the same game in one sync.
 - Seasons run July–June (`common.season_year_for`). New scraped games whose `ak`
   != "GE" trigger one admin info-mail (tournament numbers churn weekly).
-- **No general DB migration layer by intent.** The reviewed source-key-to-game-number
-  transition is the sole current exception: legacy startup fails closed and the operator
-  runs `manage_db.py migrate-game-identity --confirm-stopped`, which preflights, backs up,
-  transactionally rebuilds `games` and verifies relationships. Do not add another
-  migration or recreate a production database without explicit owner approval.
+- **Schema revisions use Alembic and never run implicitly.** `manage_db.py init`
+  accepts only an absent/empty target; web and daily startup require the current
+  head. Operators stop all database users and run `manage_db.py migrate-schema
+  --confirm-stopped`, which fingerprints, snapshots, upgrades and verifies. A
+  legacy `games.source_key` database must first run `migrate-game-identity
+  --confirm-stopped`. Unknown/near-miss schemas fail closed; rollback restores the
+  printed snapshot rather than downgrading membership in place.
 - The newspaper-article feature lives in `Notifier.send_article` but its call
   site in `main.py` is commented out.
 

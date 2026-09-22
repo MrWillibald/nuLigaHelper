@@ -35,7 +35,7 @@ from flask import (
     url_for,
 )
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
-from sqlalchemy import or_, update
+from sqlalchemy import or_, select, update
 from sqlalchemy.exc import IntegrityError
 from werkzeug.exceptions import RequestEntityTooLarge, SecurityError
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -204,10 +204,6 @@ def display_time(time_str: str | None) -> str:
     return parts[0] if parts else ""
 
 
-def _person_team(persons: list[dict], person_id: int) -> int | None:
-    return next((p["team_id"] for p in persons if p["id"] == person_id), None)
-
-
 def _ordered_person_options(
     persons: list[dict], responsible_team_id: int | None,
     support_team_id: int | None, playing_team_id: int | None,
@@ -215,12 +211,12 @@ def _ordered_person_options(
     """Return per-game assignment options grouped by suitability."""
     options = []
     for person in persons:
-        team_id = person["team_id"]
-        if playing_team_id is not None and team_id == playing_team_id:
+        team_ids = set(person["team_ids"])
+        if playing_team_id is not None and playing_team_id in team_ids:
             sort_group = 4
-        elif responsible_team_id is not None and team_id == responsible_team_id:
+        elif responsible_team_id is not None and responsible_team_id in team_ids:
             sort_group = 1
-        elif support_team_id is not None and team_id == support_team_id:
+        elif support_team_id is not None and support_team_id in team_ids:
             sort_group = 2
         else:
             sort_group = 3
@@ -264,7 +260,7 @@ def create_app() -> Flask:
         NULIGAHELPER_PRODUCTION=production,
     )
     engine = db.make_engine(database_path)
-    db.init_db(engine)
+    db.verify_db(engine)
     serializer = URLSafeTimedSerializer(secret_key, salt="nuligahelper-auth")
     raw_abuse_config = os.environ.get("NULIGAHELPER_AUTH_ABUSE_CONFIG")
     if raw_abuse_config:
@@ -448,6 +444,8 @@ def create_app() -> Flask:
             "viewer": g.get("viewer"),
             "viewer_tier": g.get("tier", "guest"),
             "csrf_token": session["csrf_token"],
+            "membership_label": db.membership_label,
+            "person_label": db.person_label,
         }
 
     def legal_page(name):
@@ -640,7 +638,7 @@ def create_app() -> Flask:
 
     def _challenge_payload(
         nonce: str, purpose: str, channel: str, masked_destination: str,
-        contact_subject: str, person_subject: str,
+        contact_subject: str, person_subject: str, team_ids: tuple[int, ...] = (),
     ) -> str:
         return serializer.dumps({
             "nonce": nonce,
@@ -649,6 +647,7 @@ def create_app() -> Flask:
             "masked_destination": masked_destination,
             "contact_subject": contact_subject,
             "person_subject": person_subject,
+            "team_ids": list(team_ids),
         })
 
     def _decode_challenge(
@@ -668,6 +667,8 @@ def create_app() -> Flask:
             or len(payload["contact_subject"]) != 64
             or not isinstance(payload.get("person_subject"), str)
             or len(payload["person_subject"]) != 64
+            or not isinstance(payload.get("team_ids"), list)
+            or any(not isinstance(team_id, int) for team_id in payload["team_ids"])
         ):
             return None
         return payload
@@ -697,6 +698,7 @@ def create_app() -> Flask:
                 nonce, purpose, channel, contacts.mask_contact(channel, destination),
                 abuse_service.digest("contact", channel, destination),
                 abuse_service.digest("person", channel, str(person.id)),
+                db.membership_team_ids(person) if purpose == "verify" else (),
             ),
             code,
         )
@@ -731,7 +733,7 @@ def create_app() -> Flask:
     ) -> db.Person | None:
         if not code or len(code) != 6 or not code.isdigit():
             return None
-        _, record = _challenge_record(purpose, signed_challenge)
+        payload, record = _challenge_record(purpose, signed_challenge)
         now = datetime.now()
         if (
             record is None
@@ -739,6 +741,14 @@ def create_app() -> Flask:
             or record.expires_at < now
         ):
             return None
+        if purpose == "verify":
+            challenge_person = get_session().get(db.Person, record.person_id)
+            if (
+                challenge_person is None
+                or tuple(sorted(payload["team_ids"]))
+                != tuple(sorted(db.membership_team_ids(challenge_person)))
+            ):
+                return None
         person_id = record.person_id
         consumed = get_session().execute(
             update(db.AuthToken)
@@ -882,7 +892,7 @@ def create_app() -> Flask:
         payload = _decode_challenge(challenge, "verify")
         initial = {
             "name": "",
-            "team_id": "",
+            "team_ids": [],
             "consent": "",
             "channel": "email",
             "email": "",
@@ -1044,7 +1054,7 @@ def create_app() -> Flask:
         values = _auth_values()
         values.update({
             "name": (request.form.get("name") or "").strip(),
-            "team_id": (request.form.get("team_id") or "").strip(),
+            "team_ids": request.form.getlist("team_ids"),
             "consent": request.form.get("consent") or "",
         })
         errors: dict[str, str] = {}
@@ -1055,20 +1065,21 @@ def create_app() -> Flask:
                 "Die Zustimmung zur Veröffentlichung des Namens ist erforderlich."
             )
         try:
-            team_id = int(values["team_id"])
+            selected_team_ids = {int(value) for value in values["team_ids"]}
         except (TypeError, ValueError):
-            team = None
-        else:
-            team = get_session().get(db.Team, team_id)
-        if team is None:
-            errors["team_id"] = "Bitte wähle eine gültige Mannschaft."
+            selected_team_ids = set()
+        selected_teams = list(get_session().scalars(
+            select(db.Team).where(db.Team.id.in_(selected_team_ids))
+        )) if selected_team_ids else []
+        if not selected_team_ids or {team.id for team in selected_teams} != selected_team_ids:
+            errors["team_ids"] = "Bitte wähle mindestens eine gültige Mannschaft."
         email, phone, channel, destination, contact_errors = (
             _validated_registration_contacts(values)
         )
         errors.update(contact_errors)
         if errors:
             return _render_register(values=values, errors=errors)
-        assert channel is not None and destination is not None and team is not None
+        assert channel is not None and destination is not None and selected_teams
 
         email_person = _contact_person("email", email) if email else None
         phone_person = _contact_person("sms", phone) if phone else None
@@ -1091,7 +1102,7 @@ def create_app() -> Flask:
         if not conflicting_people and decision.allowed:
             try:
                 person = db.register_person(
-                    get_session(), values["name"], team, email, phone
+                    get_session(), values["name"], selected_teams, email, phone
                 )
                 get_session().commit()
             except IntegrityError:
@@ -1151,19 +1162,17 @@ def create_app() -> Flask:
         )
 
     def _notify_registration_approver(person: db.Person) -> None:
-        team = person.desired_team
-        approver = None if team is None or team.is_support else team.mv_person
-        if approver is None:
-            approver = get_session().query(db.Person).filter(
-                db.Person.is_admin.is_(True),
-                db.Person.account_status == db.ACCOUNT_ACTIVE,
-            ).order_by(db.Person.id).first()
+        approver = get_session().query(db.Person).filter(
+            db.Person.is_admin.is_(True),
+            db.Person.account_status == db.ACCOUNT_ACTIVE,
+        ).order_by(db.Person.id).first()
         if approver is not None:
+            team_label = db.membership_label(person)
             _safe_account_message(
                 approver,
                 "Neue Registrierung",
-                f"{person.name} wartet auf Freigabe für {team.name if team else '?' }.",
-                f"Neue Registrierung: {person.name} ({team.name if team else '?' }).",
+                f"{person.name} wartet auf Freigabe für {team_label}.",
+                f"Neue Registrierung: {person.name} ({team_label}).",
             )
 
     @app.route("/registrierung/status")
@@ -1177,11 +1186,7 @@ def create_app() -> Flask:
         person = get_session().get(db.Person, person_id)
         if person is None or person.account_status != db.ACCOUNT_VERIFIED:
             return api_error("Registrierung nicht gefunden.", 404)
-        allowed = g.tier == "admin" or (
-            g.tier == "mv" and person.desired_team_id in g.mv_team_ids
-            and not person.desired_team.is_support
-        )
-        if not allowed:
+        if g.tier != "admin":
             return api_error("Keine Berechtigung.", 403)
         if decision == "approve":
             db.approve_person(get_session(), person)
@@ -1198,8 +1203,9 @@ def create_app() -> Flask:
             {
                 "id": p.id,
                 "name": p.name,
-                "team_id": p.team_id,
-                "team_name": p.team.name if p.team else "",
+                "team_ids": db.membership_team_ids(p),
+                "teams": [{"id": t.id, "name": t.name} for t in db.membership_teams(p)],
+                "team_label": db.membership_label(p),
             }
             for p in db.get_all_persons(session)
         ]
@@ -1287,10 +1293,11 @@ def create_app() -> Flask:
 
                 if person_id is None:
                     status = "none"
-                elif playing_team_id and occupant.team_id == playing_team_id:
+                elif playing_team_id and db.has_team(occupant, playing_team_id):
                     status = "playing"
                 elif (responsible_team_id is not None
-                      and occupant.team_id not in (responsible_team_id, support_id)):
+                      and not db.has_team(occupant, responsible_team_id)
+                      and not db.has_team(occupant, support_id)):
                     status = "outside"
                 else:
                     status = "ok"
@@ -1305,7 +1312,7 @@ def create_app() -> Flask:
                     else None
                 )
                 mv_allowed = mv_game_team is not None and (
-                    occupant is None or occupant.team_id == mv_game_team
+                    occupant is None or db.has_team(occupant, mv_game_team)
                 )
                 editable = is_admin or (
                     not bool(d := parse_date(game.date)) or d >= today
@@ -1315,7 +1322,7 @@ def create_app() -> Flask:
                 elif editable and mv_game_team is not None:
                     options = [
                         p for p in persons
-                        if p["team_id"] == mv_game_team or p["id"] == viewer.id
+                        if mv_game_team in p["team_ids"] or p["id"] == viewer.id
                     ]
                 elif editable and viewer is not None:
                     options = [persons_by_id[viewer.id]] if viewer.id in persons_by_id else []
@@ -1330,7 +1337,7 @@ def create_app() -> Flask:
                     "slot": slot,
                     "person_id": person_id,
                     "person_name": occupant.name if occupant else "",
-                    "person_team_name": occupant.team.name if occupant and occupant.team else "",
+                    "person_team_label": db.membership_label(occupant) if occupant else "",
                     "status": status,
                     "editable": editable,
                     "options": options,
@@ -1462,7 +1469,7 @@ def create_app() -> Flask:
                 role_counts[a.role] = role_counts.get(a.role, 0) + 1
             person_stats.append({
                 "name": person.name,
-                "team_name": person.team.name if person.team else "",
+                "team_label": db.membership_label(person),
                 "jobs": len(assignments),
                 "roles": sorted(role_counts.items(), key=lambda kv: (-kv[1], kv[0])),
             })
@@ -1525,7 +1532,7 @@ def create_app() -> Flask:
         if team_filter is not None:
             visible_people = [
                 person for person in visible_people
-                if person.team_id == team_filter
+                if db.has_team(person, team_filter)
             ]
         if status_filter:
             visible_people = [
@@ -1539,26 +1546,29 @@ def create_app() -> Flask:
                 "name": p.name,
                 "email": p.email or "" if g.tier == "admin" or p.id == g.viewer.id else "",
                 "phone": p.phone or "" if g.tier == "admin" or p.id == g.viewer.id else "",
-                "team_id": p.team_id,
-                "team_name": p.team.name if p.team else "",
+                "team_ids": db.membership_team_ids(p),
+                "teams": [{"id": t.id, "name": t.name} for t in db.membership_teams(p)],
+                "team_label": db.membership_label(p),
                 "status": p.account_status,
                 "editable": g.tier == "admin" or p.id == g.viewer.id,
+                "mv_actions": [
+                    {
+                        "id": team_id,
+                        "name": next(t["name"] for t in teams if t["id"] == team_id),
+                        "member": db.has_team(p, team_id),
+                        "locked": next(
+                            t["mv_person_id"] for t in teams if t["id"] == team_id
+                        ) == p.id,
+                    }
+                    for team_id in sorted(g.mv_team_ids)
+                ] if g.tier == "mv" else [],
             }
             for p in visible_people
         ]
         pending = [
             p for p in db.get_all_person_records(session)
             if p.account_status == db.ACCOUNT_VERIFIED
-            and (
-                g.tier == "admin"
-                or (
-                    g.tier == "mv"
-                    and p.desired_team_id in g.mv_team_ids
-                    and p.desired_team is not None
-                    and not p.desired_team.is_support
-                )
-            )
-        ]
+        ] if g.tier == "admin" else []
         creation_teams = teams if g.tier == "admin" else [
             team for team in teams if team["id"] in g.mv_team_ids
         ]
@@ -1580,6 +1590,12 @@ def create_app() -> Flask:
         team = session.get(db.Team, int(raw))
         return team.id if team else None
 
+    def _form_team_ids() -> list[int]:
+        raw_values = request.form.getlist("team_ids")
+        if any(not value.isdigit() for value in raw_values):
+            raise ValueError("Ungültige Mannschaftsauswahl.")
+        return [int(value) for value in raw_values]
+
     @app.post("/personen/add")
     def add_person():
         if g.tier not in {"admin", "mv"}:
@@ -1589,15 +1605,23 @@ def create_app() -> Flask:
             flash("Bitte einen Namen angeben.", "error")
             return redirect(url_for("persons"))
         session = get_session()
-        try:
-            team_id = _form_team_id(session)
-        except (TypeError, ValueError):
-            team_id = None
-        if team_id is None:
-            flash("Bitte eine gültige Mannschaft auswählen.", "error")
-            return redirect(url_for("persons"))
-        if g.tier == "mv" and team_id not in g.mv_team_ids:
-            return api_error("Keine Berechtigung.", 403)
+        if g.tier == "mv":
+            try:
+                team_id = _form_team_id(session)
+            except (TypeError, ValueError):
+                team_id = None
+            if team_id is None:
+                flash("Bitte eine gültige Mannschaft auswählen.", "error")
+                return redirect(url_for("persons"))
+            if team_id not in g.mv_team_ids:
+                return api_error("Keine Berechtigung.", 403)
+            team_ids = [team_id]
+        else:
+            try:
+                team_ids = _form_team_ids()
+            except ValueError as exc:
+                flash(str(exc), "error")
+                return redirect(url_for("persons"))
         email, phone, errors = _normalized_person_contacts()
         if errors:
             flash(next(iter(errors.values())), "error")
@@ -1611,13 +1635,16 @@ def create_app() -> Flask:
                 "error",
             )
             return redirect(url_for("persons"))
-        person = db.Person(name=name, email=email, phone=phone, team_id=team_id)
+        person = db.Person(name=name, email=email, phone=phone)
         session.add(person)
         try:
+            session.flush()
+            db.replace_person_teams(session, person, team_ids)
             session.commit()
-        except IntegrityError:
+        except (IntegrityError, ValueError) as exc:
             session.rollback()
             flash(
+                str(exc) if isinstance(exc, ValueError) else
                 "E-Mail-Adresse oder Telefonnummer wird bereits verwendet.",
                 "error",
             )
@@ -1649,14 +1676,10 @@ def create_app() -> Flask:
                 "error",
             )
             return redirect(url_for("persons"))
-        team_id = _form_team_id(session) if g.tier == "admin" else None
-
         if name:
             person.name = name
         person.email = email
         person.phone = phone
-        if team_id is not None:
-            person.team_id = team_id
         try:
             session.commit()
         except IntegrityError:
@@ -1673,6 +1696,64 @@ def create_app() -> Flask:
             )
         else:
             flash(f"Daten von '{person.name}' gespeichert.", "ok")
+        return redirect(url_for("persons"))
+
+    @app.post("/personen/<int:person_id>/teams")
+    def edit_person_teams(person_id: int):
+        if g.tier not in {"admin", "mv"}:
+            return api_error("Keine Berechtigung.", 403)
+        session = get_session()
+        person = session.get(db.Person, person_id)
+        if person is None:
+            return api_error("Person nicht gefunden.", 404)
+        try:
+            selected_ids = set(_form_team_ids())
+        except ValueError as exc:
+            flash(str(exc), "error")
+            return redirect(url_for("persons"))
+
+        try:
+            if g.tier == "admin":
+                db.replace_person_teams(session, person, selected_ids)
+            else:
+                if not selected_ids.issubset(g.mv_team_ids):
+                    return api_error("Keine Berechtigung.", 403)
+                managed_teams = list(session.scalars(
+                    select(db.Team).where(db.Team.id.in_(g.mv_team_ids))
+                ))
+                if {team.id for team in managed_teams} != g.mv_team_ids:
+                    return api_error("Mannschaft nicht gefunden.", 404)
+                for team in managed_teams:
+                    should_be_member = team.id in selected_ids
+                    if db.has_team(person, team) != should_be_member:
+                        db.change_managed_team_membership(
+                            session, g.viewer, person, team, add=should_be_member
+                        )
+            session.commit()
+        except ValueError as exc:
+            session.rollback()
+            return api_error(str(exc), 403)
+        flash(f"Mannschaften von '{person.name}' gespeichert.", "ok")
+        return redirect(url_for("persons"))
+
+    @app.post("/personen/<int:person_id>/teams/<int:team_id>/<action>")
+    def change_roster_membership(person_id: int, team_id: int, action: str):
+        if g.tier != "mv" or action not in {"add", "remove"}:
+            return api_error("Keine Berechtigung.", 403)
+        session = get_session()
+        person = session.get(db.Person, person_id)
+        team = session.get(db.Team, team_id)
+        if person is None or team is None:
+            return api_error("Person oder Mannschaft nicht gefunden.", 404)
+        try:
+            db.change_managed_team_membership(
+                session, g.viewer, person, team, add=action == "add"
+            )
+            session.commit()
+        except ValueError as exc:
+            session.rollback()
+            return api_error(str(exc), 403)
+        flash(f"Mannschaftszuordnung von '{person.name}' wurde geändert.", "ok")
         return redirect(url_for("persons"))
 
     @app.post("/personen/<int:person_id>/delete")
@@ -1780,7 +1861,7 @@ def create_app() -> Flask:
             return True
         return (
             game.team_id in g.mv_team_ids
-            and person.team_id == game.team_id
+            and db.has_team(person, game.team_id)
             and g.tier == "mv"
         )
 
@@ -1788,13 +1869,11 @@ def create_app() -> Flask:
         playing_team = get_session().query(db.Team).filter(
             db.Team.name == (game.ak or "")
         ).first()
-        if playing_team is not None and person.team_id == playing_team.id:
+        if playing_team is not None and db.has_team(person, playing_team.id):
             return "Person spielt selbst in diesem Spiel."
         support = db.get_support_team(get_session())
-        if game.team_id and person.team_id not in (
-            game.team_id,
-            support.id if support else None,
-        ):
+        if (game.team_id and not db.has_team(person, game.team_id)
+                and not db.has_team(person, support.id if support else None)):
             return "Person gehört nicht zum verantwortlichen Team."
         return None
 

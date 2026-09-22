@@ -28,6 +28,7 @@ def _production_app(*, load_config=None):
     if load_config is not None:
         common.load_config = load_config
     try:
+        db.initialize_db(db.make_engine(path))
         app = webapp.create_app()
     finally:
         common.load_config = original_loader
@@ -148,9 +149,11 @@ def test_local_mode_retains_http_and_does_not_enable_production_implicitly():
         AssertionError("an explicit synthetic test database must avoid config.json")
     )
     try:
+        local_path = os.path.join(h._TEST_DIR, f"local-runtime-{next(tempfile._get_candidate_names())}.db")
+        db.initialize_db(db.make_engine(local_path))
         app = _with_environment({
             "NULIGAHELPER_SECRET": "synthetic-local-secret",
-            "NULIGAHELPER_DB": os.path.join(h._TEST_DIR, "local-runtime.db"),
+            "NULIGAHELPER_DB": local_path,
         }, webapp.create_app)
     finally:
         common.load_config = original_loader

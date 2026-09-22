@@ -15,6 +15,7 @@ _previous_db = os.environ["NULIGAHELPER_DB"]
 _db_path = os.path.join(h._TEST_DIR, f"schedule-{next(tempfile._get_candidate_names())}.db")
 os.environ["NULIGAHELPER_DB"] = _db_path
 try:
+    db.initialize_db(db.make_engine(_db_path))
     app = webapp.create_app()
 finally:
     os.environ["NULIGAHELPER_DB"] = _previous_db
@@ -30,9 +31,9 @@ with h.Session(ENGINE) as session:
     db.sync_games(session, games, h.SEASON)
     playing = session.query(db.Team).filter_by(name="BL mD").one()
     support = db.get_support_team(session)
-    first = db.Person(name="Alex Test", team=playing, email="first@example.test")
-    second = db.Person(name="Alex Test", team=support, email="second@example.test")
-    unassigned = db.Person(name="Private Roster", team=support,
+    first = db.Person(name="Alex Test", teams=[playing], email="first@example.test")
+    second = db.Person(name="Alex Test", teams=[support], email="second@example.test")
+    unassigned = db.Person(name="Private Roster", teams=[support],
                            email="private@example.test")
     session.add_all([first, second, unassigned])
     session.flush()

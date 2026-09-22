@@ -24,7 +24,7 @@ _TEST_DIR = tempfile.mkdtemp(prefix="nuligahelper-db-test-")
 def _make_engine():
     path = os.path.join(_TEST_DIR, uuid.uuid4().hex + ".db")
     engine = db.make_engine(path)
-    db.init_db(engine)
+    db.initialize_db(engine)
     return engine
 
 
@@ -51,10 +51,16 @@ def test_bootstrap_creates_only_support_team():
         assert teams[0].name == "Supporter" and teams[0].is_support
 
 
-def test_init_db_is_idempotent():
+def test_runtime_verification_is_idempotent_but_init_refuses_populated_database():
     engine = _make_engine()
-    db.init_db(engine)
-    db.init_db(engine)
+    db.verify_db(engine)
+    db.verify_db(engine)
+    try:
+        db.initialize_db(engine)
+    except db.SQLiteInitializationError as exc:
+        assert "absent or empty" in str(exc)
+    else:
+        raise AssertionError("explicit initialization must refuse a populated database")
     with h.Session(engine) as session:
         assert session.query(db.Team).count() == 1
 
@@ -294,7 +300,7 @@ def test_registration_state_reaches_active_roster_membership():
         person = db.register_person(
             session,
             "Alex",
-            team,
+            [team],
             email=" ALEX@Example.Test ",
             phone="+49 170 1234567",
         )
@@ -305,7 +311,7 @@ def test_registration_state_reaches_active_roster_membership():
         assert person.account_status == db.ACCOUNT_VERIFIED and person.verified_at
         db.approve_person(session, person, datetime(2026, 8, 2, 12, 0))
         assert person.account_status == db.ACCOUNT_ACTIVE
-        assert person.team_id == team.id and person.approved_at
+        assert db.membership_team_ids(person) == (team.id,) and person.approved_at
 
 
 def test_slot_claim_release_conflicts_and_audit_survives_person_deletion():
@@ -339,12 +345,12 @@ def test_roster_queries_exclude_unapproved_and_inactive_people():
     engine = _make_engine()
     with h.Session(engine) as session:
         team = db.get_or_create_team(session, "BL mD")
-        active = db.Person(name="Active", team=team)
+        active = db.Person(name="Active", teams=[team])
         pending = db.Person(
-            name="Pending", desired_team=team, account_status=db.ACCOUNT_VERIFIED
+            name="Pending", teams=[team], account_status=db.ACCOUNT_VERIFIED
         )
         inactive = db.Person(
-            name="Inactive", team=team, account_status=db.ACCOUNT_INACTIVE
+            name="Inactive", teams=[team], account_status=db.ACCOUNT_INACTIVE
         )
         session.add_all([active, pending, inactive])
         session.commit()
@@ -362,7 +368,7 @@ def test_deactivation_keeps_past_and_audits_future_release():
     engine = _make_engine()
     with h.Session(engine) as session:
         team = db.get_or_create_team(session, "BL mD")
-        person = db.Person(name="Alex", team=team)
+        person = db.Person(name="Alex", teams=[team])
         actor = db.Person(name="Admin", is_admin=True)
         past = db.Game(
             season_year=h.SEASON, game_nr="9001",

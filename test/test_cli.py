@@ -57,8 +57,8 @@ def test_duplicate_names_are_discovered_and_selected_by_id():
     db.init_db(engine)
     with h.Session(engine) as session:
         team = db.get_support_team(session)
-        first = db.Person(name="Same Name", team=team)
-        second = db.Person(name="Same Name", team=team)
+        first = db.Person(name="Same Name", teams=[team])
+        second = db.Person(name="Same Name", teams=[team])
         first_game = db.Game(
             season_year=h.SEASON, game_nr="1234",
             date="30.12.2099", time="10:00", ak="GE", home="Home", guest="Team A",
@@ -146,6 +146,41 @@ def test_contact_preflight_reports_issues_without_writing():
             for person in session.query(db.Person).order_by(db.Person.id)
         ]
     assert after == before, "preflight must never canonicalize or mutate records"
+
+
+def test_membership_commands_use_person_ids_replace_sets_and_clear_mv():
+    path = os.path.join(h._TEST_DIR, f"cli-{next(tempfile._get_candidate_names())}.db")
+    engine = db.make_engine(path)
+    db.initialize_db(engine)
+    with h.Session(engine) as session:
+        first_team = db.Team(name="First Team")
+        second_team = db.Team(name="Second Team")
+        target = db.Person(name="Duplicate", teams=[first_team])
+        untouched = db.Person(name="Duplicate", teams=[second_team])
+        session.add_all([first_team, second_team, target, untouched])
+        session.flush()
+        first_team.mv_person_id = target.id
+        session.commit()
+        target_id, untouched_id = target.id, untouched.id
+
+    output = _run(path, "set-memberships", target_id, "Second Team", "First Team", "Second Team")
+    assert "First Team, Second Team" in output
+    shown = _run(path, "show-memberships", target_id)
+    assert f"ID {target_id}" in shown and "First Team, Second Team" in shown
+    _run(path, "set-memberships", target_id, "Second Team")
+    with h.Session(engine) as session:
+        target = session.get(db.Person, target_id)
+        untouched = session.get(db.Person, untouched_id)
+        assert db.membership_team_names(target) == ("Second Team",)
+        assert db.membership_team_names(untouched) == ("Second Team",)
+        assert session.query(db.Team).filter_by(name="First Team").one().mv_person_id is None
+
+    error = _expect_system_exit(
+        lambda: _run(path, "set-memberships", target_id, "Missing Team")
+    )
+    assert "Unknown team" in str(error)
+    with h.Session(engine) as session:
+        assert db.membership_team_names(session.get(db.Person, target_id)) == ("Second Team",)
 
 
 def test_restore_snapshot_parser_refuses_without_stopped_confirmation():

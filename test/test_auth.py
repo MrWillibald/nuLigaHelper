@@ -20,6 +20,7 @@ def _new_app():
     previous = os.environ["NULIGAHELPER_DB"]
     os.environ["NULIGAHELPER_DB"] = path
     try:
+        db.initialize_db(db.make_engine(path))
         app = webapp.create_app()
     finally:
         os.environ["NULIGAHELPER_DB"] = previous
@@ -362,16 +363,19 @@ def test_login_validation_canonical_lookup_and_rate_limits():
         _restore_messages(originals)
 
 
-def test_registration_code_replacement_verification_and_mv_approval():
+def test_registration_code_replacement_verification_and_admin_approval():
     app, engine = _new_app()
     with h.Session(engine) as session:
         team = db.get_or_create_team(session, "BL mD")
-        mv = db.Person(name="MV", email="mv@example.test", team=team)
-        session.add(mv)
+        second_team = db.get_or_create_team(session, "BL mC")
+        support = db.get_support_team(session)
+        mv = db.Person(name="MV", email="mv@example.test", teams=[team])
+        admin = db.Person(name="Admin", email="admin-approval@example.test", teams=[support], is_admin=True)
+        session.add_all([mv, admin])
         session.flush()
         team.mv_person_id = mv.id
         session.commit()
-        team_id, mv_id = team.id, mv.id
+        team_id, second_team_id, mv_id, admin_id = team.id, second_team.id, mv.id, admin.id
     messages, originals = _capture_messages()
     try:
         client = app.test_client()
@@ -379,7 +383,7 @@ def test_registration_code_replacement_verification_and_mv_approval():
         base = {
             "action": "request_code",
             "name": "New Helper",
-            "team_id": team_id,
+            "team_ids": [team_id, second_team_id, team_id],
             "channel": "email",
             "email": " New.Helper@Example.Test ",
             "consent": "yes",
@@ -400,6 +404,7 @@ def test_registration_code_replacement_verification_and_mv_approval():
             assert len(people) == 1
             person_id = people[0].id
             assert people[0].name == "New Helper"
+            assert set(db.membership_team_ids(people[0])) == {team_id, second_team_id}
 
         assert client.post("/registrieren", data={
             "action": "confirm_code",
@@ -421,10 +426,28 @@ def test_registration_code_replacement_verification_and_mv_approval():
             assert person not in db.get_all_persons(session)
         assert any(
             message["channel"] == "fallback"
-            and message["person_id"] == mv_id
+            and message["person_id"] == admin_id
+            and "BL mD" in message["body"]
+            and "BL mC" in message["body"]
             for message in messages
         )
-        assert client.get("/personen").location.endswith("/registrierung/status")
+        mv_client = app.test_client()
+        mv_csrf = h.sign_in(mv_client, mv_id)
+        assert mv_client.post(
+            f"/registrierungen/{person_id}/approve",
+            data=h.csrf_data(token=mv_csrf),
+        ).status_code == 403
+        admin_client = app.test_client()
+        admin_csrf = h.sign_in(admin_client, admin_id)
+        assert admin_client.post(
+            f"/registrierungen/{person_id}/approve",
+            data=h.csrf_data(token=admin_csrf),
+        ).status_code == 302
+        with h.Session(engine) as session:
+            approved = session.get(db.Person, person_id)
+            assert approved.account_status == db.ACCOUNT_ACTIVE
+            assert set(db.membership_team_ids(approved)) == {team_id, second_team_id}
+        assert client.get("/personen").status_code == 200
     finally:
         _restore_messages(originals)
 
@@ -433,7 +456,7 @@ def test_registration_rejects_invalid_or_unconsented_writes_and_duplicate_accoun
     app, engine = _new_app()
     with h.Session(engine) as session:
         team = db.get_or_create_team(session, "BL mD")
-        existing = db.Person(name="Existing", email="existing@example.test", team=team)
+        existing = db.Person(name="Existing", email="existing@example.test", teams=[team])
         session.add(existing)
         session.commit()
         team_id, existing_id = team.id, existing.id
@@ -444,7 +467,7 @@ def test_registration_rejects_invalid_or_unconsented_writes_and_duplicate_accoun
         common_data = {
             "action": "request_code",
             "name": "New",
-            "team_id": team_id,
+            "team_ids": [team_id],
             "channel": "email",
             "csrf_token": csrf,
         }
@@ -454,12 +477,20 @@ def test_registration_rejects_invalid_or_unconsented_writes_and_duplicate_accoun
         invalid = client.post("/registrieren", data={
             **common_data, "email": "invalid", "consent": "yes"
         })
+        no_team = client.post("/registrieren", data={
+            **common_data, "team_ids": [], "email": "new@example.test", "consent": "yes"
+        })
+        unknown_team = client.post("/registrieren", data={
+            **common_data, "team_ids": [999999], "email": "new@example.test", "consent": "yes"
+        })
         assert "Zustimmung" in missing.get_data(as_text=True)
         assert re.search(
             r'id="consent"[^>]*aria-invalid="true"',
             missing.get_data(as_text=True),
         )
         assert "gültige E-Mail-Adresse" in invalid.get_data(as_text=True)
+        assert "mindestens eine gültige Mannschaft" in no_team.get_data(as_text=True)
+        assert "mindestens eine gültige Mannschaft" in unknown_team.get_data(as_text=True)
         with h.Session(engine) as session:
             assert session.query(db.Person).count() == 1
 
@@ -489,7 +520,7 @@ def test_registration_validates_and_stores_every_supplied_contact():
         csrf = _csrf(client, "/registrieren")
         base = {
             "action": "request_code",
-            "team_id": team_id,
+            "team_ids": [team_id],
             "consent": "yes",
             "country_code": "+49",
             "csrf_token": csrf,
@@ -574,10 +605,10 @@ def test_registration_contact_conflicts_are_atomic_and_generic():
     with h.Session(engine) as session:
         team = db.get_or_create_team(session, "BL mD")
         email_owner = db.Person(
-            name="Mail Owner", email="owner@example.test", team=team
+            name="Mail Owner", email="owner@example.test", teams=[team]
         )
         phone_owner = db.Person(
-            name="Phone Owner", phone="+491701234567", team=team
+            name="Phone Owner", phone="+491701234567", teams=[team]
         )
         session.add_all([email_owner, phone_owner])
         session.commit()
@@ -590,7 +621,7 @@ def test_registration_contact_conflicts_are_atomic_and_generic():
         base = {
             "action": "request_code",
             "name": "Must Not Exist",
-            "team_id": team_id,
+            "team_ids": [team_id],
             "consent": "yes",
             "country_code": "+49",
             "csrf_token": csrf,
@@ -668,7 +699,7 @@ def test_legacy_code_urls_redirect_and_old_email_links_still_consume():
         login_person = db.Person(name="Legacy Login", email="legacy@example.test")
         team = db.get_or_create_team(session, "BL mD")
         verify_person = db.register_person(
-            session, "Legacy Register", team, email="register@example.test"
+            session, "Legacy Register", [team], email="register@example.test"
         )
         session.add_all([login_person, verify_person])
         session.flush()
@@ -745,8 +776,11 @@ def test_auth_markup_is_labelled_ordered_and_works_without_javascript():
         assert "auth-button-primary" in page
         assert 'name="code"' in page and "one-time-code" in page
     assert login.index("CODE ANFORDERN") < login.index("ANMELDEN")
-    assert register.index('id="name"') < register.index('id="team"')
-    assert register.index('id="team"') < register.index('id="consent"')
+    assert register.index('id="name"') < register.index('name="team_ids"')
+    assert '<fieldset class="auth-field auth-team-field"' in register
+    assert '<div class="auth-team-options">' in register
+    assert 'class="auth-choice"' in register
+    assert register.index('name="team_ids"') < register.index('id="consent"')
     assert register.index('id="consent"') < register.index('id="email"')
     assert register.index("CODE ANFORDERN") < register.index(
         "REGISTRIERUNG ABSCHLIESSEN"
@@ -770,8 +804,10 @@ def test_auth_progressive_enhancement_and_responsive_css_contract():
         css = source.read()
     assert ".auth-card{width:min(100%,620px)" in css
     assert ".auth-radio:has(input:disabled)" in css
+    assert ".auth-team-field{min-width:0;border:0;padding:0}" in css
+    assert ".auth-choice:has(input:checked)" in css
     assert "@media(max-width:700px)" in css
-    assert ".auth-radio-group,.auth-phone-group{grid-template-columns:1fr}" in css
+    assert ".auth-radio-group,.auth-phone-group,.auth-team-options{grid-template-columns:1fr}" in css
 
 
 def test_person_contact_writes_validate_atomically_and_use_canonical_uniqueness():
@@ -781,13 +817,13 @@ def test_person_contact_writes_validate_atomically_and_use_canonical_uniqueness(
         admin = db.Person(
             name="Admin",
             email="admin@example.test",
-            team=support,
+            teams=[support],
             is_admin=True,
         )
         member = db.Person(
             name="Member",
             email="member@example.test",
-            team=support,
+            teams=[support],
         )
         session.add_all([admin, member])
         session.commit()
@@ -797,7 +833,7 @@ def test_person_contact_writes_validate_atomically_and_use_canonical_uniqueness(
     csrf = h.sign_in(admin_client, admin_id)
     invalid = admin_client.post(f"/personen/{member_id}/edit", data={
         "name": "Changed",
-        "team_id": support_id,
+        "team_ids": [support_id],
         "email": "invalid",
         "phone": "",
         "csrf_token": csrf,
@@ -810,14 +846,14 @@ def test_person_contact_writes_validate_atomically_and_use_canonical_uniqueness(
 
     admin_client.post("/personen/add", data={
         "name": "Canonical",
-        "team_id": support_id,
+        "team_ids": [support_id],
         "email": " Canonical@Example.Test ",
         "phone": "",
         "csrf_token": csrf,
     })
     admin_client.post("/personen/add", data={
         "name": "Duplicate",
-        "team_id": support_id,
+        "team_ids": [support_id],
         "email": "canonical@example.test",
         "phone": "",
         "csrf_token": csrf,

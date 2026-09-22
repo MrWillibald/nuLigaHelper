@@ -15,6 +15,7 @@ _previous_db = os.environ["NULIGAHELPER_DB"]
 _db_path = os.path.join(h._TEST_DIR, f"web-{next(tempfile._get_candidate_names())}.db")
 os.environ["NULIGAHELPER_DB"] = _db_path
 try:
+    db.initialize_db(db.make_engine(_db_path))
     app = webapp.create_app()
 finally:
     os.environ["NULIGAHELPER_DB"] = _previous_db
@@ -43,11 +44,11 @@ with h.Session(ENGINE) as session:
     ).first()
     support = db.get_support_team(session)
     admin = db.Person(
-        name="Admin Test", email="admin@example.test", team=support, is_admin=True
+        name="Admin Test", email="admin@example.test", teams=[support], is_admin=True
     )
-    alice = db.Person(name="Alex Test", email="alex@example.test", team=playing)
-    duplicate = db.Person(name="Alex Test", phone="+491700000002", team=responsible)
-    outsider = db.Person(name="Outside Test", team=unrelated)
+    alice = db.Person(name="Alex Test", email="alex@example.test", teams=[playing, support])
+    duplicate = db.Person(name="Alex Test", phone="+491700000002", teams=[responsible])
+    outsider = db.Person(name="Outside Test", teams=[unrelated])
     session.add_all([admin, alice, duplicate, outsider])
     session.commit()
     game = session.query(db.Game).filter_by(game_nr="1001").one()
@@ -72,13 +73,13 @@ def _form(url, body=None, **kwargs):
 
 def test_00_person_options_are_grouped_and_sorted_deterministically():
     persons = [
-        {"id": 9, "name": "Zulu", "team_id": 1},
-        {"id": 5, "name": "alpha", "team_id": 1},
-        {"id": 3, "name": "alpha", "team_id": 1},
-        {"id": 4, "name": "Beta", "team_id": 2},
-        {"id": 7, "name": "Aaron", "team_id": 3},
-        {"id": 8, "name": "Nobody", "team_id": None},
-        {"id": 6, "name": "Charlie", "team_id": 4},
+        {"id": 9, "name": "Zulu", "team_ids": (1,)},
+        {"id": 5, "name": "alpha", "team_ids": (1,)},
+        {"id": 3, "name": "alpha", "team_ids": (1,)},
+        {"id": 4, "name": "Beta", "team_ids": (2,)},
+        {"id": 7, "name": "Aaron", "team_ids": (3,)},
+        {"id": 8, "name": "Nobody", "team_ids": ()},
+        {"id": 6, "name": "Charlie", "team_ids": (4,)},
     ]
     ordered = webapp._ordered_person_options(persons, 1, 2, 4)
     assert [(person["sort_group"], person["id"]) for person in ordered] == [
@@ -92,8 +93,24 @@ def test_00_person_options_are_grouped_and_sorted_deterministically():
     overlap = webapp._ordered_person_options(persons, 1, 1, 1)
     assert all(
         person["sort_group"] == 4
-        for person in overlap if person["team_id"] == 1
+        for person in overlap if 1 in person["team_ids"]
     ), "playing-team membership must take precedence over other categories"
+
+
+def test_00b_membership_category_precedence_covers_every_overlap():
+    persons = [
+        {"id": 5, "name": "Same", "team_ids": (10, 20)},
+        {"id": 4, "name": "Same", "team_ids": (10, 30)},
+        {"id": 3, "name": "Other", "team_ids": (20, 30)},
+        {"id": 2, "name": "Support", "team_ids": (30, 40)},
+        {"id": 1, "name": "None", "team_ids": ()},
+    ]
+    ordered = webapp._ordered_person_options(persons, 10, 30, 20)
+    assert [(person["id"], person["sort_group"]) for person in ordered] == [
+        (4, 1), (2, 2), (1, 3), (3, 4), (5, 4),
+    ]
+    without_responsible = webapp._ordered_person_options(persons, None, 30, None)
+    assert all(person["sort_group"] != 1 for person in without_responsible)
 
 
 def test_01_admin_sign_in_exposes_controls_without_contacts_on_schedule():
@@ -149,6 +166,7 @@ def test_02_task_dropdown_groups_all_four_categories_and_keeps_hints():
     assert "außerhalb" in options[2].text_content()
     assert "option-playing" in options[3].get("class", "")
     assert "spielt selbst" in options[3].text_content()
+    assert "BL mD, Supporter" in options[3].text_content()
 
 
 def test_03_existing_rules_and_advisory_warning_remain():
@@ -216,7 +234,7 @@ def test_03_sparse_sale_slot_keeps_its_stored_position():
 
 def test_04_person_crud_uses_internal_identity():
     response = _form("/personen/add", {
-        "name": "Alex Test", "team_id": SUPPORT_ID, "email": "third@example.test"
+        "name": "Alex Test", "team_ids": [SUPPORT_ID], "email": "third@example.test"
     }, follow_redirects=True)
     assert response.status_code == 200
     with h.Session(ENGINE) as session:
@@ -225,7 +243,7 @@ def test_04_person_crud_uses_internal_identity():
         created = next(person for person in matches if person.email == "third@example.test")
         created_id = created.id
     _form(f"/personen/{created_id}/edit", {
-        "name": "Renamed Test", "team_id": SUPPORT_ID, "phone": "+491701234568"
+        "name": "Renamed Test", "team_ids": [SUPPORT_ID], "phone": "+491701234568"
     })
     with h.Session(ENGINE) as session:
         person = session.get(db.Person, created_id)
@@ -241,6 +259,7 @@ def test_05_team_mv_and_statistics_are_available_to_admin():
     assert statistics.status_code == 200
     statistics_page = statistics.get_data(as_text=True)
     assert "Offene Dienste" in statistics_page
+    assert "BL mD, Supporter" in statistics_page
     assert 'class="data-table responsive-table stat-table' in statistics_page
     assert 'data-label="Person"' in statistics_page
 

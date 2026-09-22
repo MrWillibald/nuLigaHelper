@@ -196,9 +196,9 @@ def _fake_job(
         state["engine_path"] = path
         return "synthetic-engine"
 
-    def init_db(_engine):
+    def verify_db(_engine):
         assert state["lock_active"], "database initialization happened before the lock"
-        state["order"].append("init_db")
+        state["order"].append("verify_db")
 
     def scrape(_info, _season_year):
         assert state["lock_active"], "scraping happened before the lock"
@@ -259,7 +259,7 @@ def _fake_job(
         ),
         patch.object(main.common, "effective_today", return_value=TODAY),
         patch.object(main.db, "make_engine", side_effect=make_engine),
-        patch.object(main.db, "init_db", side_effect=init_db),
+        patch.object(main.db, "verify_db", side_effect=verify_db),
         patch.object(main, "fetch_home_games", side_effect=scrape),
         patch.object(main.db, "Session", side_effect=session_factory),
         patch.object(main.db, "sync_games", side_effect=sync_games),
@@ -298,7 +298,7 @@ def test_successful_daily_path_orders_lock_sync_backup_and_notifications():
     assert state["order"] == [
         "lock:enter",
         "make_engine",
-        "init_db",
+        "verify_db",
         "scrape",
         "session0:enter",
         "sync",

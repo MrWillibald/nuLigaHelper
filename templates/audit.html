@@ -23,7 +23,7 @@
       <select id="audit-person" name="person_id">
         <option value="">Alle Personen</option>
         {% for person in persons %}
-        <option value="{{ person.id }}" {% if selected_person == person.id %}selected{% endif %}>{{ person.name }} · {{ person.team.name if person.team else 'ohne Team' }}</option>
+        <option value="{{ person.id }}" {% if selected_person == person.id %}selected{% endif %}>{{ person_label(person) }}</option>
         {% endfor %}
       </select>
     </div>

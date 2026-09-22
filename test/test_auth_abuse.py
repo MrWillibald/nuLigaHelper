@@ -75,18 +75,24 @@ def test_policy_defaults_overrides_and_validation():
             raise AssertionError(f"invalid configuration was accepted: {value}")
 
 
-def test_additive_table_initialization_and_opaque_domain_separated_subjects():
+def test_initialization_refuses_unknown_schema_and_subjects_are_domain_separated():
     path = os.path.join(h._TEST_DIR, f"existing-{next(tempfile._get_candidate_names())}.db")
     engine = db.make_engine(path)
     with engine.begin() as connection:
         connection.exec_driver_sql("CREATE TABLE legacy_data (id INTEGER PRIMARY KEY)")
         connection.exec_driver_sql("INSERT INTO legacy_data VALUES (1)")
-    db.init_db(engine)
+    try:
+        db.initialize_db(engine)
+    except db.SQLiteInitializationError as exc:
+        assert "unknown_unversioned" in str(exc)
+    else:
+        raise AssertionError("unknown populated schema must not be extended")
     names = set(inspect(engine).get_table_names())
-    assert {"legacy_data", "auth_abuse_counters"} <= names
+    assert names == {"legacy_data"}
     with engine.connect() as connection:
         assert connection.exec_driver_sql("SELECT COUNT(*) FROM legacy_data").scalar_one() == 1
-    service = auth_abuse.Service(engine, auth_abuse.load_config(), "test-secret")
+    clean_path, clean_engine = _database()
+    service = auth_abuse.Service(clean_engine, auth_abuse.load_config(), "test-secret")
     values = {
         service.digest("client", "any", "2001:0db8::1"),
         service.digest("contact", "email", "sentinel@example.test"),
@@ -99,7 +105,7 @@ def test_additive_table_initialization_and_opaque_domain_separated_subjects():
         auth_abuse.Rule("login_client", "2001:db8::1"),
         auth_abuse.Rule("login_contact_email", "sentinel@example.test"),
     ])
-    with engine.connect() as connection:
+    with clean_engine.connect() as connection:
         dump = " ".join(str(value) for row in connection.execute(
             select(db.AuthAbuseCounter.__table__)
         ) for value in row)
@@ -283,9 +289,9 @@ def test_sms_global_cap_is_shared_with_registration_email_is_independent_and_log
         team = db.get_support_team(session)
         people = [
             db.Person(name="Sentinel One", email="one@example.test", phone="+4915111111111",
-                      team=team, account_status=db.ACCOUNT_ACTIVE),
+                      teams=[team], account_status=db.ACCOUNT_ACTIVE),
             db.Person(name="Sentinel Two", email="two@example.test", phone="+4915222222222",
-                      team=team, account_status=db.ACCOUNT_ACTIVE),
+                      teams=[team], account_status=db.ACCOUNT_ACTIVE),
         ]
         session.add_all(people)
         session.commit()
@@ -309,7 +315,7 @@ def test_sms_global_cap_is_shared_with_registration_email_is_independent_and_log
         }, environ_overrides={"REMOTE_ADDR": "198.51.100.77"})
         registration = client.post("/registrieren", data={
             "csrf_token": _csrf(client, "/registrieren"), "action": "request_code",
-            "name": "Sentinel Two", "team_id": str(team_id), "consent": "yes",
+            "name": "Sentinel Two", "team_ids": str(team_id), "consent": "yes",
             "channel": "sms", "country_code": "+49", "phone": "15222222222",
         }, environ_overrides={"REMOTE_ADDR": "198.51.100.77"})
         email = client.post("/login", data={
