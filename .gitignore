@@ -2,4 +2,16 @@
 **config.json
 **/.vscode/**
 **/__pycache__/**
+**/.agents/**
+**/.claude/**
+**/.codex/**
+**/.opencode/**
 **.code-workspace
+**.db
+**.daily.lock
+venv/**
+**.nuligahelper_secret
+
+# Private host deployment, approvals, and operator evidence.
+/deploy/**
+**DATENSCHUTZ-ARBEITSBLATT.md

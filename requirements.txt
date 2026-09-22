@@ -1,0 +1,10 @@
+requests
+lxml
+pandas
+SQLAlchemy>=2.0
+Alembic==1.20.0
+dropbox
+twilio
+Flask>=3.1,<4
+email-validator==2.3.0
+phonenumbers==9.0.38

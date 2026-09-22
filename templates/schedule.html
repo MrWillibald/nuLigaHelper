@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% block title %}Heimspielplan{% endblock %}
+
+{% macro game_card(g, teams, support_id) %}
+<article class="game-card"{% if viewer %} id="game-{{ g.id }}" data-support="{{ support_id }}"{% endif %}>
+  <div class="game-info">
+    <div class="game-time">{{ g.time }}</div>
+    <div class="game-teams">
+      <span class="hex" style="background:{{ g.color }}"></span>
+      <span>{% if g.spielfest %}Spielfest {{ g.ak }}{% else %}{{ g.home }} &ndash; {{ g.guest }}{% endif %}</span>
+    </div>
+    <div class="game-meta">{{ g.ak }} &middot; Halle {{ g.hall }} &middot; Nr. {{ g.nr }}</div>
+  </div>
+  <div class="game-assign">
+    <label class="assign-field assign-jteam">
+      <span>Verantwortlich</span>
+      {% if viewer_tier == 'admin' %}
+      <select class="team-select" data-game="{{ g.id }}">
+        <option value="">&ndash; offen &ndash;</option>
+        {% for t in teams %}
+        <option value="{{ t.id }}" {% if t.id == g.team_id %}selected{% endif %}>
+          {{ t.name }}{% if t.is_support %} (Support){% endif %}
+        </option>
+        {% endfor %}
+      </select>
+      {% else %}<strong>{{ teams | selectattr('id', 'equalto', g.team_id) | map(attribute='name') | first | default('– offen –', true) }}</strong>{% endif %}
+    </label>
+    {% for s in g.slots %}
+    <label class="assign-field">
+      <span>{{ s.label }}</span>
+      {% if s.editable %}<select data-game="{{ g.id }}" data-role="{{ s.role }}" data-slot="{{ s.slot }}"
+              {% if s.status in ("playing", "outside") %}class="select-warn"{% endif %}>
+        <option value="">&ndash; offen &ndash;</option>
+        {% for p in s.options %}
+        {% if not (p.id in g.taken_person_ids and p.id != s.person_id) %}
+        {% set playing = g.playing_team_id in p.team_ids %}
+        {% set outside = g.team_id and g.team_id not in p.team_ids and support_id not in p.team_ids and not playing %}
+        <option value="{{ p.id }}"
+                data-sort-group="{{ p.sort_group }}"
+                data-sort-name="{{ p.sort_name }}"
+                data-sort-id="{{ p.id }}"
+                {% if p.id == s.person_id %}selected{% endif %}
+                {% if playing %}class="option-playing" title="{{ p.name }} spielt in diesem Spiel selbst"
+                {% elif outside %}class="foreign-option" title="{{ p.name }} gehört zu {{ p.team_label }}"{% endif %}>
+          {{ p.name }} · {{ p.team_label }}{% if playing %} &bull; spielt selbst{% elif outside %} &bull; außerhalb{% endif %}
+        </option>
+        {% endif %}
+        {% endfor %}
+      </select>
+      {% else %}<strong>{{ s.person_name or '– offen –' }}{% if s.person_name %} · {{ s.person_team_label }}{% endif %}</strong>{% endif %}
+    </label>
+    {% endfor %}
+  </div>
+</article>
+{% endmacro %}
+
+{% macro task_block_card(b) %}
+{% if b %}
+<article class="game-card task-block-card task-block-{{ b.phase }}{% if not b.time %} task-block-no-time{% endif %}"
+         {% if viewer %}id="block-{{ b.id }}" data-block-card="{{ b.id }}"{% endif %}>
+  <div class="game-info task-block-info">
+    <div class="game-time">{{ b.time or 'Zeit offen' }}{% if b.time_date %}<small>{{ b.time_date }}</small>{% endif %}</div>
+    <div class="game-teams"><span class="task-block-icon" aria-hidden="true">{% if b.phase == 'preparation' %}↗{% else %}↘{% endif %}</span><span>{{ b.label }}</span></div>
+    <div class="game-meta">Tagesdienst · 3 Plätze</div>
+  </div>
+  <div class="game-assign task-block-assign">
+    {% for s in b.slots %}
+    <label class="assign-field">
+      <span>{{ s.label }}</span>
+      {% if s.editable %}
+      <select data-block="{{ b.id }}" data-slot="{{ s.slot }}" data-block-assignment>
+        <option value="">&ndash; offen &ndash;</option>
+        {% for p in s.options if not (p.id in b.taken_person_ids and p.id != s.person_id) %}
+        <option value="{{ p.id }}" data-sort-group="{{ p.sort_group }}"
+                data-sort-name="{{ p.sort_name }}" data-sort-id="{{ p.id }}"
+                {% if p.id == s.person_id %}selected{% endif %}>{{ p.name }} · {{ p.team_label }}</option>
+        {% endfor %}
+      </select>
+      {% else %}<strong>{{ s.person_name or '– offen –' }}{% if s.person_name and viewer %} · {{ s.person_team_label }}{% endif %}</strong>{% endif %}
+    </label>
+    {% endfor %}
+  </div>
+</article>
+{% endif %}
+{% endmacro %}
+
+{% block content %}
+<section class="section">
+  <div class="section-header"><div class="section-icon">📅</div><h2>Heimspielplan {{ season }}</h2></div>
+  <p class="hint">
+    Alle Heimspiele des TuS Raubling mit den eingeteilten Helferinnen und Helfern.
+    {% if viewer %}Freigegebene Dienste können direkt eingetragen oder freigegeben werden.
+    Helfer anderer Mannschaften sowie die Spieler des eigenen Spiels werden mit Hinweis markiert.{% else %}
+    Melde dich an, um freie Dienste zu übernehmen.{% endif %}
+    Kontaktdaten werden hier bewusst nicht angezeigt.
+  </p>
+
+  <form class="schedule-filter-card" method="get" action="{{ url_for('schedule') }}" aria-label="Spielplan filtern">
+    <div class="filter-field">
+      <label for="playing-team-filter">Spielende Mannschaft</label>
+      <select id="playing-team-filter" name="playing_team">
+        <option value="">Alle Mannschaften</option>
+        {% for t in teams if not t.is_support %}
+        <option value="team-{{ t.id }}" {% if filters.playing_team == 'team-' ~ t.id %}selected{% endif %}>{{ t.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="filter-field">
+      <label for="responsible-team-filter">Verantwortliche Mannschaft</label>
+      <select id="responsible-team-filter" name="responsible_team">
+        <option value="">Alle Mannschaften</option>
+        {% for t in teams %}
+        <option value="team-{{ t.id }}" {% if filters.responsible_team == 'team-' ~ t.id %}selected{% endif %}>{{ t.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="filter-field">
+      <label for="person-filter">Eingeteilte Person</label>
+      <input id="person-filter" name="person" type="search" value="{{ filters.person }}" placeholder="Name suchen">
+    </div>
+    <div class="filter-actions">
+      <button class="btn btn-primary" type="submit">Filtern</button>
+      <a class="btn btn-secondary" href="{{ url_for('schedule') }}">Filter löschen</a>
+    </div>
+  </form>
+
+  {% if not total_games %}
+  <p class="hint">Noch keine Spiele vorhanden. Führe zuerst <code>main.py</code> aus, um den Spielplan zu laden.</p>
+  {% elif not upcoming and not past %}
+  <p class="schedule-empty">Keine Spiele für diese Filter gefunden. <a href="{{ url_for('schedule') }}">Filter löschen</a></p>
+  {% endif %}
+
+  {% for item in upcoming %}
+    {% if item.type == "month" %}
+      <h3 class="month-title">{{ item.label }}</h3>
+    {% else %}
+      <div class="day-block">
+        <div class="day-title">{{ item.day }} {{ item.date }}</div>
+        {{ task_block_card(item.preparation) }}
+        {% for g in item.games %}{{ game_card(g, teams, support_id) }}{% endfor %}
+        {{ task_block_card(item.cleanup) }}
+      </div>
+    {% endif %}
+  {% endfor %}
+
+  {% if past %}
+  <details class="past-details">
+    <summary>Vergangene Spieltage anzeigen ({{ past | selectattr("type", "equalto", "day") | list | length }})</summary>
+    {% for item in past %}
+      {% if item.type == "month" %}
+        <h3 class="month-title">{{ item.label }}</h3>
+      {% else %}
+        <div class="day-block past">
+          <div class="day-title">{{ item.day }} {{ item.date }}</div>
+          {{ task_block_card(item.preparation) }}
+          {% for g in item.games %}{{ game_card(g, teams, support_id) }}{% endfor %}
+          {{ task_block_card(item.cleanup) }}
+        </div>
+      {% endif %}
+    {% endfor %}
+  </details>
+  {% endif %}
+</section>
+{% endblock %}
