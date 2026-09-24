@@ -1,6 +1,7 @@
 """Offline checks for operator-selected, non-activating release preparation."""
 
 import importlib.util
+import json
 from pathlib import Path
 import subprocess
 import sys
@@ -32,6 +33,7 @@ def synthetic_source(root):
     (source / 'requirements-production.txt').write_text('')
     (source / 'requirements-test.txt').write_text('')
     (source / 'release-assets/gunicorn.conf.py').write_text('bind = "127.0.0.1:8080"\n')
+    (source / 'release-assets/recovery_check.py').write_text('"""Synthetic helper."""\n')
     (source / 'test/run_tests.sh').write_text('#!/bin/bash\nexit 0\n')
     git('add', '.', cwd=source)
     git('commit', '-m', 'Synthetic master release', cwd=source)
@@ -190,6 +192,51 @@ def test_host_lock_serializes_and_current_link_refuses_external_target():
 
 def test_versioned_units_pass_preparation_syntax_check():
     deploy.verify_unit_syntax(Path(h.PROJECT_DIR))
+
+
+def test_failed_tool_output_does_not_leak_secret_canary():
+    canary = 'synthetic-contact-and-secret-canary'
+    try:
+        deploy.run(sys.executable, '-c',
+                   f'import sys; print({canary!r}, file=sys.stderr); sys.exit(7)')
+    except deploy.DeployError as error:
+        assert canary not in str(error)
+        assert 'exit 7' in str(error)
+    else:
+        raise AssertionError('failed command reported success')
+
+
+def test_atomic_current_switch_never_exposes_an_incomplete_candidate():
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        source, _ = synthetic_source(root)
+        config = configuration(root, source)
+        app_root = Path(config['app_root'])
+        current = app_root / 'current'
+        prior = current.resolve()
+        commit = 'b' * 40
+        candidate = app_root / 'releases' / commit
+        candidate.mkdir(parents=True)
+        try:
+            deploy.switch_current(app_root, commit)
+        except deploy.DeployError:
+            pass
+        else:
+            raise AssertionError('unprepared release switched into current')
+        assert current.resolve() == prior
+        (candidate / '.prepared.json').write_text(json.dumps({
+            'schema_version': 1, 'commit': commit, 'tree': 'a' * 40}))
+        with patch.object(deploy.os, 'replace', side_effect=OSError('synthetic')):
+            try:
+                deploy.switch_current(app_root, commit)
+            except OSError:
+                pass
+            else:
+                raise AssertionError('failed atomic replace reported success')
+        assert current.resolve() == prior
+        assert not list(app_root.glob('.current-next-*'))
+        assert deploy.switch_current(app_root, commit) == (str(prior), str(candidate))
+        assert current.resolve() == candidate
 
 
 if __name__ == '__main__':

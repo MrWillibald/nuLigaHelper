@@ -73,5 +73,32 @@ def test_unit_syntax_with_synthetic_executable_paths():
     assert '09:00:00 Europe/Berlin' in timer and 'Persistent=true' in timer
 
 
+def test_permission_preflight_accepts_internal_release_and_rejects_unsafe_links():
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory) / 'app'
+        release = root / 'releases' / ('a' * 40)
+        release.mkdir(parents=True)
+        (release / 'webapp.py').write_text('synthetic release\n')
+        for folder in (root, root / 'releases', release):
+            folder.chmod(0o750)
+        (release / 'webapp.py').chmod(0o640)
+        current = root / 'current'
+        current.symlink_to(release)
+        owner, group = os.getuid(), os.getgid()
+        assert not operations.tree_permission_errors(root, owner, group), \
+            'the existing preflight should accept an internal read-only release'
+        release.chmod(0o770)
+        assert 'app_mode' in operations.tree_permission_errors(root, owner, group)
+        release.chmod(0o750)
+        current.unlink()
+        current.symlink_to(Path(directory) / 'outside')
+        assert 'symlink' in operations.tree_permission_errors(root, owner, group)
+        current.unlink()
+        outside = Path(directory) / 'outside'
+        outside.mkdir()
+        current.symlink_to(outside)
+        assert 'symlink' in operations.tree_permission_errors(root, owner, group)
+
+
 if __name__ == '__main__':
     h.run_all(globals())

@@ -24,6 +24,9 @@ def test_versioned_deployment_assets_are_complete_and_placeholder_only():
                     'errorlog = "-"', 'limit_request_line'):
         assert setting in gunicorn
 
+    assert (ASSETS / 'nuligahelper-deploy.py').is_file()
+    assert (ASSETS / 'recovery_check.py').is_file()
+
     environment = (ASSETS / 'nuligahelper.env.example').read_text()
     for key in ('NULIGAHELPER_ENV=production', 'NULIGAHELPER_SECRET=REPLACE_',
                 'NULIGAHELPER_DB=/var/lib/nuligahelper/',

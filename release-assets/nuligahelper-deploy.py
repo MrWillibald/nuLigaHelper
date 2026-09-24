@@ -24,6 +24,7 @@ import sys
 import tarfile
 import tempfile
 from datetime import datetime, timezone
+from uuid import uuid4
 
 
 SHA = re.compile(r"[0-9a-f]{40}\Z")
@@ -198,6 +199,51 @@ def prior_release(app_root: Path) -> str | None:
     return str(target)
 
 
+def prepared_candidate(app_root: Path, commit: str) -> Path:
+    """Return only a complete, unsymlinked candidate with a matching marker."""
+    if not SHA.fullmatch(commit):
+        raise DeployError("candidate commit must be a full SHA")
+    candidate = app_root / "releases" / commit
+    if candidate.is_symlink() or not candidate.is_dir():
+        raise DeployError("candidate release is unavailable")
+    marker = candidate / ".prepared.json"
+    if marker.is_symlink():
+        raise DeployError("candidate preparation marker is invalid")
+    try:
+        record = json.loads(marker.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise DeployError("candidate preparation marker is unavailable") from exc
+    tree = record.get("tree") if isinstance(record, dict) else None
+    if not isinstance(tree, str) or record.get("schema_version") != 1 or \
+            record.get("commit") != commit or not SHA.fullmatch(tree):
+        raise DeployError("candidate preparation marker does not match the release")
+    return candidate
+
+
+def switch_current(app_root: Path, commit: str) -> tuple[str, str]:
+    """Atomically replace an internal link; caller must first pass cutover gates.
+
+    This is intentionally not exposed as a CLI action until writer quiescence,
+    snapshot, schema, and ingress gates are implemented and rehearsed.
+    """
+    candidate = prepared_candidate(app_root, commit)
+    previous = prior_release(app_root)
+    if previous is None or previous == str(candidate):
+        raise DeployError("current release is missing or already selected")
+    temporary = app_root / (".current-next-" + uuid4().hex)
+    try:
+        os.symlink(candidate, temporary)
+        os.replace(temporary, app_root / "current")
+        directory_fd = os.open(app_root, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+    finally:
+        temporary.unlink(missing_ok=True)
+    return previous, str(candidate)
+
+
 def normalize_permissions(stage: Path, group_name: str) -> None:
     gid = grp.getgrnam(group_name).gr_gid
     for root, dirs, files in os.walk(stage, followlinks=False):
@@ -272,7 +318,8 @@ def prepare(config: dict[str, object], requested: str | None = None) -> dict[str
         export_commit(cache, commit, destination)
         if not (destination / "requirements-production.txt").is_file() or \
                 not (destination / "requirements-test.txt").is_file() or \
-                not (destination / "release-assets/gunicorn.conf.py").is_file():
+                not (destination / "release-assets/gunicorn.conf.py").is_file() or \
+                not (destination / "release-assets/recovery_check.py").is_file():
             raise DeployError("selected commit lacks required release assets")
         env = safe_environment()
         run(str(config["python"]), "-m", "venv", str(destination / "venv"), env=env)

@@ -17,6 +17,11 @@ OpenSpec change are complete. Its root-only configuration template is
 be root-owned mode 0600 and must not enter Git. The Git source cache is outside
 the service-readable application tree.
 
+`recovery_check.py` provides the candidate-runtime SQLite snapshot and
+read-only schema classification primitives for the future activation step. It
+does not quiesce writers, close ingress, or authorize a migration. Running it
+alone is not a safe cutover procedure.
+
 The files in `systemd/` and `nuligahelper-watchdog.cron` are installation
 templates. Install reviewed copies as root, verify them with
 `systemd-analyze verify`, and run `systemctl daemon-reload` before starting a

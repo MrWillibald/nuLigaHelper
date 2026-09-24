@@ -121,23 +121,8 @@ def permissions(config):
         expected.append((str(secret), 0, group.gr_gid, 0o640))
     for folder, owner, gid in [(config['app_dir'], 0, group.gr_gid),
                                (config['state_dir'], user.pw_uid, group.gr_gid)]:
-        for root, dirs, files in os.walk(folder, followlinks=False):
-            for name in dirs + files:
-                path = Path(root) / name
-                # Venv interpreter symlinks are legitimate only into root-owned OS paths.
-                if path.is_symlink():
-                    target = path.resolve()
-                    if folder == config['state_dir'] or not str(target).startswith(('/usr/', config['app_dir'] + '/')):
-                        errors.append('symlink')
-                    continue
-                info = path.stat()
-                if info.st_uid != owner or info.st_gid != gid:
-                    errors.append('tree_owner')
-                mode = stat.S_IMODE(info.st_mode)
-                if folder == config['state_dir'] and mode != (0o700 if path.is_dir() else 0o600):
-                    errors.append('state_mode')
-                if folder == config['app_dir'] and mode & 0o027:
-                    errors.append('app_mode')
+        errors.extend(tree_permission_errors(Path(folder), owner, gid,
+                                             state=folder == config['state_dir']))
     for filename, uid, gid, mode in expected:
         path = Path(filename)
         try:
@@ -153,6 +138,35 @@ def permissions(config):
         except OSError:
             errors.append('path_unavailable:' + str(path))
     return sorted(set(errors))
+
+
+def tree_permission_errors(folder: Path, owner: int, gid: int, *, state: bool = False):
+    """Inspect descendants, including release links, without following links."""
+    errors = []
+    for root, dirs, files in os.walk(folder, followlinks=False):
+        for name in dirs + files:
+            path = Path(root) / name
+            if path.is_symlink():
+                try:
+                    target = path.resolve(strict=True)
+                except (OSError, RuntimeError):
+                    errors.append('symlink')
+                    continue
+                # Venv interpreter links may resolve into the root-owned OS
+                # installation; release links must remain inside app root.
+                if state or not (target.is_relative_to('/usr') or
+                                 target.is_relative_to(folder)):
+                    errors.append('symlink')
+                continue
+            info = path.stat()
+            if info.st_uid != owner or info.st_gid != gid:
+                errors.append('tree_owner')
+            mode = stat.S_IMODE(info.st_mode)
+            if state and mode != (0o700 if path.is_dir() else 0o600):
+                errors.append('state_mode')
+            if not state and mode & 0o027:
+                errors.append('app_mode')
+    return errors
 
 
 def send_alert(config, components, *, smtp=smtplib.SMTP_SSL):
