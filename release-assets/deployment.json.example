@@ -1,5 +1,5 @@
 {
-  "source": "git@github.com:OWNER/REPOSITORY.git",
+  "source": "https://github.com/MrWillibald/nuLigaHelper.git",
   "app_root": "/opt/nuligahelper",
   "source_cache": "/var/cache/nuligahelper-deploy/source.git",
   "service_group": "nuligahelper",

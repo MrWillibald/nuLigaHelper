@@ -92,18 +92,29 @@ def schema_gate(database: Path) -> dict[str, str]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("snapshot", "schema"))
+    parser.add_argument("action", choices=("snapshot", "schema", "validate"))
     parser.add_argument("--database", type=Path, required=True)
     parser.add_argument("--destination", type=Path)
     args = parser.parse_args()
-    if args.action == "snapshot" and os.geteuid() != 0:
-        parser.error("durable deployment snapshots must run as root")
+    if args.action in {"snapshot", "validate"} and os.geteuid() != 0:
+        parser.error("deployment snapshot actions must run as root")
     try:
         if args.action == "snapshot":
             if args.destination is None:
                 parser.error("snapshot requires --destination")
             path = durable_snapshot(args.database, args.destination)
             print(json.dumps({"snapshot": str(path), "validated": True}, sort_keys=True))
+        elif args.action == "validate":
+            if args.destination is None:
+                parser.error("validate requires --destination")
+            _private_directory(args.destination.parent)
+            info = args.destination.stat()
+            if args.destination.is_symlink() or info.st_uid != 0 or \
+                    stat.S_IMODE(info.st_mode) != 0o600:
+                raise RecoveryCheckError("snapshot ownership or mode is invalid")
+            backup.validate_snapshot(args.destination)
+            print(json.dumps({"snapshot": str(args.destination), "validated": True},
+                             sort_keys=True))
         else:
             if args.destination is not None:
                 parser.error("schema does not accept --destination")

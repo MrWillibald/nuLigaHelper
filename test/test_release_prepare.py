@@ -8,6 +8,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import helpers as h
@@ -195,8 +196,69 @@ def test_host_lock_serializes_and_current_link_refuses_external_target():
             raise AssertionError('external current target accepted')
 
 
+def test_host_lock_refuses_a_symlink_or_non_private_file():
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        other = root / 'other'
+        other.write_text('untouched')
+        link = root / 'lock'
+        link.symlink_to(other)
+        try:
+            deploy.exclusive_lock(link)
+        except OSError:
+            pass
+        else:
+            raise AssertionError('symlink lock was followed')
+        assert other.read_text() == 'untouched'
+        link.unlink()
+        link.write_text('')
+        link.chmod(0o644)
+        try:
+            deploy.exclusive_lock(link)
+        except deploy.DeployError as error:
+            assert 'not private' in str(error)
+        else:
+            raise AssertionError('non-private lock file accepted')
+
+
+def test_snapshot_headroom_refuses_before_entering_maintenance():
+    with tempfile.TemporaryDirectory() as directory:
+        config, commit = _maintenance_fixture(Path(directory))
+        controller = SyntheticController()
+        with patch.object(deploy, 'check_headroom'), \
+                patch.object(deploy, 'private_recovery_directory'), \
+                patch.object(deploy.shutil, 'disk_usage',
+                             return_value=SimpleNamespace(free=1)):
+            try:
+                deploy.enter_maintenance(config, commit, controller)
+            except deploy.DeployError as error:
+                assert 'snapshot' in str(error)
+            else:
+                raise AssertionError('insufficient snapshot headroom accepted')
+        assert not controller.events
+
+
 def test_versioned_units_pass_preparation_syntax_check():
     deploy.verify_unit_syntax(Path(h.PROJECT_DIR))
+
+
+def test_every_reviewed_unit_uses_only_current_and_one_environment_file():
+    units = Path(h.PROJECT_DIR) / 'release-assets/systemd'
+    for name in deploy.SERVICE_UNITS:
+        content = (units / name).read_text()
+        deploy.unit_paths_safe(content, name)
+    web = (units / 'nuligahelper-web.service').read_text()
+    for unsafe in (web.replace('/current/', '/ea0ab00/', 1),
+                   web.replace('release-assets/gunicorn.conf.py',
+                               'deploy/gunicorn.conf.py'),
+                   web.replace('EnvironmentFile=/etc/nuligahelper/web.env',
+                               'EnvironmentFile=/etc/nuligahelper/other.env')):
+        try:
+            deploy.unit_paths_safe(unsafe, 'nuligahelper-web.service')
+        except deploy.DeployError:
+            pass
+        else:
+            raise AssertionError('mixed or legacy installed unit paths accepted')
 
 
 def test_failed_tool_output_does_not_leak_secret_canary():
@@ -261,7 +323,7 @@ def test_read_only_plan_contains_no_configuration_or_contact_canary():
                     'gate': 'ready', 'revision': '0003_game_day_task_blocks'}):
             plan = deploy.inspect_plan(config, commit)
         serialized = json.dumps(plan)
-        assert plan['activation_available'] is False
+        assert plan['activation_available'] is True
         assert plan['selected_commit'] == commit
         assert 'synthetic-contact-and-secret-canary' not in serialized
         assert 'public_health_url' not in serialized
@@ -370,7 +432,11 @@ class SyntheticController:
 
     def systemctl(self, *arguments):
         self.events.append(arguments)
-        self.active[arguments[-1]] = 'inactive'
+        self.active[arguments[-1]] = 'active' if arguments[0] == 'start' or \
+            arguments[:2] == ('enable', '--now') else 'inactive'
+
+    def loopback_listener(self):
+        return True
 
     def database_handles(self, database):
         self.events.append(('inspect-handles', str(database)))
@@ -463,7 +529,8 @@ def test_private_deployment_record_allowlists_fields_and_excludes_canaries():
                       schema_before='0003_game_day_task_blocks', schema_after=None,
                       snapshot_path=None, checks=['fetched_master', 'offline_suite'],
                       outcome='maintenance', public_reopened=False,
-                      timers_paused=True,
+                      timers_paused=True, timer_decision=None,
+                      pending_catchup=[],
                       updated_at=datetime.now(timezone.utc).isoformat())
         with patch.object(deploy, 'private_recovery_directory'):
             path = deploy.write_deployment_record(recovery, record)
@@ -582,6 +649,151 @@ def test_snapshot_failure_keeps_maintenance_and_records_failure():
         assert records[-1]['outcome'] == 'failed'
         assert records[-1]['timers_paused'] is True
         assert (Path(config['app_root']) / 'current').resolve().name == 'prior'
+
+
+def _ready_activation(root):
+    config, commit = _maintenance_fixture(root)
+    previous = str((Path(config['app_root']) / 'current').resolve())
+    record = dict(schema_version=1, deployment_id='d' * 32,
+                  source_commit=commit, source_tree='e' * 40,
+                  previous_release=previous, previous_commit='a' * 40,
+                  timer_before=None, schema_before='0003_game_day_task_blocks',
+                  schema_after='0003_game_day_task_blocks',
+                  snapshot_path=str(Path(config['recovery_dir']) /
+                                    ('snapshot-' + 'd' * 32 + '.db')),
+                  checks=['writers_quiescent', 'snapshot_validated', 'schema_ready'],
+                  outcome='maintenance', public_reopened=False,
+                  timers_paused=True, timer_decision=None,
+                  pending_catchup=[],
+                  updated_at=datetime.now(timezone.utc).isoformat())
+    controller = SyntheticController()
+    for unit in controller.active:
+        controller.active[unit] = 'inactive'
+    return config, commit, record, controller
+
+
+def test_activation_switches_only_after_gates_and_keeps_timers_paused():
+    with tempfile.TemporaryDirectory() as directory:
+        config, commit, record, controller = _ready_activation(Path(directory))
+        app_root = Path(config['app_root'])
+        with patch.object(deploy, 'validate_deployment_record'), \
+                patch.object(deploy, 'write_deployment_record'), \
+                patch.object(deploy, 'validate_recovery_snapshot') as snapshot, \
+                patch.object(deploy, 'schema_probe', return_value={
+                    'gate': 'ready', 'revision': '0003_game_day_task_blocks'}), \
+                patch.object(deploy, 'check_health') as health:
+            result = deploy.complete_activation(config, record, controller)
+        assert snapshot.called
+        assert (app_root / 'current').resolve() == app_root / 'releases' / commit
+        assert result['outcome'] == 'public_ready'
+        assert result['public_reopened'] is True
+        assert result['timers_paused'] is True
+        assert ('start', 'nuligahelper-web.service') in controller.events
+        assert ('start', 'caddy.service') in controller.events
+        assert all(controller.active[timer] == 'inactive' for timer in deploy.TIMERS)
+        assert [call.kwargs['public'] for call in health.call_args_list] == [False, True]
+
+
+def test_failed_public_health_closes_ingress_and_does_not_resume_timers():
+    with tempfile.TemporaryDirectory() as directory:
+        config, commit, record, controller = _ready_activation(Path(directory))
+        def health(url, *, public):
+            if public:
+                raise deploy.DeployError('synthetic public health failure')
+        with patch.object(deploy, 'validate_deployment_record'), \
+                patch.object(deploy, 'write_deployment_record'), \
+                patch.object(deploy, 'validate_recovery_snapshot'), \
+                patch.object(deploy, 'schema_probe', return_value={
+                    'gate': 'ready', 'revision': '0003_game_day_task_blocks'}), \
+                patch.object(deploy, 'check_health', side_effect=health):
+            try:
+                deploy.complete_activation(config, record, controller)
+            except deploy.DeployError as error:
+                assert 'public health failure' in str(error)
+            else:
+                raise AssertionError('failed public health accepted activation')
+        assert record['outcome'] == 'failed'
+        assert record['public_reopened'] is True, \
+            'a possible accepted write must block automatic data restoration'
+        assert controller.active['caddy.service'] == 'inactive'
+        assert all(controller.active[timer] == 'inactive' for timer in deploy.TIMERS)
+
+
+def test_timer_catchup_is_recorded_before_any_timer_resumes():
+    with tempfile.TemporaryDirectory() as directory:
+        config, commit, record, controller = _ready_activation(Path(directory))
+        record['outcome'] = 'public_ready'
+        record['public_reopened'] = True
+        record['timer_before'] = {
+            timer: {'ActiveState': 'active', 'UnitFileState': 'enabled',
+                    'LastTriggerUSec': 'Wed 2026-09-23 09:00:08 CEST'}
+            for timer in deploy.TIMERS}
+        controller.active['caddy.service'] = 'active'
+        controller.active['nuligahelper-web.service'] = 'active'
+        saved = []
+        with patch.object(deploy, 'validate_deployment_record'), \
+                patch.object(deploy, 'write_deployment_record',
+                             side_effect=lambda folder, item: saved.append(copy.deepcopy(item))), \
+                patch.object(deploy, 'check_health'):
+            held = deploy.resume_timers(
+                config, record, controller, 'hold',
+                now=datetime.fromisoformat('2026-09-24T10:00:00+02:00'))
+            assert set(held['pending_catchup']) == set(deploy.CALENDAR_TIMERS)
+            assert held['timer_decision'] == 'hold'
+            assert not controller.events
+            resumed = deploy.resume_timers(
+                config, record, controller, 'run',
+                now=datetime.fromisoformat('2026-09-24T10:00:00+02:00'))
+        assert saved[-2]['timer_decision'] == 'run', \
+            'the catch-up decision must be durable before any enable --now'
+        assert resumed['outcome'] == 'accepted'
+        assert resumed['timers_paused'] is False
+        assert all(controller.active[timer] == 'active' for timer in deploy.TIMERS)
+        assert not any('nuligahelper-daily.service' in action for action in controller.events)
+
+
+def test_code_only_rollback_restores_prior_release_without_touching_database():
+    with tempfile.TemporaryDirectory() as directory:
+        config, commit, record, controller = _ready_activation(Path(directory))
+        app_root = Path(config['app_root'])
+        original_data = Path(config['database']).read_bytes()
+        deploy.switch_current(app_root, commit)
+        record['outcome'] = 'failed'
+        with patch.object(deploy, 'validate_deployment_record'), \
+                patch.object(deploy, 'write_deployment_record'), \
+                patch.object(deploy, 'schema_probe', return_value={
+                    'gate': 'ready', 'revision': '0003_game_day_task_blocks'}), \
+                patch.object(deploy, 'previous_schema_head',
+                             return_value='0003_game_day_task_blocks'), \
+                patch.object(deploy, 'verify_previous_web_compatibility'), \
+                patch.object(deploy, 'check_health'):
+            result = deploy.rollback_code_only(config, record, controller)
+        assert (app_root / 'current').resolve() == Path(record['previous_release'])
+        assert Path(config['database']).read_bytes() == original_data
+        assert result['outcome'] == 'rolled_back'
+        assert result['timers_paused'] is True
+        assert ('start', 'nuligahelper-daily.service') not in controller.events
+
+
+def test_code_rollback_refuses_migrated_or_post_traffic_database():
+    for changed_schema, public_reopened in ((True, False), (False, True)):
+        with tempfile.TemporaryDirectory() as directory:
+            config, commit, record, controller = _ready_activation(Path(directory))
+            app_root = Path(config['app_root'])
+            deploy.switch_current(app_root, commit)
+            record['outcome'] = 'failed'
+            record['public_reopened'] = public_reopened
+            if changed_schema:
+                record['schema_after'] = '0004_synthetic_revision'
+            with patch.object(deploy, 'validate_deployment_record'):
+                try:
+                    deploy.rollback_code_only(config, record, controller)
+                except deploy.DeployError as error:
+                    assert 'rollback' in str(error)
+                else:
+                    raise AssertionError('unsafe code-only rollback accepted')
+            assert (app_root / 'current').resolve().name == commit
+            assert not controller.events
 
 
 if __name__ == '__main__':

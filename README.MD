@@ -53,8 +53,9 @@ Teams are fully automatic: they are derived from the scraped age classes (`ak`, 
 Schema revisions are managed by pinned Alembic migrations, but application startup never creates or upgrades schema implicitly. `manage_db.py init` is only for an absent or empty database; web and daily startup require the configured database to be at the current revision. Existing databases are upgraded only through the guarded, stopped-services `migrate-schema` workflow below. A database with the older source-key game identity must first use the separate `migrate-game-identity` prerequisite.
 
 Authentication does not make the Flask development server suitable for public use.
-The host-specific Gunicorn, systemd, Caddy and environment configuration is
-maintained outside this repository.
+Generic Gunicorn and systemd templates are tracked in `release-assets/`;
+hostnames, credentials, environment files, and installed host configuration
+remain private and outside the release source.
 
 ## SQLite production profile and backups
 
@@ -86,7 +87,7 @@ Restoration is an offline operation. Copying only a live WAL-mode main file is n
    ```
 
 4. The command validates the candidate before changing the target, fsyncs a same-filesystem temporary copy, preserves the current `.db`, `-wal` and `-shm` set in the printed rollback directory, and atomically installs the snapshot. If installation fails, it attempts to recover the complete preserved set. Keep all services stopped and inspect the reported paths after any failure.
-5. Start exactly one application process. Normal startup re-establishes WAL and repeats the runtime and foreign-key checks. Verify the schedule, authentication and one non-destructive database query before re-enabling normal traffic and the daily timer.
+5. Start exactly one application process. Normal startup re-establishes WAL and repeats the runtime and foreign-key checks. Verify the schedule, authentication and one non-destructive database query before deliberately re-enabling normal traffic and the daily/cleanup timers.
 6. Retain the command-created rollback directory until the restored service and the next validated Dropbox backup have been accepted.
 
 Before deploying these settings to an existing database, stop writers, preserve the current database together with any sidecars, run the full offline suite, and start one process to perform the integrity preflight. For rollback, stop every database user first and restore a validated snapshot or the complete preserved database set; never replace only the main file while WAL users are active.
@@ -97,7 +98,9 @@ Databases created before canonical game-number identity contain a non-null
 `games.source_key` column. New application startup detects that schema and exits with
 migration instructions; it never upgrades production data implicitly.
 
-1. Stop the web process and daily timer/job and verify no database writer remains.
+1. Stop public ingress; disable the daily and cleanup timers, wait for running
+   oneshot jobs, stop the web process, and verify no database user or open
+   SQLite handle remains.
 2. Run the guarded migration against the configured database:
 
    ```bash
@@ -133,7 +136,8 @@ schema and never call `create_all` or Alembic upgrade implicitly.
 
 To upgrade an existing database:
 
-1. Stop the web service and daily timer/job and verify no database user remains.
+1. Stop public ingress; disable the daily and cleanup timers, wait for running
+   oneshot jobs, stop the web service, and verify no database user remains.
 2. If the command reports legacy `games.source_key`, first complete
    `migrate-game-identity --confirm-stopped` as described above. Do not reverse this order.
 3. Run the guarded schema migration:
@@ -149,7 +153,7 @@ To upgrade an existing database:
    postflight checks. Unknown and near-miss schemas are refused without adoption.
 5. Retain the printed `Backup:` path. Start one application process and verify startup,
    several multi-team roster entries, MV appointments, assignments, audit history and the
-   schedule before re-enabling normal traffic and the daily timer.
+   schedule before deliberately re-enabling normal traffic and the daily/cleanup timers.
 
 If migration or verification fails, keep services stopped. Restore the printed snapshot
 with `restore-snapshot ... --confirm-stopped`, redeploy the previous application version,
@@ -217,10 +221,13 @@ deliberately outside this change and remain future work.
 ## Private deployment
 
 The proposed operator-triggered release workflow has tracked, non-secret
-templates in `release-assets/`. Its deploy command currently supports only
-candidate preparation; it does **not** perform a production cutover. Do not
-replace the live systemd units or switch `current` from these templates until
-the guarded activation and rollback workflow has been completed and rehearsed.
+templates in `release-assets/`. Its deploy command now implements separate
+preparation, guarded activation, explicit timer resumption, and conditional
+code-only rollback. These commands are **not yet approved for production**:
+the representative host rehearsal and operator review in the OpenSpec change
+remain open. Do not replace the live units or switch `current` from these
+templates before that acceptance. `release-assets/README.md` explains the
+intended operator command sequence and recovery gates.
 The production database remains `/var/lib/nuligahelper/nuliga_helper.db`, and
 `/etc/nuligahelper/web.env` remains private and shared by the services.
 

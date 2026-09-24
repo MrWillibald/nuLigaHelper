@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
-"""Root-operated release preparation. Activation is intentionally not implemented yet.
+"""Root-operated, operator-invoked release preparation and guarded cutover.
 
-This command never changes ``current``, systemd state, ingress, or the database.
-Install a reviewed copy outside the service-readable application tree. Until the
-activation workflow is implemented and rehearsed, this command supports only
-``prepare`` and ``inspect``; it cannot cut over production by accident.
+Install a reviewed copy outside the service-readable application tree. Never
+run activation until the host-specific units and rollback path are rehearsed.
 """
 
 from __future__ import annotations
@@ -34,15 +32,19 @@ from zoneinfo import ZoneInfo
 
 SHA = re.compile(r"[0-9a-f]{40}\Z")
 DEFAULT_CONFIG = Path("/etc/nuligahelper/deployment.json")
-DEFAULT_LOCK = Path("/run/lock/nuligahelper-deploy.lock")
+DEFAULT_LOCK = Path("/run/nuligahelper-deploy/lock")
 APPROVED_DATABASE = Path("/var/lib/nuligahelper/nuliga_helper.db")
+APPROVED_SOURCES = {
+    "git@github.com:MrWillibald/nuLigaHelper.git",
+    "https://github.com/MrWillibald/nuLigaHelper.git",
+}
 MIN_FREE_BYTES = 2 * 1024**3
 MIN_AVAILABLE_MEMORY_KIB = 256 * 1024
 RECORD_OUTCOMES = {"maintenance", "migration_required", "failed",
                    "web_ready", "public_ready", "accepted", "rolled_back"}
 RECORD_CHECKS = {"fetched_master", "offline_suite", "syntax", "writers_quiescent",
                  "snapshot_validated", "schema_ready", "web_ready", "public_ready",
-                 "timers_reviewed", "rollback_ready"}
+                 "timers_reviewed", "rollback_ready", "current_switched"}
 TIMERS = ("nuligahelper-daily.timer", "nuligahelper-cleanup.timer",
           "nuligahelper-monitor.timer")
 CALENDAR_TIMERS = TIMERS[:2]
@@ -50,6 +52,8 @@ DATABASE_USERS = ("nuligahelper-daily.service", "nuligahelper-cleanup.service",
                   "nuligahelper-monitor.service", "nuligahelper-preview.service",
                   "nuligahelper-preflight.service", "nuligahelper-launch-check.service",
                   "nuligahelper-alert-test.service")
+SERVICE_UNITS = ("nuligahelper-web.service", *DATABASE_USERS,
+                 "nuligahelper-alert@.service")
 
 
 class DeployError(RuntimeError):
@@ -57,8 +61,11 @@ class DeployError(RuntimeError):
 
 
 def run(*args: str, cwd: Path | None = None, env: dict[str, str] | None = None) -> str:
-    result = subprocess.run(args, cwd=cwd, env=env, text=True, stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE, check=False)
+    try:
+        result = subprocess.run(args, cwd=cwd, env=env, text=True, stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE, timeout=30 * 60, check=False)
+    except subprocess.TimeoutExpired as exc:
+        raise DeployError(f"command timed out: {Path(args[0]).name}") from exc
     if result.returncode:
         # Never echo stderr: Git and pip errors may include a credential-bearing URL.
         raise DeployError(f"command failed: {Path(args[0]).name} (exit {result.returncode})")
@@ -109,9 +116,8 @@ def load_config(path: Path) -> dict[str, object]:
         raise DeployError("recovery directory must be outside code and live state")
     if not re.fullmatch(r"[a-z_][a-z0-9_-]*", data["service_group"]):
         raise DeployError("service_group is invalid")
-    if any(marker in data["source"].lower() for marker in ("@", "token", "password")) and \
-            data["source"].startswith("https://"):
-        raise DeployError("source URL must not contain an embedded credential")
+    if data["source"] not in APPROVED_SOURCES:
+        raise DeployError("source differs from the approved GitHub repository")
     try:
         health = urlsplit(data["public_health_url"])
     except ValueError as exc:
@@ -124,13 +130,26 @@ def load_config(path: Path) -> dict[str, object]:
 
 
 def exclusive_lock(path: Path):
-    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    descriptor = os.open(path, os.O_CREAT | os.O_RDWR | os.O_CLOEXEC, 0o600)
+    if not path.is_absolute() or ".." in path.parts or path.parent.is_symlink():
+        raise DeployError("host lock path is invalid")
+    path.parent.mkdir(mode=0o700, exist_ok=True)
+    folder = path.parent.stat()
+    if folder.st_uid != os.geteuid() or stat.S_IMODE(folder.st_mode) != 0o700:
+        raise DeployError("host lock directory is not private")
+    descriptor = os.open(path, os.O_CREAT | os.O_RDWR | os.O_CLOEXEC | os.O_NOFOLLOW,
+                         0o600)
     try:
+        info = os.fstat(descriptor)
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or \
+                stat.S_IMODE(info.st_mode) != 0o600:
+            raise DeployError("host lock file is not private")
         fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError as exc:
         os.close(descriptor)
         raise DeployError("another deployment attempt holds the host lock") from exc
+    except BaseException:
+        os.close(descriptor)
+        raise
     return descriptor
 
 
@@ -146,6 +165,14 @@ def check_headroom(path: Path) -> None:
         raise DeployError("insufficient free disk space for a second release and snapshot")
     if available_memory_kib() < MIN_AVAILABLE_MEMORY_KIB:
         raise DeployError("insufficient available memory for release preparation")
+
+
+def check_snapshot_headroom(recovery_dir: Path, database: Path) -> None:
+    if database.is_symlink() or not database.is_file() or database.stat().st_size == 0:
+        raise DeployError("approved production database is unavailable")
+    if shutil.disk_usage(recovery_dir).free < max(
+            MIN_FREE_BYTES, database.stat().st_size * 2 + 512 * 1024**2):
+        raise DeployError("insufficient free disk space for a durable database snapshot")
 
 
 def check_cache_directory(path: Path) -> None:
@@ -269,10 +296,13 @@ def prepared_candidate(app_root: Path, commit: str) -> Path:
 
 def _unit_state(unit: str) -> dict[str, str]:
     properties = ("LoadState", "ActiveState", "UnitFileState", "Result", "LastTriggerUSec")
-    result = subprocess.run(("systemctl", "show", unit,
-                             *(f"--property={item}" for item in properties)),
-                            env=safe_environment(), text=True, capture_output=True,
-                            timeout=15, check=False)
+    try:
+        result = subprocess.run(("systemctl", "show", unit,
+                                 *(f"--property={item}" for item in properties)),
+                                env=safe_environment(), text=True, capture_output=True,
+                                timeout=15, check=False)
+    except subprocess.TimeoutExpired as exc:
+        raise DeployError("systemd state inspection timed out") from exc
     if result.returncode:
         raise DeployError("systemd state is unavailable")
     state = dict(line.split("=", 1) for line in result.stdout.splitlines() if "=" in line)
@@ -288,8 +318,11 @@ class HostController:
         return _unit_state(unit)
 
     def systemctl(self, *arguments: str) -> None:
-        result = subprocess.run(("systemctl", *arguments), env=safe_environment(),
-                                text=True, capture_output=True, timeout=60, check=False)
+        try:
+            result = subprocess.run(("systemctl", *arguments), env=safe_environment(),
+                                    text=True, capture_output=True, timeout=60, check=False)
+        except subprocess.TimeoutExpired as exc:
+            raise DeployError("systemd operation timed out") from exc
         if result.returncode:
             raise DeployError("systemd operation failed")
 
@@ -298,9 +331,12 @@ class HostController:
                      Path(str(database) + "-shm")):
             if not path.exists():
                 continue
-            result = subprocess.run(("lsof", "-t", "--", str(path)),
-                                    env=safe_environment(), capture_output=True,
-                                    timeout=15, check=False)
+            try:
+                result = subprocess.run(("lsof", "-t", "--", str(path)),
+                                        env=safe_environment(), capture_output=True,
+                                        timeout=15, check=False)
+            except subprocess.TimeoutExpired as exc:
+                raise DeployError("database open-handle inspection timed out") from exc
             if result.returncode == 0:
                 return True
             if result.returncode != 1:
@@ -308,9 +344,12 @@ class HostController:
         return False
 
     def loopback_listener(self) -> bool:
-        result = subprocess.run(("ss", "-ltnH", "sport = :8080"),
-                                env=safe_environment(), text=True,
-                                capture_output=True, timeout=15, check=False)
+        try:
+            result = subprocess.run(("ss", "-ltnH", "sport = :8080"),
+                                    env=safe_environment(), text=True,
+                                    capture_output=True, timeout=15, check=False)
+        except subprocess.TimeoutExpired as exc:
+            raise DeployError("loopback listener inspection timed out") from exc
         if result.returncode:
             raise DeployError("loopback listener inspection failed")
         listeners = [line.split() for line in result.stdout.splitlines()]
@@ -361,6 +400,75 @@ def verify_local_web(config: dict[str, object], commit: str,
     if schema_probe(prepared_candidate(app_root, commit), Path(config["database"]))["gate"] != "ready":
         raise DeployError("candidate database revision is not ready")
     check_health(str(config["public_health_url"]), public=False)
+
+
+def unit_paths_safe(content: str, name: str) -> None:
+    lines = [line.strip() for line in content.splitlines()
+             if line.startswith(("WorkingDirectory=", "EnvironmentFile=",
+                                 "Exec"))]
+    if "WorkingDirectory=/opt/nuligahelper/current" not in lines or \
+            "EnvironmentFile=/etc/nuligahelper/web.env" not in lines:
+        raise DeployError("installed application unit has mixed runtime paths")
+    commands = [line for line in lines if line.startswith("Exec")]
+    if not any(line.startswith("ExecStart=") for line in commands) or \
+            any(not line.startswith(("ExecStart=", "ExecStartPre=")) or
+                           "/opt/nuligahelper/current/" not in line or
+                           "/opt/nuligahelper/" in line.replace(
+                               "/opt/nuligahelper/current/", "")
+                           for line in commands):
+        raise DeployError("installed application unit has mixed runtime paths")
+    if name == "nuligahelper-web.service" and not any(
+            "/opt/nuligahelper/current/release-assets/gunicorn.conf.py" in line
+            for line in commands):
+        raise DeployError("installed web unit still uses legacy Gunicorn configuration")
+
+
+def verify_installed_units(directory: Path = Path("/etc/systemd/system")) -> None:
+    """Refuse activation until every code-running unit uses one release link."""
+    for name in SERVICE_UNITS:
+        unit = directory / name
+        if unit.is_symlink():
+            raise DeployError("installed application unit must not be a symlink")
+        try:
+            info = unit.stat()
+            content = unit.read_text(encoding="utf-8")
+        except OSError as exc:
+            raise DeployError("installed application unit is unavailable") from exc
+        if info.st_uid != 0 or info.st_mode & 0o022:
+            raise DeployError("installed application unit is writable outside root")
+        unit_paths_safe(content, name)
+        loaded_name = ("nuligahelper-alert@monitor.service" if name ==
+                       "nuligahelper-alert@.service" else name)
+        loaded = run("systemctl", "show", loaded_name,
+                     "--property=WorkingDirectory,EnvironmentFiles,ExecStart,ExecStartPre,"
+                     "ExecCondition,ExecStartPost,ExecReload,ExecStop,ExecStopPost",
+                     env=safe_environment())
+        properties = dict(line.split("=", 1) for line in loaded.splitlines() if "=" in line)
+        if properties.get("WorkingDirectory") != "/opt/nuligahelper/current" or \
+                not re.fullmatch(
+                    r"/etc/nuligahelper/web\.env \(ignore_errors=(?:yes|no)\)",
+                    properties.get("EnvironmentFiles", "")):
+            raise DeployError("loaded application unit has mixed runtime paths")
+        for field in ("ExecStart", "ExecStartPre"):
+            command = properties.get(field, "")
+            if field == "ExecStart" and "/opt/nuligahelper/current/" not in command:
+                raise DeployError("loaded application unit has mixed runtime paths")
+            if "/opt/nuligahelper/" in command.replace(
+                    "/opt/nuligahelper/current/", ""):
+                raise DeployError("loaded application unit has mixed runtime paths")
+        if any(properties.get(field, "") for field in
+               ("ExecCondition", "ExecStartPost", "ExecReload", "ExecStop", "ExecStopPost")):
+            raise DeployError("loaded application unit has unreviewed command hooks")
+    run("systemd-analyze", "verify", *(str(directory / name) for name in SERVICE_UNITS),
+        env=safe_environment())
+
+
+def assert_maintenance_still_closed(database: Path, controller: HostController) -> None:
+    for unit in (*TIMERS, "caddy.service", "nuligahelper-web.service", *DATABASE_USERS):
+        if controller.state(unit).get("ActiveState") != "inactive":
+            raise DeployError("maintenance state changed; keep writers and ingress stopped")
+    if controller.database_handles(database):
+        raise DeployError("database is open during maintenance")
 
 
 def quiesce_writers(database: Path, controller: HostController, *,
@@ -459,6 +567,26 @@ def snapshot_probe(candidate: Path, database: Path, recovery_dir: Path,
     return destination
 
 
+def validate_recovery_snapshot(candidate: Path, database: Path,
+                               recovery_dir: Path, record: dict[str, object]) -> None:
+    identifier = record["deployment_id"]
+    destination = recovery_dir / f"snapshot-{identifier}.db"
+    if record["snapshot_path"] != str(destination):
+        raise DeployError("deployment recovery snapshot is unavailable")
+    environment = safe_environment()
+    environment["PYTHONPATH"] = str(candidate)
+    output = run(str(candidate / "venv/bin/python"), "-B",
+                 str(candidate / "release-assets/recovery_check.py"), "validate",
+                 "--database", str(database), "--destination", str(destination),
+                 env=environment)
+    try:
+        result = json.loads(output)
+    except ValueError as exc:
+        raise DeployError("candidate snapshot validation returned invalid output") from exc
+    if result != {"snapshot": str(destination), "validated": True}:
+        raise DeployError("candidate snapshot validation returned invalid state")
+
+
 def inspect_plan(config: dict[str, object], commit: str) -> dict[str, object]:
     """Report non-sensitive state without stopping a service or changing data."""
     app_root = Path(config["app_root"])
@@ -474,7 +602,7 @@ def inspect_plan(config: dict[str, object], commit: str) -> dict[str, object]:
             "current": prior_release(app_root), "database": str(database),
             "database_size_bytes": database.stat().st_size,
             "schema": schema_probe(candidate, database), "units": units,
-            "action": "read_only_plan", "activation_available": False}
+            "action": "read_only_plan", "activation_available": True}
 
 
 def private_recovery_directory(path: Path) -> None:
@@ -485,14 +613,15 @@ def private_recovery_directory(path: Path) -> None:
         raise DeployError("recovery directory must be root-owned mode 0700")
 
 
-def write_deployment_record(recovery_dir: Path, record: dict[str, object]) -> Path:
-    """Atomically persist an allowlisted, root-only operational record."""
-    private_recovery_directory(recovery_dir)
+def validate_deployment_record(recovery_dir: Path, record: dict[str, object]) -> None:
+    """Reject unapproved fields or values before writing or consuming state."""
     keys = {"schema_version", "deployment_id", "source_commit", "source_tree",
             "previous_release", "previous_commit", "timer_before",
             "schema_before", "schema_after", "snapshot_path",
-            "checks", "outcome", "public_reopened", "timers_paused", "updated_at"}
-    if set(record) != keys or record["schema_version"] != 1:
+            "checks", "outcome", "public_reopened", "timers_paused",
+            "timer_decision", "pending_catchup", "updated_at"}
+    if set(record) != keys or type(record["schema_version"]) is not int or \
+            record["schema_version"] != 1:
         raise DeployError("deployment record fields are invalid")
     identifier = record["deployment_id"]
     if not isinstance(identifier, str) or not re.fullmatch(r"[0-9a-f]{32}", identifier):
@@ -517,7 +646,9 @@ def write_deployment_record(recovery_dir: Path, record: dict[str, object]) -> Pa
         for state in timer_before.values():
             if not isinstance(state, dict) or set(state) != {
                     "ActiveState", "UnitFileState", "LastTriggerUSec"} or \
+                    not isinstance(state["ActiveState"], str) or \
                     state["ActiveState"] not in {"active", "inactive", "failed"} or \
+                    not isinstance(state["UnitFileState"], str) or \
                     state["UnitFileState"] not in {"enabled", "disabled", "static"} or \
                     not isinstance(state["LastTriggerUSec"], str) or \
                     not re.fullmatch(
@@ -542,6 +673,15 @@ def write_deployment_record(recovery_dir: Path, record: dict[str, object]) -> Pa
             record["timers_paused"] is not None and \
             type(record["timers_paused"]) is not bool:
         raise DeployError("deployment record state is invalid")
+    if record["timer_decision"] is not None and \
+            (not isinstance(record["timer_decision"], str) or
+             record["timer_decision"] not in {"run", "hold"}):
+        raise DeployError("deployment record timer decision is invalid")
+    pending = record["pending_catchup"]
+    if not isinstance(pending, list) or any(
+            not isinstance(item, str) or item not in CALENDAR_TIMERS
+            for item in pending) or len(set(pending)) != len(pending):
+        raise DeployError("deployment record catch-up state is invalid")
     checks = record["checks"]
     if not isinstance(checks, list) or any(not isinstance(item, str) or
            item not in RECORD_CHECKS for item in checks):
@@ -549,6 +689,13 @@ def write_deployment_record(recovery_dir: Path, record: dict[str, object]) -> Pa
     stamp = record["updated_at"]
     if not isinstance(stamp, str) or not re.fullmatch(r"[0-9T:+.Z-]{20,40}", stamp):
         raise DeployError("deployment record timestamp is invalid")
+
+
+def write_deployment_record(recovery_dir: Path, record: dict[str, object]) -> Path:
+    """Atomically persist an allowlisted, root-only operational record."""
+    private_recovery_directory(recovery_dir)
+    validate_deployment_record(recovery_dir, record)
+    identifier = record["deployment_id"]
     target = recovery_dir / f"deployment-{identifier}.json"
     descriptor, raw_temp = tempfile.mkstemp(prefix=".deployment-", dir=recovery_dir)
     temporary = Path(raw_temp)
@@ -569,12 +716,33 @@ def write_deployment_record(recovery_dir: Path, record: dict[str, object]) -> Pa
         temporary.unlink(missing_ok=True)
 
 
+def read_deployment_record(recovery_dir: Path, deployment_id: str) -> dict[str, object]:
+    private_recovery_directory(recovery_dir)
+    if not re.fullmatch(r"[0-9a-f]{32}", deployment_id):
+        raise DeployError("deployment identifier is invalid")
+    path = recovery_dir / f"deployment-{deployment_id}.json"
+    if path.is_symlink():
+        raise DeployError("deployment record must not be a symlink")
+    try:
+        info = path.stat()
+        if info.st_uid != 0 or stat.S_IMODE(info.st_mode) != 0o600:
+            raise DeployError("deployment record ownership or mode is invalid")
+        record = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise DeployError("deployment record is unavailable or invalid") from exc
+    if not isinstance(record, dict):
+        raise DeployError("deployment record is invalid")
+    validate_deployment_record(recovery_dir, record)
+    if record["deployment_id"] != deployment_id:
+        raise DeployError("deployment record identity mismatch")
+    return record
+
+
 def enter_maintenance(config: dict[str, object], commit: str,
                       controller: HostController) -> dict[str, object]:
     """Quiesce, snapshot, and gate schema; never switch or reopen services.
 
-    This operation is not yet exposed by the CLI. Once exposed, any failure
-    after timer shutdown must leave maintenance in place for the operator.
+    Any failure after timer shutdown leaves maintenance in place for recovery.
     """
     app_root = Path(config["app_root"])
     candidate = prepared_candidate(app_root, commit)
@@ -584,6 +752,7 @@ def enter_maintenance(config: dict[str, object], commit: str,
     private_recovery_directory(recovery_dir)
     check_headroom(app_root)
     check_headroom(recovery_dir)
+    check_snapshot_headroom(recovery_dir, database)
     previous = prior_release(app_root)
     if previous is None:
         raise DeployError("current release is unavailable")
@@ -598,7 +767,8 @@ def enter_maintenance(config: dict[str, object], commit: str,
               "schema_after": None, "snapshot_path": None,
               "checks": ["fetched_master", "offline_suite", "syntax"],
               "outcome": "maintenance", "public_reopened": False,
-              "timers_paused": None,
+              "timers_paused": None, "timer_decision": None,
+              "pending_catchup": [],
               "updated_at": datetime.now(timezone.utc).isoformat()}
     write_deployment_record(recovery_dir, record)
     try:
@@ -635,19 +805,221 @@ def enter_maintenance(config: dict[str, object], commit: str,
         raise
 
 
-def switch_current(app_root: Path, commit: str) -> tuple[str, str]:
-    """Atomically replace an internal link; caller must first pass cutover gates.
+def verify_previous_web_compatibility(previous: str, group_name: str) -> None:
+    """The new web unit must also start the retained prior release on rollback."""
+    gunicorn = Path(previous) / "release-assets/gunicorn.conf.py"
+    if gunicorn.is_symlink() or not gunicorn.is_file():
+        raise DeployError("previous release lacks the new web unit's Gunicorn file")
+    info = gunicorn.stat()
+    group = grp.getgrnam(group_name).gr_gid
+    if info.st_uid != 0 or info.st_gid != group or \
+            not info.st_mode & stat.S_IRGRP or info.st_mode & 0o022:
+        raise DeployError("previous Gunicorn file is not safely service-readable")
 
-    This is intentionally not exposed as a CLI action until writer quiescence,
-    snapshot, schema, and ingress gates are implemented and rehearsed.
-    """
+
+def complete_activation(config: dict[str, object], record: dict[str, object],
+                        controller: HostController) -> dict[str, object]:
+    """Switch only after the persisted snapshot and stopped-writer gates pass."""
+    app_root = Path(config["app_root"])
+    database = Path(config["database"])
+    recovery_dir = Path(config["recovery_dir"])
+    validate_deployment_record(recovery_dir, record)
+    if record["outcome"] not in {"maintenance", "migration_required"} or \
+            record["public_reopened"] or record["timers_paused"] is not True:
+        raise DeployError("deployment record is not ready for activation")
+    commit = record["source_commit"]
     candidate = prepared_candidate(app_root, commit)
+    marker = json.loads((candidate / ".prepared.json").read_text(encoding="utf-8"))
+    if record["source_tree"] != marker["tree"] or \
+            prior_release(app_root) != record["previous_release"]:
+        raise DeployError("candidate or previous release changed during maintenance")
+    assert_maintenance_still_closed(database, controller)
+    validate_recovery_snapshot(candidate, database, recovery_dir, record)
+    gate = schema_probe(candidate, database)
+    if gate["gate"] != "ready":
+        raise DeployError("candidate database revision is not ready; migration remains manual")
+    record["schema_after"] = gate["revision"]
+    if "schema_ready" not in record["checks"]:
+        record["checks"].append("schema_ready")
+    record["updated_at"] = datetime.now(timezone.utc).isoformat()
+    write_deployment_record(recovery_dir, record)
+    try:
+        switch_current(app_root, commit)
+        record["checks"].append("current_switched")
+        record["updated_at"] = datetime.now(timezone.utc).isoformat()
+        write_deployment_record(recovery_dir, record)
+        controller.systemctl("start", "nuligahelper-web.service")
+        verify_local_web(config, commit, controller)
+        record["outcome"] = "web_ready"
+        record["checks"].append("web_ready")
+        record["updated_at"] = datetime.now(timezone.utc).isoformat()
+        write_deployment_record(recovery_dir, record)
+        # Persist this *before* opening ingress: a crash after start may have
+        # accepted writes even if the public health probe never returned.
+        record["public_reopened"] = True
+        record["updated_at"] = datetime.now(timezone.utc).isoformat()
+        write_deployment_record(recovery_dir, record)
+        controller.systemctl("start", "caddy.service")
+        if controller.state("caddy.service").get("ActiveState") != "active":
+            raise DeployError("public ingress did not become active")
+        check_health(str(config["public_health_url"]), public=True)
+        record["outcome"] = "public_ready"
+        record["checks"].append("public_ready")
+        record["updated_at"] = datetime.now(timezone.utc).isoformat()
+        write_deployment_record(recovery_dir, record)
+        return record
+    except BaseException:
+        if record["public_reopened"]:
+            try:
+                controller.systemctl("stop", "caddy.service")
+            except DeployError:
+                pass  # The record remains conservative: public writes may exist.
+        record["outcome"] = "failed"
+        record["updated_at"] = datetime.now(timezone.utc).isoformat()
+        write_deployment_record(recovery_dir, record)
+        raise
+
+
+def resume_timers(config: dict[str, object], record: dict[str, object],
+                  controller: HostController, decision: str, *,
+                  now: datetime | None = None) -> dict[str, object]:
+    """Restore prior timer states only after an explicit catch-up decision."""
+    recovery_dir = Path(config["recovery_dir"])
+    validate_deployment_record(recovery_dir, record)
+    if record["outcome"] not in {"public_ready", "rolled_back"} or \
+            record["timers_paused"] is not True or not record["public_reopened"] or \
+            record["timer_before"] is None or decision not in {"run", "hold"}:
+        raise DeployError("timers cannot resume from this deployment state")
+    if controller.state("caddy.service").get("ActiveState") != "active" or \
+            controller.state("nuligahelper-web.service").get("ActiveState") != "active" or \
+            not controller.loopback_listener():
+        raise DeployError("web or public ingress is not ready for scheduled work")
+    check_health(str(config["public_health_url"]), public=False)
+    check_health(str(config["public_health_url"]), public=True)
+    for timer in TIMERS:
+        if controller.state(timer).get("ActiveState") != "inactive":
+            raise DeployError("a paused timer was restarted outside deployment control")
+    timer_before = record["timer_before"]
+    pending = [timer for timer in CALENDAR_TIMERS
+               if timer_before[timer]["ActiveState"] == "active" and
+               timer_before[timer]["UnitFileState"] == "enabled" and
+               pending_calendar_catchup(timer_before[timer], now=now)]
+    record["pending_catchup"] = pending
+    record["timer_decision"] = decision
+    if "timers_reviewed" not in record["checks"]:
+        record["checks"].append("timers_reviewed")
+    record["updated_at"] = datetime.now(timezone.utc).isoformat()
+    write_deployment_record(recovery_dir, record)
+    if decision == "hold":
+        return record
+    try:
+        for timer in TIMERS:
+            before = timer_before[timer]
+            if before["UnitFileState"] != "enabled":
+                continue
+            if before["ActiveState"] == "active":
+                controller.systemctl("enable", "--now", timer)
+            else:
+                controller.systemctl("enable", timer)
+            state = controller.state(timer)
+            if state.get("UnitFileState") != "enabled" or \
+                    state.get("ActiveState") != before["ActiveState"]:
+                raise DeployError("timer did not return to its prior state")
+        record["timers_paused"] = False
+        if record["outcome"] != "rolled_back":
+            record["outcome"] = "accepted"
+        record["updated_at"] = datetime.now(timezone.utc).isoformat()
+        write_deployment_record(recovery_dir, record)
+        return record
+    except BaseException:
+        record["timers_paused"] = None  # A partial enable may already have fired.
+        record["outcome"] = "failed"
+        record["updated_at"] = datetime.now(timezone.utc).isoformat()
+        write_deployment_record(recovery_dir, record)
+        raise
+
+
+def previous_schema_head(previous: str) -> str:
+    environment = safe_environment()
+    environment["PYTHONPATH"] = previous
+    revision = run(str(Path(previous) / "venv/bin/python"), "-B", "-c",
+                   "import schema_migrations; "
+                   "heads = schema_migrations.head_revisions(); "
+                   "assert len(heads) == 1; print(heads[0])",
+                   env=environment)
+    if not re.fullmatch(r"[0-9]{4}_[a-z0-9_]{1,64}", revision):
+        raise DeployError("previous release schema head is invalid")
+    return revision
+
+
+def rollback_code_only(config: dict[str, object], record: dict[str, object],
+                       controller: HostController) -> dict[str, object]:
+    """Restore prior code only before ingress and only at the same schema."""
+    recovery_dir = Path(config["recovery_dir"])
+    validate_deployment_record(recovery_dir, record)
+    if record["public_reopened"] or record["timers_paused"] is not True:
+        raise DeployError("post-traffic or unpaused rollback requires manual recovery")
+    app_root = Path(config["app_root"])
+    database = Path(config["database"])
+    commit = record["source_commit"]
+    candidate = prepared_candidate(app_root, commit)
+    if prior_release(app_root) != str(candidate):
+        raise DeployError("selected release is not active; no code switch to undo")
+    if record["schema_before"] is None or \
+            record["schema_before"] != record["schema_after"]:
+        raise DeployError("database schema changed; code-only rollback is unsafe")
+    if controller.state("caddy.service").get("ActiveState") != "inactive":
+        raise DeployError("public ingress is not closed")
+    controller.systemctl("stop", "nuligahelper-web.service")
+    assert_maintenance_still_closed(database, controller)
+    gate = schema_probe(candidate, database)
+    if gate["gate"] != "ready" or gate["revision"] != record["schema_before"] or \
+            previous_schema_head(record["previous_release"]) != gate["revision"]:
+        raise DeployError("previous release cannot use the current database revision")
+    verify_previous_web_compatibility(record["previous_release"],
+                                      str(config["service_group"]))
+    atomic_current_link(app_root, Path(record["previous_release"]))
+    try:
+        controller.systemctl("start", "nuligahelper-web.service")
+        if controller.state("nuligahelper-web.service").get("ActiveState") != "active" or \
+                not controller.loopback_listener():
+            raise DeployError("previous web release is not ready")
+        check_health(str(config["public_health_url"]), public=False)
+        record["public_reopened"] = True  # Durable before any accepted public write.
+        record["updated_at"] = datetime.now(timezone.utc).isoformat()
+        write_deployment_record(recovery_dir, record)
+        controller.systemctl("start", "caddy.service")
+        if controller.state("caddy.service").get("ActiveState") != "active":
+            raise DeployError("public ingress did not restart")
+        check_health(str(config["public_health_url"]), public=True)
+        record["outcome"] = "rolled_back"
+        record["checks"].append("rollback_ready")
+        record["updated_at"] = datetime.now(timezone.utc).isoformat()
+        write_deployment_record(recovery_dir, record)
+        return record
+    except BaseException:
+        if record["public_reopened"]:
+            try:
+                controller.systemctl("stop", "caddy.service")
+            except DeployError:
+                pass
+        record["outcome"] = "failed"
+        record["updated_at"] = datetime.now(timezone.utc).isoformat()
+        write_deployment_record(recovery_dir, record)
+        raise
+
+
+def atomic_current_link(app_root: Path, target: Path) -> tuple[str, str]:
+    """Replace the internal link as one namespace operation, then sync it."""
+    if target.is_symlink() or not target.is_dir() or \
+            not target.resolve().is_relative_to(app_root.resolve()):
+        raise DeployError("release link target is invalid")
     previous = prior_release(app_root)
-    if previous is None or previous == str(candidate):
+    if previous is None or previous == str(target):
         raise DeployError("current release is missing or already selected")
     temporary = app_root / (".current-next-" + uuid4().hex)
     try:
-        os.symlink(candidate, temporary)
+        os.symlink(target, temporary)
         os.replace(temporary, app_root / "current")
         directory_fd = os.open(app_root, os.O_RDONLY | os.O_DIRECTORY)
         try:
@@ -656,7 +1028,12 @@ def switch_current(app_root: Path, commit: str) -> tuple[str, str]:
             os.close(directory_fd)
     finally:
         temporary.unlink(missing_ok=True)
-    return previous, str(candidate)
+    return previous, str(target)
+
+
+def switch_current(app_root: Path, commit: str) -> tuple[str, str]:
+    """Select only a prepared complete candidate; caller enforces cutover gates."""
+    return atomic_current_link(app_root, prepared_candidate(app_root, commit))
 
 
 def normalize_permissions(stage: Path, group_name: str) -> None:
@@ -780,6 +1157,15 @@ def main() -> int:
     selection.add_argument("--sha", help="full commit SHA reachable from fetched master")
     inspection = subcommands.add_parser("inspect", help="read-only host and candidate plan")
     inspection.add_argument("--sha", help="prepared candidate SHA to inspect")
+    activation = subcommands.add_parser("activate", help="stop writers and activate a prepared SHA")
+    activation.add_argument("--sha", required=True, help="prepared full commit SHA")
+    continuation = subcommands.add_parser("continue", help="continue after explicit schema migration")
+    continuation.add_argument("--deployment-id", required=True)
+    resumption = subcommands.add_parser("resume-timers", help="record catch-up decision and restore timers")
+    resumption.add_argument("--deployment-id", required=True)
+    resumption.add_argument("--catchup", required=True, choices=("run", "hold"))
+    rollback = subcommands.add_parser("rollback-code", help="guarded pre-traffic code-only rollback")
+    rollback.add_argument("--deployment-id", required=True)
     args = parser.parse_args()
     if os.geteuid() != 0:
         parser.error("deployment command must run as root")
@@ -792,12 +1178,41 @@ def main() -> int:
                 report = {"app_root": config["app_root"],
                           "current": prior_release(Path(config["app_root"])),
                           "source_cache": config["source_cache"],
-                          "activation_available": False}
+                          "activation_available": True}
             print(json.dumps(report, sort_keys=True))
             return 0
         lock_fd = exclusive_lock(args.lock)
         try:
-            result = prepare(config, args.sha)
+            controller = HostController()
+            if args.action == "prepare":
+                result = prepare(config, args.sha)
+            elif args.action == "activate":
+                verify_installed_units()
+                candidate = prepared_candidate(Path(config["app_root"]), args.sha)
+                marker = json.loads((candidate / ".prepared.json").read_text(encoding="utf-8"))
+                previous = prior_release(Path(config["app_root"]))
+                if previous is None or previous != marker.get("previous_release"):
+                    raise DeployError("current release changed since candidate preparation")
+                verify_previous_web_compatibility(previous, str(config["service_group"]))
+                result = enter_maintenance(config, args.sha, controller)
+                if result["outcome"] == "migration_required":
+                    print(json.dumps(result, sort_keys=True))
+                    return 2
+                result = complete_activation(config, result, controller)
+            else:
+                recovery_dir = Path(config["recovery_dir"])
+                result = read_deployment_record(recovery_dir, args.deployment_id)
+                if args.action == "continue":
+                    if result["outcome"] != "migration_required":
+                        raise DeployError("only a migration-paused deployment can continue")
+                    verify_installed_units()
+                    verify_previous_web_compatibility(
+                        result["previous_release"], str(config["service_group"]))
+                    result = complete_activation(config, result, controller)
+                elif args.action == "resume-timers":
+                    result = resume_timers(config, result, controller, args.catchup)
+                elif args.action == "rollback-code":
+                    result = rollback_code_only(config, result, controller)
         finally:
             os.close(lock_fd)
         print(json.dumps(result, sort_keys=True))
