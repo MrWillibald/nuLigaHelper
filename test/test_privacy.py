@@ -15,11 +15,11 @@ NAIVE = NOW.replace(tzinfo=None)
 
 
 def policy():
-    data = p.read_json(Path(h.PROJECT_DIR) / 'deploy/privacy-policy.example.json')
-    data['version'] = 'synthetic-v1'
-    data['cleanup'].update({key:3600 for key in privacy.RULES})
-    data['cleanup']['batch_size'] = 2
-    return data
+    return {
+        'schema_version': 2,
+        'version': 'synthetic-v1',
+        'cleanup': {**{key: 3600 for key in privacy.RULES}, 'batch_size': 2},
+    }
 
 
 def test_policy_requires_valid_retention_periods():

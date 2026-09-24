@@ -1,0 +1,25 @@
+[Unit]
+Description=nuLigaHelper daily
+After=network-online.target
+Wants=network-online.target
+OnFailure=nuligahelper-alert@application.service
+
+[Service]
+Type=oneshot
+User=nuligahelper
+Group=nuligahelper
+WorkingDirectory=/opt/nuligahelper/current
+EnvironmentFile=/etc/nuligahelper/web.env
+ExecStartPre=/opt/nuligahelper/current/venv/bin/python -B /opt/nuligahelper/current/runtime_check.py
+ExecStart=/opt/nuligahelper/current/venv/bin/python -B /opt/nuligahelper/current/main.py
+UMask=0077
+TimeoutStartSec=20min
+StandardOutput=journal
+StandardError=journal
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/nuligahelper
+RestrictSUIDSGID=true

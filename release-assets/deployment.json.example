@@ -1,0 +1,7 @@
+{
+  "source": "git@github.com:OWNER/REPOSITORY.git",
+  "app_root": "/opt/nuligahelper",
+  "source_cache": "/var/cache/nuligahelper-deploy/source.git",
+  "service_group": "nuligahelper",
+  "python": "/usr/bin/python3"
+}

@@ -216,6 +216,14 @@ deliberately outside this change and remain future work.
 
 ## Private deployment
 
+The proposed operator-triggered release workflow has tracked, non-secret
+templates in `release-assets/`. Its deploy command currently supports only
+candidate preparation; it does **not** perform a production cutover. Do not
+replace the live systemd units or switch `current` from these templates until
+the guarded activation and rollback workflow has been completed and rehearsed.
+The production database remains `/var/lib/nuligahelper/nuliga_helper.db`, and
+`/etc/nuligahelper/web.env` remains private and shared by the services.
+
 The application exposes a fixed `/healthz` readiness route and public
 `/impressum` and `/datenschutz` routes. Legal-page content, privacy retention
 settings, host monitoring, service units and launch evidence are supplied by the

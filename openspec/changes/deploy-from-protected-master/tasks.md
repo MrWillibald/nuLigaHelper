@@ -1,21 +1,21 @@
 ## 1. Establish the Production Baseline and Promotion Gate
 
-- [ ] 1.1 Inventory the live host's exact commit/tree, database revision and path, installed web/daily/cleanup units and timers, and latest validated backup; verify a redacted baseline record matches the operator-confirmed `/var/lib/nuligahelper/nuliga_helper.db` and identifies any difference from the planned `devel/webui` head.
+- [x] 1.1 Inventory the live host's exact commit/tree, database revision and path, installed web/daily/cleanup units and timers, and latest validated backup; verify a redacted baseline record matches the operator-confirmed `/var/lib/nuligahelper/nuliga_helper.db` and identifies any difference from the planned `devel/webui` head.
 - [ ] 1.2 Add a GitHub pull-request check that installs the declared dependencies and runs the full offline suite with synthetic data; verify the check passes on a review branch and requires no production credentials or server access.
 - [ ] 1.3 Configure protected `master` to require reviewed pull requests and the project test check, and verify the repository settings or a controlled direct-push refusal records those gates without changing production.
-- [ ] 1.4 Promote the running `devel/webui` application baseline to `master` through the required review path, and verify differences in application files and schema head against the live commit before treating the first cutover as migration-free.
+- [x] 1.4 Promote the running `devel/webui` application baseline to `master` through the required review path, and verify differences in application files and schema head against the live commit before treating the first cutover as migration-free.
 
 ## 2. Package a Reproducible, Non-Secret Release
 
-- [ ] 2.1 Extract generic systemd, Gunicorn, and deployment guidance from the ignored private `deploy/` tree into tracked release assets; verify `git ls-files` includes every runtime asset required by a clean GitHub checkout and a secret/host-data review finds none in the tracked assets.
+- [x] 2.1 Extract generic systemd, Gunicorn, and deployment guidance from the ignored private `deploy/` tree into tracked release assets; verify `git ls-files` includes every runtime asset required by a clean GitHub checkout and a secret/host-data review finds none in the tracked assets.
 - [ ] 2.2 Add a tracked production dependency lock with exact direct and transitive versions for the supported server Python, and verify a clean virtual environment installs it and passes `test/run_tests.sh` without reading production configuration.
 - [ ] 2.3 Define `/opt/nuligahelper/releases/<sha>` and the internal `current` link with root ownership and service-group read access, and verify the existing permission preflight accepts a synthetic prepared release but rejects an external or service-writable link target.
 - [ ] 2.4 Update each installed code-running unit to resolve its interpreter, working directory, and code through `current`, while retaining the one shared environment and SQLite path; verify `systemd-analyze verify` and inspected unit properties show no mixed release paths or secret values.
 
 ## 3. Prepare and Record Candidate Releases
 
-- [ ] 3.1 Implement a root-managed, operator-invoked source selection command that fetches `master`, pins a full SHA, checks requested-commit reachability, and records the prior release; verify tests reject a non-master commit and show that later branch movement cannot change a prepared candidate.
-- [ ] 3.2 Export the pinned source to a new release, build its isolated environment, run the offline suite and runtime syntax checks, and mark it prepared only on success; verify injected fetch, install, and test failures leave the active release and services unchanged.
+- [x] 3.1 Implement a root-managed, operator-invoked source selection command that fetches `master`, pins a full SHA, checks requested-commit reachability, and records the prior release; verify tests reject a non-master commit and show that later branch movement cannot change a prepared candidate.
+- [x] 3.2 Export the pinned source to a new release, build its isolated environment, run the offline suite and runtime syntax checks, and mark it prepared only on success; verify injected fetch, install, and test failures leave the active release and services unchanged.
 - [ ] 3.3 Add deployment serialization, disk/headroom preflight, and a non-sensitive deployment record covering source, previous release, schema, snapshot, checks, and outcome; verify concurrent attempts refuse cleanly and synthetic secret/contact canaries do not appear in output or records.
 
 ## 4. Guard Activation and Data Preservation

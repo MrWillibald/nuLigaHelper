@@ -1,0 +1,35 @@
+[Unit]
+Description=nuLigaHelper production web service
+After=network.target
+OnFailure=nuligahelper-alert@nuligahelper-web.service.service
+StartLimitIntervalSec=60s
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=nuligahelper
+Group=nuligahelper
+WorkingDirectory=/opt/nuligahelper/current
+EnvironmentFile=/etc/nuligahelper/web.env
+ExecStartPre=/opt/nuligahelper/current/venv/bin/python -B /opt/nuligahelper/current/runtime_check.py
+ExecStart=/usr/bin/env /opt/nuligahelper/current/venv/bin/gunicorn --config /opt/nuligahelper/current/release-assets/gunicorn.conf.py webapp:app
+Restart=on-failure
+RestartSec=5s
+UMask=0077
+StandardOutput=journal
+StandardError=journal
+
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectControlGroups=true
+ProtectHome=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/nuligahelper
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

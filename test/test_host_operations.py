@@ -61,15 +61,15 @@ def test_unit_syntax_with_synthetic_executable_paths():
     # harmless executables; this does not claim installed-host execution evidence.
     with tempfile.TemporaryDirectory() as directory:
         files=[]
-        for file in (Path(h.PROJECT_DIR)/'deploy').glob('nuligahelper-*'):
+        for file in (Path(h.PROJECT_DIR)/'release-assets/systemd').glob('nuligahelper-*'):
             if file.suffix not in {'.service','.timer'}: continue
-            content=file.read_text().replace('/opt/nuligahelper/venv/bin/python','/usr/bin/python3')
+            content=file.read_text().replace('/opt/nuligahelper/current/venv/bin/python','/usr/bin/python3')
             target=Path(directory)/file.name
             target.write_text(content)
             files.append(str(target))
         result=subprocess.run(['systemd-analyze','verify',*files],capture_output=True,text=True)
         assert result.returncode == 0, result.stderr
-    timer=(Path(h.PROJECT_DIR)/'deploy/nuligahelper-daily.timer').read_text()
+    timer=(Path(h.PROJECT_DIR)/'release-assets/systemd/nuligahelper-daily.timer').read_text()
     assert '09:00:00 Europe/Berlin' in timer and 'Persistent=true' in timer
 
 

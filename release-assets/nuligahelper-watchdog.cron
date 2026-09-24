@@ -1,0 +1,2 @@
+# Independent cron check detects a disabled/missing systemd monitoring schedule.
+*/15 * * * * root /opt/nuligahelper/current/venv/bin/python /opt/nuligahelper/current/monitor_watchdog.py
