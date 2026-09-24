@@ -2,8 +2,8 @@
 
 - [x] 1.1 Inventory the live host's exact commit/tree, database revision and path, installed web/daily/cleanup units and timers, and latest validated backup; verify a redacted baseline record matches the operator-confirmed `/var/lib/nuligahelper/nuliga_helper.db` and identifies any difference from the planned `devel/webui` head.
 - [x] 1.2 Add a GitHub pull-request check that installs the declared dependencies and runs the full offline suite with synthetic data; verify the check passes on a review branch and requires no production credentials or server access.
-- [ ] 1.3 Configure protected `master` to require reviewed pull requests and the project test check, and verify the repository settings or a controlled direct-push refusal records those gates without changing production.
-- [x] 1.4 Promote the running `devel/webui` application baseline to `master` through the required review path, and verify differences in application files and schema head against the live commit before treating the first cutover as migration-free.
+- [x] 1.3 Configure protected `master` to require pull requests and the `offline-tests` check, and verify the active repository ruleset records those gates without changing production; independent approval is not required in this solo-maintainer repository.
+- [x] 1.4 Promote the running `devel/webui` application baseline to `master` through a pull request, and verify differences in application files and schema head against the live commit before treating the first cutover as migration-free. The baseline PR predated the required offline check.
 
 ## 2. Package a Reproducible, Non-Secret Release
 
@@ -20,9 +20,9 @@
 
 ## 4. Guard Activation and Data Preservation
 
-- [ ] 4.1 Implement the maintenance entry sequence for daily and cleanup timers, active oneshot jobs, public ingress, and the web service; verify synthetic active-job cases wait or refuse without killing a running notification/backup task and no database writer remains before cutover.
-- [ ] 4.2 Create and validate a protected, durable predeployment SQLite snapshot after writers quiesce using the existing backup primitive; verify a WAL-mode fixture retains committed data, integrity and foreign-key checks pass, and snapshot failure prevents activation.
-- [ ] 4.3 Add a candidate-version schema preflight that proceeds only at the required head, pauses for an explicit guarded migration on a recognized older revision, and refuses missing, unknown, corrupt, divergent, or newer databases; verify each case with synthetic databases and no implicit migration.
+- [x] 4.1 Implement the maintenance entry sequence for daily and cleanup timers, active oneshot jobs, public ingress, and the web service; verify synthetic active-job cases wait or refuse without killing a running notification/backup task and no database writer remains before cutover.
+- [x] 4.2 Create and validate a protected, durable predeployment SQLite snapshot after writers quiesce using the existing backup primitive; verify a WAL-mode fixture retains committed data, integrity and foreign-key checks pass, and snapshot failure prevents activation.
+- [x] 4.3 Add a candidate-version schema preflight that proceeds only at the required head, pauses for an explicit guarded migration on a recognized older revision, and refuses missing, unknown, corrupt, divergent, or newer databases; verify each case with synthetic databases and no implicit migration.
 - [ ] 4.4 Atomically switch the internal `current` link only after all cutover gates pass, and verify interrupted or failed-switch fixtures leave either the old or new complete release addressable with the previous target recorded.
 - [ ] 4.5 Verify the started web unit, loopback listener, local readiness, candidate database revision, and configured public HTTPS health before accepting activation; verify failed checks keep scheduled work paused and never invoke the daily job as a smoke test.
 - [ ] 4.6 Detect whether the 09:00 persistent daily or cleanup timer would catch up immediately, require a recorded operator decision before resuming it, and verify simulated missed-trigger cases never start a notification or cleanup run silently.

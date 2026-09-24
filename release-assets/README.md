@@ -15,7 +15,11 @@ until the activation, snapshot, timer, rollback, and rehearsal tasks in the
 OpenSpec change are complete. Its root-only configuration template is
 `deployment.json.example`; the real `/etc/nuligahelper/deployment.json` must
 be root-owned mode 0600 and must not enter Git. The Git source cache is outside
-the service-readable application tree.
+the service-readable application tree. Its `database` must name the existing
+`/var/lib/nuligahelper/nuliga_helper.db`; `recovery_dir` is a separate
+root-owned mode 0700 directory for future cutover records and snapshots, and
+`public_health_url` is the approved HTTPS `/healthz` URL. These additional
+settings do not enable activation in the current command.
 
 `recovery_check.py` provides the candidate-runtime SQLite snapshot and
 read-only schema classification primitives for the future activation step. It

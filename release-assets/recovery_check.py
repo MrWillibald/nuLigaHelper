@@ -15,6 +15,7 @@ import stat
 
 import backup
 import schema_migrations
+from alembic.script import ScriptDirectory
 
 
 class RecoveryCheckError(RuntimeError):
@@ -79,7 +80,10 @@ def schema_gate(database: Path) -> dict[str, str]:
     if state.kind == "head" and state.revision == heads[0]:
         gate = "ready"
     elif state.kind in {"baseline", "versioned"}:
-        gate = "migration_required"
+        scripts = ScriptDirectory.from_config(schema_migrations.alembic_config())
+        ancestors = {revision.revision for revision in
+                     scripts.iterate_revisions(heads[0], "base")}
+        gate = "migration_required" if state.revision in ancestors else "refused"
     else:
         gate = "refused"
     return {"gate": gate, "state": state.kind, "revision": state.revision or "",
@@ -92,8 +96,8 @@ def main() -> int:
     parser.add_argument("--database", type=Path, required=True)
     parser.add_argument("--destination", type=Path)
     args = parser.parse_args()
-    if os.geteuid() != 0:
-        parser.error("recovery probes must run as root in the stopped cutover")
+    if args.action == "snapshot" and os.geteuid() != 0:
+        parser.error("durable deployment snapshots must run as root")
     try:
         if args.action == "snapshot":
             if args.destination is None:

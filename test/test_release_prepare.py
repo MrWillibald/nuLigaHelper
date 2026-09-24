@@ -1,7 +1,9 @@
 """Offline checks for operator-selected, non-activating release preparation."""
 
 import importlib.util
+import copy
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 import subprocess
 import sys
@@ -9,6 +11,7 @@ import tempfile
 from unittest.mock import patch
 
 import helpers as h
+import db
 
 
 SOURCE = Path(h.PROJECT_DIR) / 'release-assets/nuligahelper-deploy.py'
@@ -48,7 +51,9 @@ def configuration(root, source):
     (app_root / 'current').symlink_to(prior)
     return dict(source=str(source), app_root=str(app_root),
                 source_cache=str(root / 'cache/source.git'),
-                service_group='synthetic', python=sys.executable)
+                service_group='synthetic', python=sys.executable,
+                database=str(root / 'live.db'), recovery_dir=str(root / 'recovery'),
+                public_health_url='https://club.test/healthz')
 
 
 def _synthetic_releases(app_root):
@@ -237,6 +242,346 @@ def test_atomic_current_switch_never_exposes_an_incomplete_candidate():
         assert not list(app_root.glob('.current-next-*'))
         assert deploy.switch_current(app_root, commit) == (str(prior), str(candidate))
         assert current.resolve() == candidate
+
+
+def test_read_only_plan_contains_no_configuration_or_contact_canary():
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        source, _ = synthetic_source(root)
+        config = configuration(root, source)
+        commit = 'c' * 40
+        candidate = Path(config['app_root']) / 'releases' / commit
+        candidate.mkdir(parents=True)
+        (candidate / '.prepared.json').write_text(json.dumps({
+            'schema_version': 1, 'commit': commit, 'tree': 'a' * 40}))
+        Path(config['database']).write_bytes(b'synthetic database marker')
+        with patch.object(deploy, '_unit_state', return_value={
+                'LoadState': 'loaded', 'ActiveState': 'active'}), \
+                patch.object(deploy, 'schema_probe', return_value={
+                    'gate': 'ready', 'revision': '0003_game_day_task_blocks'}):
+            plan = deploy.inspect_plan(config, commit)
+        serialized = json.dumps(plan)
+        assert plan['activation_available'] is False
+        assert plan['selected_commit'] == commit
+        assert 'synthetic-contact-and-secret-canary' not in serialized
+        assert 'public_health_url' not in serialized
+
+
+def test_candidate_schema_probe_uses_its_own_runtime_without_secrets():
+    with tempfile.TemporaryDirectory() as directory:
+        database = Path(directory) / 'live.db'
+        db.initialize_db(db.make_engine(str(database)))
+        result = deploy.schema_probe(Path(h.PROJECT_DIR), database)
+        assert result['gate'] == 'ready'
+        assert result['revision'] == '0003_game_day_task_blocks'
+
+
+def test_local_web_verification_checks_release_listener_schema_and_health():
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        config, commit = _maintenance_fixture(root)
+        app_root = Path(config['app_root'])
+        candidate = app_root / 'releases' / commit
+        (app_root / 'current').unlink()
+        (app_root / 'current').symlink_to(candidate)
+        controller = SyntheticController()
+        controller.loopback_listener = lambda: True
+        with patch.object(deploy, 'schema_probe', return_value={'gate': 'ready'}), \
+                patch.object(deploy, 'check_health') as health:
+            deploy.verify_local_web(config, commit, controller)
+        health.assert_called_once_with(config['public_health_url'], public=False)
+        controller.loopback_listener = lambda: False
+        with patch.object(deploy, 'schema_probe') as probe, \
+                patch.object(deploy, 'check_health') as health:
+            try:
+                deploy.verify_local_web(config, commit, controller)
+            except deploy.DeployError as error:
+                assert 'loopback-only' in str(error)
+            else:
+                raise AssertionError('public-bound or absent listener accepted')
+        assert not probe.called and not health.called
+
+
+def test_health_checks_reject_unexpected_responses_without_redirects():
+    class Response:
+        status = 302
+
+        def read(self, maximum):
+            return b'ok\n'
+
+    class Connection:
+        def __init__(self, *args, **kwargs):
+            self.headers = None
+            self.closed = False
+
+        def request(self, method, path, headers):
+            assert method == 'GET' and path == '/healthz'
+            self.headers = headers
+
+        def getresponse(self):
+            return Response()
+
+        def close(self):
+            self.closed = True
+
+    with patch.object(deploy.http.client, 'HTTPConnection', Connection), \
+            patch.object(deploy.http.client, 'HTTPSConnection', Connection):
+        for public in (False, True):
+            try:
+                deploy.check_health('https://club.test/healthz', public=public)
+            except deploy.DeployError as error:
+                assert 'check failed' in str(error)
+            else:
+                raise AssertionError('redirecting health endpoint accepted')
+
+
+def test_persistent_calendar_timer_catchup_requires_a_decision():
+    def state(last):
+        return {'LastTriggerUSec': last}
+
+    after = datetime.fromisoformat('2026-09-24T10:00:00+02:00')
+    before = datetime.fromisoformat('2026-09-24T08:00:00+02:00')
+    assert deploy.pending_calendar_catchup(
+        state('Wed 2026-09-23 09:00:08 CEST'), now=after)
+    assert not deploy.pending_calendar_catchup(
+        state('Thu 2026-09-24 09:00:08 CEST'), now=after)
+    assert not deploy.pending_calendar_catchup(
+        state('Wed 2026-09-23 09:00:08 CEST'), now=before)
+    assert deploy.pending_calendar_catchup(
+        state('Tue 2026-09-22 09:00:08 CEST'), now=before), \
+        'a missed firing yesterday still matters before today at 09:00'
+    assert deploy.pending_calendar_catchup(state('n/a'), now=after)
+
+
+class SyntheticController:
+    def __init__(self, *, daily_polls=0, open_handles=False):
+        self.active = {name: 'active' for name in
+                       (*deploy.TIMERS, 'caddy.service', 'nuligahelper-web.service')}
+        self.events = []
+        self.daily_polls = daily_polls
+        self.open_handles = open_handles
+
+    def state(self, unit):
+        if unit == 'nuligahelper-daily.service' and self.daily_polls:
+            self.daily_polls -= 1
+            return {'ActiveState': 'active'}
+        return {'ActiveState': self.active.get(unit, 'inactive'),
+                'UnitFileState': 'enabled', 'LastTriggerUSec': 'n/a'}
+
+    def systemctl(self, *arguments):
+        self.events.append(arguments)
+        self.active[arguments[-1]] = 'inactive'
+
+    def database_handles(self, database):
+        self.events.append(('inspect-handles', str(database)))
+        return self.open_handles
+
+
+def test_maintenance_waits_for_active_job_without_killing_it():
+    controller = SyntheticController(daily_polls=2)
+    elapsed = [0.0]
+    def sleep(seconds): elapsed[0] += seconds
+    result = deploy.quiesce_writers(Path('/synthetic/live.db'), controller,
+                                    wait_seconds=10, clock=lambda: elapsed[0],
+                                    sleep=sleep)
+    assert result['writers_quiescent'] is True
+    assert elapsed[0] >= 2
+    assert controller.events[:3] == [
+        ('disable', '--now', timer) for timer in deploy.TIMERS]
+    assert ('stop', 'nuligahelper-daily.service') not in controller.events
+    assert controller.events[-1] == ('inspect-handles', '/synthetic/live.db')
+
+
+def test_maintenance_timeout_leaves_timers_paused_and_ingress_unchanged():
+    controller = SyntheticController(daily_polls=100)
+    elapsed = [0.0]
+    def sleep(seconds): elapsed[0] += seconds
+    try:
+        deploy.quiesce_writers(Path('/synthetic/live.db'), controller,
+                               wait_seconds=3, clock=lambda: elapsed[0], sleep=sleep)
+    except deploy.DeployError as error:
+        assert 'still active' in str(error)
+    else:
+        raise AssertionError('active daily job was interrupted for cutover')
+    assert all(controller.active[timer] == 'inactive' for timer in deploy.TIMERS)
+    assert controller.active['caddy.service'] == 'active'
+    assert controller.active['nuligahelper-web.service'] == 'active'
+    assert not any(event[0] == 'stop' for event in controller.events)
+
+
+def test_open_database_handle_blocks_cutover_after_web_stops():
+    controller = SyntheticController(open_handles=True)
+    try:
+        deploy.quiesce_writers(Path('/synthetic/live.db'), controller,
+                               wait_seconds=1, clock=lambda: 0,
+                               sleep=lambda seconds: None)
+    except deploy.DeployError as error:
+        assert 'open handle' in str(error)
+    else:
+        raise AssertionError('open database handle accepted')
+    assert controller.active['caddy.service'] == 'inactive'
+    assert controller.active['nuligahelper-web.service'] == 'inactive'
+
+
+def test_late_started_database_job_blocks_cutover():
+    class LateJobController(SyntheticController):
+        def __init__(self):
+            super().__init__()
+            self.daily_checks = 0
+
+        def state(self, unit):
+            if unit == 'nuligahelper-daily.service':
+                self.daily_checks += 1
+                if self.daily_checks > 1:
+                    return {'ActiveState': 'active'}
+            return super().state(unit)
+
+    controller = LateJobController()
+    try:
+        deploy.quiesce_writers(Path('/synthetic/live.db'), controller,
+                               wait_seconds=1, clock=lambda: 0,
+                               sleep=lambda seconds: None)
+    except deploy.DeployError as error:
+        assert 'started during maintenance' in str(error)
+    else:
+        raise AssertionError('late-started writer was accepted')
+    assert controller.active['caddy.service'] == 'inactive'
+    assert not any(event[0] == 'stop' and
+                   event[-1] == 'nuligahelper-daily.service'
+                   for event in controller.events)
+
+
+def test_private_deployment_record_allowlists_fields_and_excludes_canaries():
+    with tempfile.TemporaryDirectory() as directory:
+        recovery = Path(directory)
+        identifier = 'd' * 32
+        record = dict(schema_version=1, deployment_id=identifier,
+                      source_commit='a' * 40, source_tree='b' * 40,
+                      previous_release='/opt/nuligahelper/ea0ab00',
+                      previous_commit='ea0ab00' + 'c' * 33,
+                      timer_before=None,
+                      schema_before='0003_game_day_task_blocks', schema_after=None,
+                      snapshot_path=None, checks=['fetched_master', 'offline_suite'],
+                      outcome='maintenance', public_reopened=False,
+                      timers_paused=True,
+                      updated_at=datetime.now(timezone.utc).isoformat())
+        with patch.object(deploy, 'private_recovery_directory'):
+            path = deploy.write_deployment_record(recovery, record)
+            assert path.stat().st_mode & 0o777 == 0o600
+            assert json.loads(path.read_text()) == record
+            for bad in ({**record, 'secret': 'synthetic-contact-and-secret-canary'},
+                        {**record, 'previous_release':
+                         '/opt/nuligahelper/synthetic-contact-and-secret-canary'},
+                        {**record, 'timer_before': {
+                            timer: {'ActiveState': 'active', 'UnitFileState': 'enabled',
+                                    'LastTriggerUSec': 'synthetic-contact-and-secret-canary'}
+                            for timer in deploy.TIMERS}},
+                        {**record, 'checks': ['synthetic_contact_and_secret_canary']}):
+                try:
+                    deploy.write_deployment_record(recovery, bad)
+                except deploy.DeployError:
+                    pass
+                else:
+                    raise AssertionError('secret/contact canary reached a record')
+        assert 'synthetic-contact-and-secret-canary' not in path.read_text()
+
+
+def test_legacy_previous_commit_must_match_release_directory():
+    with patch.object(deploy, 'run', return_value='ea0ab00' + 'a' * 33):
+        assert deploy.prior_commit('/opt/nuligahelper/ea0ab00') == \
+            'ea0ab00' + 'a' * 33
+    with patch.object(deploy, 'run', return_value='f' * 40):
+        try:
+            deploy.prior_commit('/opt/nuligahelper/ea0ab00')
+        except deploy.DeployError as error:
+            assert 'does not match' in str(error)
+        else:
+            raise AssertionError('mismatched legacy release identity accepted')
+
+
+def _maintenance_fixture(root):
+    source, _ = synthetic_source(root)
+    config = configuration(root, source)
+    commit = 'd' * 40
+    candidate = Path(config['app_root']) / 'releases' / commit
+    candidate.mkdir(parents=True)
+    (candidate / '.prepared.json').write_text(json.dumps({
+        'schema_version': 1, 'commit': commit, 'tree': 'e' * 40}))
+    Path(config['recovery_dir']).mkdir()
+    Path(config['database']).write_bytes(b'synthetic database marker')
+    return config, commit
+
+
+def test_maintenance_records_snapshot_only_after_writers_quiesce():
+    with tempfile.TemporaryDirectory() as directory:
+        config, commit = _maintenance_fixture(Path(directory))
+        events, records = [], []
+        controller = SyntheticController()
+        def snapshot(*args):
+            events.append('snapshot')
+            assert controller.active['caddy.service'] == 'inactive'
+            assert controller.active['nuligahelper-web.service'] == 'inactive'
+            assert all(controller.active[timer] == 'inactive' for timer in deploy.TIMERS)
+            return Path(config['recovery_dir']) / ('snapshot-' + args[-1] + '.db')
+        with patch.object(deploy, 'private_recovery_directory'), \
+                patch.object(deploy, 'check_headroom'), \
+                patch.object(deploy, 'prior_commit', return_value='a' * 40), \
+                patch.object(deploy, 'write_deployment_record',
+                             side_effect=lambda folder, record: records.append(copy.deepcopy(record))), \
+                patch.object(deploy, 'schema_probe', side_effect=[
+                    {'gate': 'ready', 'revision': '0003_game_day_task_blocks'},
+                    {'gate': 'ready', 'revision': '0003_game_day_task_blocks'}]), \
+                patch.object(deploy, 'snapshot_probe', side_effect=snapshot):
+            record = deploy.enter_maintenance(config, commit, controller)
+        assert events == ['snapshot']
+        assert record['timers_paused'] is True
+        assert record['snapshot_path'].endswith('.db')
+        assert 'schema_ready' in record['checks']
+        assert records[-1]['outcome'] == 'maintenance'
+
+
+def test_maintenance_refuses_unsafe_schema_before_stopping_anything():
+    with tempfile.TemporaryDirectory() as directory:
+        config, commit = _maintenance_fixture(Path(directory))
+        controller = SyntheticController()
+        with patch.object(deploy, 'private_recovery_directory'), \
+                patch.object(deploy, 'check_headroom'), \
+                patch.object(deploy, 'prior_commit', return_value='a' * 40), \
+                patch.object(deploy, 'schema_probe', return_value={
+                    'gate': 'refused', 'revision': ''}), \
+                patch.object(deploy, 'snapshot_probe') as snapshot:
+            try:
+                deploy.enter_maintenance(config, commit, controller)
+            except deploy.DeployError:
+                pass
+            else:
+                raise AssertionError('unsafe schema entered maintenance')
+        assert not controller.events and not snapshot.called
+
+
+def test_snapshot_failure_keeps_maintenance_and_records_failure():
+    with tempfile.TemporaryDirectory() as directory:
+        config, commit = _maintenance_fixture(Path(directory))
+        controller = SyntheticController()
+        records = []
+        with patch.object(deploy, 'private_recovery_directory'), \
+                patch.object(deploy, 'check_headroom'), \
+                patch.object(deploy, 'prior_commit', return_value='a' * 40), \
+                patch.object(deploy, 'write_deployment_record',
+                             side_effect=lambda folder, record: records.append(copy.deepcopy(record))), \
+                patch.object(deploy, 'schema_probe', return_value={
+                    'gate': 'ready', 'revision': '0003_game_day_task_blocks'}), \
+                patch.object(deploy, 'snapshot_probe',
+                             side_effect=deploy.DeployError('synthetic snapshot failure')):
+            try:
+                deploy.enter_maintenance(config, commit, controller)
+            except deploy.DeployError:
+                pass
+            else:
+                raise AssertionError('snapshot failure allowed activation')
+        assert records[-1]['outcome'] == 'failed'
+        assert records[-1]['timers_paused'] is True
+        assert (Path(config['app_root']) / 'current').resolve().name == 'prior'
 
 
 if __name__ == '__main__':

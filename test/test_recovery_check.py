@@ -9,6 +9,7 @@ from unittest.mock import patch
 import helpers as h
 import backup
 import db
+import schema_migrations
 
 
 SOURCE = Path(h.PROJECT_DIR) / 'release-assets/recovery_check.py'
@@ -64,7 +65,9 @@ def test_schema_gate_accepts_head_pauses_old_and_refuses_unknown_or_missing():
     with tempfile.TemporaryDirectory() as directory:
         database = Path(directory) / 'live.db'
         assert recovery.schema_gate(database)['gate'] == 'refused'
-        db.initialize_db(db.make_engine(str(database)))
+        engine = db.make_engine(str(database))
+        db.initialize_db(engine)
+        engine.dispose()
         ready = recovery.schema_gate(database)
         assert ready['gate'] == 'ready'
         assert ready['revision'] == '0003_game_day_task_blocks'
@@ -74,6 +77,24 @@ def test_schema_gate_accepts_head_pauses_old_and_refuses_unknown_or_missing():
         with sqlite3.connect(database) as connection:
             connection.execute("UPDATE alembic_version SET version_num='unrecognized_revision'")
         assert recovery.schema_gate(database)['gate'] == 'refused'
+
+
+def test_schema_gate_refuses_newer_divergent_and_corrupt_databases():
+    with tempfile.TemporaryDirectory() as directory:
+        database = Path(directory) / 'live.db'
+        engine = db.make_engine(str(database))
+        db.initialize_db(engine)
+        engine.dispose()
+        with patch.object(schema_migrations, 'head_revisions',
+                          return_value=('0002_multi_team_membership',)):
+            assert recovery.schema_gate(database)['gate'] == 'refused', \
+                'a database ahead of the candidate must never be migrated backwards'
+        with patch.object(schema_migrations, 'inspect_schema', return_value=
+                          schema_migrations.SchemaState('divergent')):
+            assert recovery.schema_gate(database)['gate'] == 'refused'
+        corrupt = Path(directory) / 'corrupt.db'
+        corrupt.write_bytes(b'not sqlite')
+        assert recovery.schema_gate(corrupt)['gate'] == 'refused'
 
 
 if __name__ == '__main__':
