@@ -11,10 +11,12 @@ The tracked `nuligahelper-deploy.py` implements separate `inspect`, `prepare`,
 commit reachable from fetched `master`, builds an isolated release, and checks
 it before interruption. Activation then stops known writers and ingress,
 creates a validated SQLite snapshot, gates the schema, switches `current`, and
-checks local and public readiness. **The command is still a draft:** do not
-install or run its activation commands on production until the representative
-host rehearsal, runbook review, and operator approval in the OpenSpec change
-are complete. Its root-only configuration template is
+waits up to 60 seconds for the selected web unit, loopback listener, and local
+`/healthz` before reopening Caddy and checking public HTTPS readiness. A
+`Type=simple` start alone is not readiness. **The command is still a draft:** do not
+install or run its activation commands on production until this revision is
+merged through protected `master`, host preflight passes, and the operator
+approves the cutover in the OpenSpec change. Its root-only configuration template is
 `deployment.json.example`; the real `/etc/nuligahelper/deployment.json` must
 be root-owned mode 0600 and must not enter Git. The Git source cache is outside
 the service-readable application tree. Its `database` must name the existing
@@ -58,6 +60,12 @@ sudo /usr/local/sbin/nuligahelper-deploy continue --deployment-id <deployment-id
 An unknown, corrupt, divergent, or newer schema is a refusal,
 not an invitation to migrate. Do not initialize a replacement database.
 
+If local readiness fails or times out, Caddy and the timers remain stopped and
+the deployment record is `failed`; the validated snapshot and live database
+remain available. Do not manually reopen ingress based only on an `active`
+systemd state. Inspect the record, web journal, loopback listener, and local
+`/healthz` before choosing the documented compatible rollback or recovery path.
+
 On successful public readiness, the daily and cleanup timers remain disabled.
 Inspect the printed `pending_catchup` values and effects of a missed 09:00
 run. `resume-timers --deployment-id <deployment-id> --catchup hold` records a
@@ -67,7 +75,12 @@ cleanup. Neither command invokes the daily service as a smoke test.
 
 `rollback-code --deployment-id <deployment-id>` is permitted only before any
 possible public write and only when the previous release accepts the unchanged
-database schema. It never restores a database. A migrated database or one that
+database schema. It applies the same 60-second local-readiness wait to the prior
+web service before reopening Caddy; a failed unit or timeout leaves ingress and
+timers closed, the prior release link selected, and the current database intact.
+Do not blindly repeat `rollback-code` after a partial rollback has already
+selected the prior link; inspect the record and recover explicitly. The command
+never restores a database. A migrated database or one that
 may have accepted public writes requires a separate, stopped-writer recovery
 decision and the existing validated restore procedure; never blindly replace
 the live database with an older snapshot.
@@ -77,11 +90,12 @@ templates. Install reviewed copies as root, verify them with
 `systemd-analyze verify`, and run `systemctl daemon-reload` before starting a
 changed service. Do not switch the link while the web, daily, or cleanup
 services are using the database.
-The first installed web unit still points to `current/deploy/gunicorn.conf.py`
-inside the legacy release. Installing the new web unit, which points to
-`current/release-assets/gunicorn.conf.py`, before a compatible release is active
-would stop the web service. The cutover runbook must handle that transition
-explicitly.
+The legacy release originally had `deploy/gunicorn.conf.py` but not
+`release-assets/gunicorn.conf.py`. Before installing the new web unit, which
+points to `current/release-assets/gunicorn.conf.py`, provide the reviewed
+root-owned compatibility file in the retained legacy release and verify that
+unit can start it. Installing the new unit against an unmodified legacy release
+would stop the web service.
 
 Site-specific Caddy configuration, `/etc/nuligahelper/web.env`, club texts,
 contacts, credentials, the SQLite database in `/var/lib/nuligahelper`, snapshots, and operator approval
