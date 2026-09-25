@@ -40,6 +40,7 @@ APPROVED_SOURCES = {
 }
 MIN_FREE_BYTES = 2 * 1024**3
 MIN_AVAILABLE_MEMORY_KIB = 256 * 1024
+WEB_READY_TIMEOUT_SECONDS = 60
 RECORD_OUTCOMES = {"maintenance", "migration_required", "failed",
                    "web_ready", "public_ready", "accepted", "rolled_back"}
 RECORD_CHECKS = {"fetched_master", "offline_suite", "syntax", "writers_quiescent",
@@ -388,18 +389,38 @@ def check_health(public_url: str, *, public: bool) -> None:
         connection.close()
 
 
+def wait_for_web_ready(config: dict[str, object], controller: HostController, *,
+                       wait_seconds: float = WEB_READY_TIMEOUT_SECONDS,
+                       clock=time.monotonic, sleep=time.sleep) -> None:
+    """Wait for Type=simple Gunicorn readiness before allowing public ingress."""
+    deadline = clock() + wait_seconds
+    while True:
+        state = controller.state("nuligahelper-web.service").get("ActiveState")
+        if state in {"failed", "inactive"}:
+            raise DeployError("web service failed before becoming ready")
+        if state == "active" and controller.loopback_listener():
+            try:
+                check_health(str(config["public_health_url"]), public=False)
+            except DeployError as exc:
+                if str(exc) != "local readiness check failed":
+                    raise
+            else:
+                if clock() <= deadline:
+                    return
+        remaining = deadline - clock()
+        if remaining <= 0:
+            raise DeployError("web readiness timed out with public ingress closed")
+        sleep(min(1.0, remaining))
+
+
 def verify_local_web(config: dict[str, object], commit: str,
                      controller: HostController) -> None:
     app_root = Path(config["app_root"])
     if prior_release(app_root) != str(prepared_candidate(app_root, commit)):
         raise DeployError("current link does not identify the selected release")
-    if controller.state("nuligahelper-web.service").get("ActiveState") != "active":
-        raise DeployError("web service is not active")
-    if not controller.loopback_listener():
-        raise DeployError("web listener is not loopback-only")
     if schema_probe(prepared_candidate(app_root, commit), Path(config["database"]))["gate"] != "ready":
         raise DeployError("candidate database revision is not ready")
-    check_health(str(config["public_health_url"]), public=False)
+    wait_for_web_ready(config, controller)
 
 
 def unit_paths_safe(content: str, name: str) -> None:
@@ -981,10 +1002,7 @@ def rollback_code_only(config: dict[str, object], record: dict[str, object],
     atomic_current_link(app_root, Path(record["previous_release"]))
     try:
         controller.systemctl("start", "nuligahelper-web.service")
-        if controller.state("nuligahelper-web.service").get("ActiveState") != "active" or \
-                not controller.loopback_listener():
-            raise DeployError("previous web release is not ready")
-        check_health(str(config["public_health_url"]), public=False)
+        wait_for_web_ready(config, controller)
         record["public_reopened"] = True  # Durable before any accepted public write.
         record["updated_at"] = datetime.now(timezone.utc).isoformat()
         write_deployment_record(recovery_dir, record)

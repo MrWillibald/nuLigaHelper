@@ -349,19 +349,77 @@ def test_local_web_verification_checks_release_listener_schema_and_health():
         controller = SyntheticController()
         controller.loopback_listener = lambda: True
         with patch.object(deploy, 'schema_probe', return_value={'gate': 'ready'}), \
-                patch.object(deploy, 'check_health') as health:
+                patch.object(deploy, 'wait_for_web_ready') as readiness:
             deploy.verify_local_web(config, commit, controller)
-        health.assert_called_once_with(config['public_health_url'], public=False)
-        controller.loopback_listener = lambda: False
-        with patch.object(deploy, 'schema_probe') as probe, \
-                patch.object(deploy, 'check_health') as health:
+        readiness.assert_called_once_with(config, controller)
+        with patch.object(deploy, 'schema_probe', return_value={'gate': 'refused'}), \
+                patch.object(deploy, 'wait_for_web_ready') as readiness:
             try:
                 deploy.verify_local_web(config, commit, controller)
             except deploy.DeployError as error:
-                assert 'loopback-only' in str(error)
+                assert 'database revision' in str(error)
             else:
-                raise AssertionError('public-bound or absent listener accepted')
-        assert not probe.called and not health.called
+                raise AssertionError('unsafe schema reached readiness polling')
+        assert not readiness.called
+
+
+def test_local_web_readiness_waits_for_listener_and_health_under_one_deadline():
+    class DelayedController(SyntheticController):
+        def __init__(self):
+            super().__init__()
+            self.listener_polls = 0
+
+        def loopback_listener(self):
+            self.listener_polls += 1
+            return self.listener_polls >= 2
+
+    controller = DelayedController()
+    controller.active['caddy.service'] = 'inactive'
+    elapsed = [0.0]
+    health_attempts = [0]
+    def sleep(seconds):
+        assert controller.active['caddy.service'] == 'inactive'
+        elapsed[0] += seconds
+    def health(url, *, public):
+        assert not public
+        health_attempts[0] += 1
+        if health_attempts[0] == 1:
+            raise deploy.DeployError('local readiness check failed')
+    with patch.object(deploy, 'check_health', side_effect=health):
+        deploy.wait_for_web_ready(
+            {'public_health_url': 'https://club.test/healthz'}, controller,
+            clock=lambda: elapsed[0], sleep=sleep)
+    assert elapsed[0] == 2.0
+    assert controller.listener_polls == 3
+    assert health_attempts[0] == 2
+
+
+def test_local_web_readiness_refuses_failed_unit_and_bounded_timeout():
+    controller = SyntheticController()
+    controller.active['nuligahelper-web.service'] = 'failed'
+    with patch.object(deploy, 'check_health') as health:
+        try:
+            deploy.wait_for_web_ready(
+                {'public_health_url': 'https://club.test/healthz'}, controller,
+                clock=lambda: 0, sleep=lambda seconds: None)
+        except deploy.DeployError as error:
+            assert 'failed' in str(error)
+        else:
+            raise AssertionError('failed web unit accepted as ready')
+    assert not health.called
+    controller.active['nuligahelper-web.service'] = 'active'
+    controller.loopback_listener = lambda: False
+    elapsed = [0.0]
+    try:
+        deploy.wait_for_web_ready(
+            {'public_health_url': 'https://club.test/healthz'}, controller,
+            wait_seconds=3, clock=lambda: elapsed[0],
+            sleep=lambda seconds: elapsed.__setitem__(0, elapsed[0] + seconds))
+    except deploy.DeployError as error:
+        assert 'timed out' in str(error)
+    else:
+        raise AssertionError('missing listener accepted after readiness deadline')
+    assert elapsed[0] == 3.0
 
 
 def test_health_checks_reject_unexpected_responses_without_redirects():
@@ -676,14 +734,29 @@ def test_activation_switches_only_after_gates_and_keeps_timers_paused():
     with tempfile.TemporaryDirectory() as directory:
         config, commit, record, controller = _ready_activation(Path(directory))
         app_root = Path(config['app_root'])
+        listener_polls = [0]
+        elapsed = [0.0]
+        def listener():
+            listener_polls[0] += 1
+            return listener_polls[0] >= 3
+        def sleep(seconds):
+            assert controller.active['caddy.service'] == 'inactive', \
+                'public ingress opened before local readiness'
+            elapsed[0] += seconds
+        controller.loopback_listener = listener
+        actual_wait = deploy.wait_for_web_ready
+        def wait(config, controller):
+            return actual_wait(config, controller, clock=lambda: elapsed[0], sleep=sleep)
         with patch.object(deploy, 'validate_deployment_record'), \
                 patch.object(deploy, 'write_deployment_record'), \
                 patch.object(deploy, 'validate_recovery_snapshot') as snapshot, \
                 patch.object(deploy, 'schema_probe', return_value={
                     'gate': 'ready', 'revision': '0003_game_day_task_blocks'}), \
+                patch.object(deploy, 'wait_for_web_ready', side_effect=wait), \
                 patch.object(deploy, 'check_health') as health:
             result = deploy.complete_activation(config, record, controller)
         assert snapshot.called
+        assert elapsed[0] == 2.0 and listener_polls[0] == 3
         assert (app_root / 'current').resolve() == app_root / 'releases' / commit
         assert result['outcome'] == 'public_ready'
         assert result['public_reopened'] is True
@@ -692,6 +765,50 @@ def test_activation_switches_only_after_gates_and_keeps_timers_paused():
         assert ('start', 'caddy.service') in controller.events
         assert all(controller.active[timer] == 'inactive' for timer in deploy.TIMERS)
         assert [call.kwargs['public'] for call in health.call_args_list] == [False, True]
+
+
+def test_activation_refuses_failed_unit_and_readiness_timeout_before_public_reopening():
+    for failure in ('unit', 'timeout'):
+        with tempfile.TemporaryDirectory() as directory:
+            config, commit, record, controller = _ready_activation(Path(directory))
+            elapsed = [0.0]
+            actual_state = controller.state
+            actual_wait = deploy.wait_for_web_ready
+            if failure == 'unit':
+                def state(unit):
+                    if unit == 'nuligahelper-web.service' and \
+                            ('start', unit) in controller.events:
+                        return {'ActiveState': 'failed'}
+                    return actual_state(unit)
+                controller.state = state
+            else:
+                controller.loopback_listener = lambda: False
+            def wait(config, controller):
+                return actual_wait(
+                    config, controller, wait_seconds=3,
+                    clock=lambda: elapsed[0],
+                    sleep=lambda seconds: elapsed.__setitem__(
+                        0, elapsed[0] + seconds))
+            with patch.object(deploy, 'validate_deployment_record'), \
+                    patch.object(deploy, 'write_deployment_record'), \
+                    patch.object(deploy, 'validate_recovery_snapshot'), \
+                    patch.object(deploy, 'schema_probe', return_value={
+                        'gate': 'ready', 'revision': '0003_game_day_task_blocks'}), \
+                    patch.object(deploy, 'wait_for_web_ready', side_effect=wait), \
+                    patch.object(deploy, 'check_health') as health:
+                try:
+                    deploy.complete_activation(config, record, controller)
+                except deploy.DeployError as error:
+                    assert ('failed' if failure == 'unit' else 'timed out') in str(error)
+                else:
+                    raise AssertionError(f'{failure} accepted candidate activation')
+            assert record['outcome'] == 'failed'
+            assert record['public_reopened'] is False
+            assert controller.active['caddy.service'] == 'inactive'
+            assert ('start', 'caddy.service') not in controller.events
+            assert all(controller.active[timer] == 'inactive' for timer in deploy.TIMERS)
+            assert ('start', 'nuligahelper-daily.service') not in controller.events
+            assert not health.called
 
 
 def test_failed_public_health_closes_ingress_and_does_not_resume_timers():
@@ -759,6 +876,19 @@ def test_code_only_rollback_restores_prior_release_without_touching_database():
         original_data = Path(config['database']).read_bytes()
         deploy.switch_current(app_root, commit)
         record['outcome'] = 'failed'
+        listener_polls = [0]
+        elapsed = [0.0]
+        def listener():
+            listener_polls[0] += 1
+            return listener_polls[0] >= 3
+        def sleep(seconds):
+            assert controller.active['caddy.service'] == 'inactive', \
+                'public ingress opened before previous release readiness'
+            elapsed[0] += seconds
+        controller.loopback_listener = listener
+        actual_wait = deploy.wait_for_web_ready
+        def wait(config, controller):
+            return actual_wait(config, controller, clock=lambda: elapsed[0], sleep=sleep)
         with patch.object(deploy, 'validate_deployment_record'), \
                 patch.object(deploy, 'write_deployment_record'), \
                 patch.object(deploy, 'schema_probe', return_value={
@@ -766,13 +896,95 @@ def test_code_only_rollback_restores_prior_release_without_touching_database():
                 patch.object(deploy, 'previous_schema_head',
                              return_value='0003_game_day_task_blocks'), \
                 patch.object(deploy, 'verify_previous_web_compatibility'), \
+                patch.object(deploy, 'wait_for_web_ready', side_effect=wait), \
                 patch.object(deploy, 'check_health'):
             result = deploy.rollback_code_only(config, record, controller)
         assert (app_root / 'current').resolve() == Path(record['previous_release'])
+        assert elapsed[0] == 2.0 and listener_polls[0] == 3
         assert Path(config['database']).read_bytes() == original_data
         assert result['outcome'] == 'rolled_back'
+        assert result['public_reopened'] is True
         assert result['timers_paused'] is True
         assert ('start', 'nuligahelper-daily.service') not in controller.events
+
+
+def test_code_only_rollback_timeout_retains_old_code_data_and_closed_ingress():
+    with tempfile.TemporaryDirectory() as directory:
+        config, commit, record, controller = _ready_activation(Path(directory))
+        app_root = Path(config['app_root'])
+        original_data = Path(config['database']).read_bytes()
+        deploy.switch_current(app_root, commit)
+        record['outcome'] = 'failed'
+        controller.loopback_listener = lambda: False
+        elapsed = [0.0]
+        actual_wait = deploy.wait_for_web_ready
+        def wait(config, controller):
+            return actual_wait(
+                config, controller, wait_seconds=3,
+                clock=lambda: elapsed[0],
+                sleep=lambda seconds: elapsed.__setitem__(
+                    0, elapsed[0] + seconds))
+        with patch.object(deploy, 'validate_deployment_record'), \
+                patch.object(deploy, 'write_deployment_record'), \
+                patch.object(deploy, 'schema_probe', return_value={
+                    'gate': 'ready', 'revision': '0003_game_day_task_blocks'}), \
+                patch.object(deploy, 'previous_schema_head',
+                             return_value='0003_game_day_task_blocks'), \
+                patch.object(deploy, 'verify_previous_web_compatibility'), \
+                patch.object(deploy, 'wait_for_web_ready', side_effect=wait), \
+                patch.object(deploy, 'check_health') as health:
+            try:
+                deploy.rollback_code_only(config, record, controller)
+            except deploy.DeployError as error:
+                assert 'timed out' in str(error)
+            else:
+                raise AssertionError('rollback reopened ingress without readiness')
+        assert (app_root / 'current').resolve() == Path(record['previous_release'])
+        assert Path(config['database']).read_bytes() == original_data
+        assert record['outcome'] == 'failed'
+        assert record['public_reopened'] is False
+        assert record['timers_paused'] is True
+        assert controller.active['caddy.service'] == 'inactive'
+        assert ('start', 'caddy.service') not in controller.events
+        assert all(controller.active[timer] == 'inactive' for timer in deploy.TIMERS)
+        assert not health.called
+
+
+def test_code_only_rollback_failed_unit_records_failure_without_public_reopening():
+    with tempfile.TemporaryDirectory() as directory:
+        config, commit, record, controller = _ready_activation(Path(directory))
+        app_root = Path(config['app_root'])
+        original_data = Path(config['database']).read_bytes()
+        deploy.switch_current(app_root, commit)
+        record['outcome'] = 'failed'
+        actual_state = controller.state
+        def state(unit):
+            if unit == 'nuligahelper-web.service' and ('start', unit) in controller.events:
+                return {'ActiveState': 'failed'}
+            return actual_state(unit)
+        controller.state = state
+        with patch.object(deploy, 'validate_deployment_record'), \
+                patch.object(deploy, 'write_deployment_record'), \
+                patch.object(deploy, 'schema_probe', return_value={
+                    'gate': 'ready', 'revision': '0003_game_day_task_blocks'}), \
+                patch.object(deploy, 'previous_schema_head',
+                             return_value='0003_game_day_task_blocks'), \
+                patch.object(deploy, 'verify_previous_web_compatibility'), \
+                patch.object(deploy, 'check_health') as health:
+            try:
+                deploy.rollback_code_only(config, record, controller)
+            except deploy.DeployError as error:
+                assert 'failed' in str(error)
+            else:
+                raise AssertionError('failed prior service reopened ingress')
+        assert (app_root / 'current').resolve() == Path(record['previous_release'])
+        assert Path(config['database']).read_bytes() == original_data
+        assert record['outcome'] == 'failed' and record['public_reopened'] is False
+        assert record['timers_paused'] is True
+        assert controller.active['caddy.service'] == 'inactive'
+        assert ('start', 'caddy.service') not in controller.events
+        assert all(controller.active[timer] == 'inactive' for timer in deploy.TIMERS)
+        assert not health.called
 
 
 def test_code_rollback_refuses_migrated_or_post_traffic_database():
