@@ -650,6 +650,9 @@ def test_maintenance_records_snapshot_only_after_writers_quiesce():
             return Path(config['recovery_dir']) / ('snapshot-' + args[-1] + '.db')
         with patch.object(deploy, 'private_recovery_directory'), \
                 patch.object(deploy, 'check_headroom'), \
+                patch.object(deploy, 'check_snapshot_headroom'), \
+                patch.object(deploy.shutil, 'disk_usage',
+                             return_value=SimpleNamespace(free=1)), \
                 patch.object(deploy, 'prior_commit', return_value='a' * 40), \
                 patch.object(deploy, 'write_deployment_record',
                              side_effect=lambda folder, record: records.append(copy.deepcopy(record))), \
@@ -671,6 +674,7 @@ def test_maintenance_refuses_unsafe_schema_before_stopping_anything():
         controller = SyntheticController()
         with patch.object(deploy, 'private_recovery_directory'), \
                 patch.object(deploy, 'check_headroom'), \
+                patch.object(deploy, 'check_snapshot_headroom'), \
                 patch.object(deploy, 'prior_commit', return_value='a' * 40), \
                 patch.object(deploy, 'schema_probe', return_value={
                     'gate': 'refused', 'revision': ''}), \
@@ -691,6 +695,7 @@ def test_snapshot_failure_keeps_maintenance_and_records_failure():
         records = []
         with patch.object(deploy, 'private_recovery_directory'), \
                 patch.object(deploy, 'check_headroom'), \
+                patch.object(deploy, 'check_snapshot_headroom'), \
                 patch.object(deploy, 'prior_commit', return_value='a' * 40), \
                 patch.object(deploy, 'write_deployment_record',
                              side_effect=lambda folder, record: records.append(copy.deepcopy(record))), \
