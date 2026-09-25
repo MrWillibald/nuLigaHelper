@@ -1,0 +1,10 @@
+{
+  "source": "https://github.com/MrWillibald/nuLigaHelper.git",
+  "app_root": "/opt/nuligahelper",
+  "source_cache": "/var/cache/nuligahelper-deploy/source.git",
+  "service_group": "nuligahelper",
+  "python": "/usr/bin/python3",
+  "database": "/var/lib/nuligahelper/nuliga_helper.db",
+  "recovery_dir": "/var/backups/nuligahelper-deploy",
+  "public_health_url": "https://nuliga.example.invalid/healthz"
+}

@@ -61,16 +61,43 @@ def test_unit_syntax_with_synthetic_executable_paths():
     # harmless executables; this does not claim installed-host execution evidence.
     with tempfile.TemporaryDirectory() as directory:
         files=[]
-        for file in (Path(h.PROJECT_DIR)/'deploy').glob('nuligahelper-*'):
+        for file in (Path(h.PROJECT_DIR)/'release-assets/systemd').glob('nuligahelper-*'):
             if file.suffix not in {'.service','.timer'}: continue
-            content=file.read_text().replace('/opt/nuligahelper/venv/bin/python','/usr/bin/python3')
+            content=file.read_text().replace('/opt/nuligahelper/current/venv/bin/python','/usr/bin/python3')
             target=Path(directory)/file.name
             target.write_text(content)
             files.append(str(target))
         result=subprocess.run(['systemd-analyze','verify',*files],capture_output=True,text=True)
         assert result.returncode == 0, result.stderr
-    timer=(Path(h.PROJECT_DIR)/'deploy/nuligahelper-daily.timer').read_text()
+    timer=(Path(h.PROJECT_DIR)/'release-assets/systemd/nuligahelper-daily.timer').read_text()
     assert '09:00:00 Europe/Berlin' in timer and 'Persistent=true' in timer
+
+
+def test_permission_preflight_accepts_internal_release_and_rejects_unsafe_links():
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory) / 'app'
+        release = root / 'releases' / ('a' * 40)
+        release.mkdir(parents=True)
+        (release / 'webapp.py').write_text('synthetic release\n')
+        for folder in (root, root / 'releases', release):
+            folder.chmod(0o750)
+        (release / 'webapp.py').chmod(0o640)
+        current = root / 'current'
+        current.symlink_to(release)
+        owner, group = os.getuid(), os.getgid()
+        assert not operations.tree_permission_errors(root, owner, group), \
+            'the existing preflight should accept an internal read-only release'
+        release.chmod(0o770)
+        assert 'app_mode' in operations.tree_permission_errors(root, owner, group)
+        release.chmod(0o750)
+        current.unlink()
+        current.symlink_to(Path(directory) / 'outside')
+        assert 'symlink' in operations.tree_permission_errors(root, owner, group)
+        current.unlink()
+        outside = Path(directory) / 'outside'
+        outside.mkdir()
+        current.symlink_to(outside)
+        assert 'symlink' in operations.tree_permission_errors(root, owner, group)
 
 
 if __name__ == '__main__':

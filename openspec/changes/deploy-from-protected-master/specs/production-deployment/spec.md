@@ -1,16 +1,16 @@
 ## Purpose
 
-Defines how an operator promotes reviewed GitHub revisions to the production server while preserving the existing SQLite data, controlling scheduled work, and retaining a verifiable recovery path.
+Defines how an operator promotes pull-request and CI-gated GitHub revisions to the production server while preserving the existing SQLite data, controlling scheduled work, and retaining a verifiable recovery path. The solo-maintainer gate does not claim independent human approval.
 
 ## ADDED Requirements
 
 ### Requirement: Production releases come from protected master by operator action
 
-The production deployment workflow SHALL accept only an exact commit that is reachable from the fetched protected `master` branch. Fetching or merging code SHALL NOT by itself activate a release; activation SHALL require an operator command. The workflow SHALL record the selected commit and the previously active commit without relying on a mutable branch name after selection.
+Protected `master` SHALL require a pull request and a successful `offline-tests` check before merge. Independent approving review is not required while the repository has no second reviewer. The production deployment workflow SHALL accept only an exact commit that is reachable from the fetched protected `master` branch. Fetching or merging code SHALL NOT by itself activate a release; activation SHALL require an operator command. The workflow SHALL record the selected commit and the previously active commit without relying on a mutable branch name after selection.
 
 #### Scenario: Operator selects an eligible release
 
-- **WHEN** the operator requests deployment after a reviewed commit has reached `master`
+- **WHEN** the operator requests deployment after a commit has reached `master` through a pull request with the required offline check
 - **THEN** the workflow pins that commit and identifies it in the preparation and activation record
 - **AND** a later movement of `master` does not change the selected release
 

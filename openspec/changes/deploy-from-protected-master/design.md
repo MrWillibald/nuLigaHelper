@@ -8,7 +8,7 @@ The existing units use `/opt/nuligahelper`, a shared `/etc/nuligahelper/web.env`
 
 **Goals:**
 
-- Make each deployment identify one reviewed commit and one prepared, independently testable release.
+- Make each deployment identify one pull-request and CI-gated commit and one prepared, independently testable release.
 - Keep the current SQLite file, configuration, and secret stable through code updates.
 - Keep failure before public reopening recoverable without rebuilding the previous release.
 - Make schema changes and timer catch-up visible operator decisions.
@@ -24,9 +24,9 @@ The existing units use `/opt/nuligahelper`, a shared `/etc/nuligahelper/web.env`
 
 ### 1. Promote a verified baseline to protected master
 
-Add an offline pull-request check and configure GitHub branch protection/rules so `master` requires a reviewed pull request and that successful check before merge. First promote the application currently running on production from `devel/webui`; compare the server's actual commit, application files, and schema revision with the promoted result. A merge commit may have a different SHA while carrying the same application code. New CI or deployment files also change the repository tree, so the first cutover is migration-free only after checking the actual application and schema differences.
+Add an offline pull-request check and configure GitHub branch protection/rules so `master` requires a pull request and the successful `offline-tests` check before merge. This is a solo-maintainer repository: the operator reviews the diff, but the ruleset cannot supply independent human approval and currently requires zero approving reviews. Do not describe this as second-person review enforcement. First promote the application currently running on production from `devel/webui`; compare the server's actual commit, application files, and schema revision with the promoted result. A merge commit may have a different SHA while carrying the same application code. New CI or deployment files also change the repository tree, so the first cutover is migration-free only after checking the actual application and schema differences.
 
-The operator initiates deployment on the VPS. A root-managed read-only GitHub credential is used only when repository access requires one; the application service account has no Git credential. The deploy command fetches `master`, resolves an exact SHA, verifies that any requested SHA is reachable from the fetched branch, and records it. It does not track the moving branch name during the rest of the deployment. GitHub settings provide review enforcement; local ancestry verification does not pretend to prove that a GitHub administrator could not alter those settings.
+The operator initiates deployment on the VPS. A root-managed read-only GitHub credential is used only when repository access requires one; the application service account has no Git credential. The deploy command fetches `master`, resolves an exact SHA, verifies that any requested SHA is reachable from the fetched branch, and records it. It does not track the moving branch name during the rest of the deployment. GitHub settings enforce the PR and offline-check gates; local ancestry verification does not pretend to prove that a GitHub administrator could not alter those settings.
 
 Automatic GitHub Actions deployment was rejected because the operator wants to choose the release time and because it would place production access in a hosted workflow. In-place `git pull` was rejected because it changes files underneath running processes and provides no prepared prior release.
 
@@ -85,8 +85,8 @@ Retain the prior release and deployment snapshot until acceptance criteria are m
 ## Migration Plan
 
 1. Read the running host's actual SHA, source tree, schema revision, unit/timer state, and current backup status. Rehearse a validated restore using a copy, without changing production data.
-2. Add the offline pull-request check, enable protection for `master`, promote the running `devel/webui` application baseline through review and checks, and compare application files and schema revisions. Do not equate a new merge-commit SHA with a changed application without checking its contents.
+2. Add the offline pull-request check, enable protection for `master`, promote the running `devel/webui` application baseline through a PR and the applicable checks, and compare application files and schema revisions. The baseline PR was merged before `offline-tests` became required; subsequent PRs must pass it. Do not equate a new merge-commit SHA with a changed application without checking its contents.
 3. Implement and test the tracked generic assets, dependency lock, root-owned deploy command, and all unit path updates on a representative non-production installation. Reconcile the private operations runbook, whose older fresh-database steps do not describe this existing production database.
-4. Install the host deploy command and updated units with the current release still active; validate unit syntax and permissions. Prepare the selected `master` commit without interrupting services.
+4. Install the host deploy command and prepare the selected `master` commit without interrupting services. The legacy current release has `deploy/gunicorn.conf.py` but lacks `release-assets/gunicorn.conf.py`. Before installing the new web unit, provision that generic compatibility file in the legacy release under root ownership and service-group read access, or defer the unit replacement until maintenance while preserving a tested rollback configuration. Verify the new unit can start against both the candidate and the retained prior release, then validate syntax and permissions; installing it against the unmodified legacy release would break web startup.
 5. During an operator-selected maintenance window, run activation with writer quiescence, validated snapshot, schema gate, release switch, readiness checks, controlled public reopening, and deliberate timer resumption. Record the result and observe the service through the agreed window.
 6. On failure, keep ingress and writers paused until code/database compatibility is established. Reactivate the previous release when safe; restore the validated snapshot only through the existing guarded procedure when a deliberate data recovery decision is necessary.

@@ -1,0 +1,19 @@
+[Unit]
+Description=nuLigaHelper operator alert for %i
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=nuligahelper
+Group=nuligahelper
+WorkingDirectory=/opt/nuligahelper/current
+EnvironmentFile=/etc/nuligahelper/web.env
+ExecStart=/opt/nuligahelper/current/venv/bin/python -B /opt/nuligahelper/current/operations.py alert --component %i
+UMask=0077
+TimeoutStartSec=45
+StandardOutput=journal
+StandardError=journal
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true

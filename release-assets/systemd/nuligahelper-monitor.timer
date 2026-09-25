@@ -1,0 +1,11 @@
+[Unit]
+Description=nuLigaHelper monitor schedule
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=15min
+AccuracySec=1min
+Unit=nuligahelper-monitor.service
+
+[Install]
+WantedBy=timers.target

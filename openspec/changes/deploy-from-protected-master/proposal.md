@@ -1,6 +1,6 @@
 ## Why
 
-Production already runs the SQLite/web application from `devel/webui`, but there is no repeatable way to promote reviewed GitHub code to that server while preserving its live database. Establish an operator-triggered release process before moving production updates to protected `master`.
+Production already runs the SQLite/web application from `devel/webui`, but there is no repeatable way to promote pull-request and CI-gated GitHub code to that server while preserving its live database. Establish an operator-triggered release process before moving production updates to protected `master`. This solo-maintainer repository has no independent approving reviewer; the gate is a pull request plus the required offline test check, not a second-person approval.
 
 ## What Changes
 

@@ -1,0 +1,11 @@
+[Unit]
+Description=nuLigaHelper daily schedule
+
+[Timer]
+OnCalendar=*-*-* 09:00:00 Europe/Berlin
+Persistent=true
+AccuracySec=1min
+Unit=nuligahelper-daily.service
+
+[Install]
+WantedBy=timers.target

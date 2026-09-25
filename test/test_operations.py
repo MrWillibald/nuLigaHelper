@@ -15,7 +15,7 @@ import webapp
 
 
 def settings():
-    return p.read_json(Path(h.PROJECT_DIR) / 'deploy/operations.json')
+    return p.read_json(Path(h.PROJECT_DIR) / 'test/fixtures/operations.json')
 
 
 def legal():

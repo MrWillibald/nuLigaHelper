@@ -94,6 +94,14 @@ def load_club_config() -> dict:
     return club
 
 
+# Authentication and notification tests must not depend on an ignored local
+# config.json. Give every test process its own synthetic configuration file.
+_config_path = os.path.join(_TEST_DIR, 'config.json')
+with open(_config_path, 'w', encoding='utf-8') as _config_file:
+    json.dump({'club': load_club_config()}, _config_file)
+os.environ['NULIGAHELPER_CONFIG'] = _config_path
+
+
 def sample_games() -> list[dict]:
     """
     A small synthetic home-game plan (no network access needed).
