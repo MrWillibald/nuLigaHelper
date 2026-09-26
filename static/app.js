@@ -95,10 +95,27 @@ function addPersonOption(card, currentSelect, option) {
   });
 }
 
+function updateCoverage(card, previousId, newId, role = null) {
+  const coverage = card && card.querySelector(".coverage");
+  if (!coverage || (coverage.dataset.progressKind === "game" && role === "Unterstützung")) return;
+  const change = Number(newId !== null) - Number(previousId !== null);
+  if (change === 0) return;
+  const total = Number(coverage.dataset.progressTotal);
+  const filled = Math.max(0, Math.min(total, Number(coverage.dataset.progressFilled) + change));
+  const percent = Math.round(filled * 100 / total);
+  coverage.dataset.progressFilled = String(filled);
+  const unit = coverage.dataset.progressKind === "game" ? "Pflichtdiensten" : "Plätzen";
+  coverage.querySelector("[data-progress-count]").textContent = `${filled} von ${total} ${unit} besetzt`;
+  coverage.querySelector("[data-progress-percent]").textContent = `${percent} %`;
+  coverage.querySelector(".coverage-fill").style.width = `${percent}%`;
+  coverage.querySelector('[role="progressbar"]').setAttribute("aria-valuenow", String(filled));
+}
+
 // Expose the small, side-effect-free option helpers for the DOM regression test.
 globalThis.nuLigaOptionTools = {
   comparePersonOptions, insertOptionSorted, addPersonOption, removePersonOption,
 };
+globalThis.nuLigaProgressTools = { updateCoverage };
 
 const prevOptions = new WeakMap();
 document.querySelectorAll("select[data-role]").forEach((select) => {
@@ -131,8 +148,9 @@ document.querySelectorAll("select[data-role]").forEach((select) => {
       }
       return;
     }
-    flashCard(select.dataset.game);
     const card = document.getElementById("game-" + select.dataset.game);
+    updateCoverage(card, previousId, newId, select.dataset.role);
+    flashCard(select.dataset.game);
     // the newly assigned person must not be offered for other tasks
     if (newId) removePersonOption(card, select, newId);
     // a freed person may be offered again for other tasks
@@ -187,6 +205,7 @@ document.querySelectorAll("select[data-block-assignment]").forEach((select) => {
     const card = document.getElementById("block-" + select.dataset.block);
     if (newId) removePersonOption(card, select, newId);
     if (previousId !== null && previousId !== newId) addPersonOption(card, select, previous);
+    updateCoverage(card, previousId, newId);
     flashBlock(select.dataset.block);
     showToast("Tagesdienst gespeichert", true);
   });

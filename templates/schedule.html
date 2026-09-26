@@ -1,17 +1,36 @@
 {% extends "base.html" %}
 {% block title %}Heimspielplan{% endblock %}
 
-{% macro game_card(g, teams, support_id) %}
-<article class="game-card"{% if viewer %} id="game-{{ g.id }}" data-support="{{ support_id }}"{% endif %}>
-  <div class="game-info">
-    <div class="game-time">{{ g.time }}</div>
-    <div class="game-teams">
-      <span class="hex" style="background:{{ g.color }}"></span>
-      <span>{% if g.spielfest %}Spielfest {{ g.ak }}{% else %}{{ g.home }} &ndash; {{ g.guest }}{% endif %}</span>
-    </div>
-    <div class="game-meta">{{ g.ak }} &middot; Halle {{ g.hall }} &middot; Nr. {{ g.nr }}</div>
+{% macro coverage(progress, kind) %}
+<div class="coverage" data-progress-filled="{{ progress.filled }}" data-progress-total="{{ progress.total }}" data-progress-kind="{{ kind }}">
+  <div class="coverage-text">
+    <span data-progress-count>{{ progress.filled }} von {{ progress.total }} {% if kind == 'game' %}Pflichtdiensten{% else %}Plätzen{% endif %} besetzt</span>
+    <span data-progress-percent>{{ progress.percent }} %</span>
   </div>
-  <div class="game-assign">
+  <div class="coverage-track" role="progressbar" aria-label="{% if kind == 'game' %}Besetzte Pflichtdienste{% else %}Besetzte Plätze{% endif %}"
+       aria-valuemin="0" aria-valuemax="{{ progress.total }}" aria-valuenow="{{ progress.filled }}">
+    <span class="coverage-fill" style="width:{{ progress.percent }}%"></span>
+  </div>
+</div>
+{% endmacro %}
+
+{% macro game_card(g, teams, support_id) %}
+<details class="game-card"{% if viewer %} id="game-{{ g.id }}" data-support="{{ support_id }}"{% endif %}>
+  <summary class="game-summary">
+    <div class="game-info">
+      <div class="game-time">{{ g.time }}</div>
+      <div class="game-teams">
+        <span class="hex" style="background:{{ g.color }}"></span>
+        <span>{% if g.spielfest %}Spielfest {{ g.ak }}{% else %}{{ g.home }} &ndash; {{ g.guest }}{% endif %}</span>
+      </div>
+      <div class="game-meta">{{ g.ak }} &middot; Halle {{ g.hall }} &middot; Nr. {{ g.nr }}</div>
+    </div>
+    <div class="game-summary-side">
+      {{ coverage(g.progress, 'game') }}
+      <span class="disclosure-label"><span class="show-label">Details anzeigen</span><span class="hide-label">Schließen</span></span>
+    </div>
+  </summary>
+  <div class="game-detail-body"><div class="game-assign">
     <label class="assign-field assign-jteam">
       <span>Verantwortlich</span>
       {% if viewer_tier == 'admin' %}
@@ -50,20 +69,26 @@
       {% else %}<strong>{{ s.person_name or '– offen –' }}{% if s.person_name %} · {{ s.person_team_label }}{% endif %}</strong>{% endif %}
     </label>
     {% endfor %}
-  </div>
-</article>
+  </div></div>
+</details>
 {% endmacro %}
 
 {% macro task_block_card(b) %}
 {% if b %}
-<article class="game-card task-block-card task-block-{{ b.phase }}{% if not b.time %} task-block-no-time{% endif %}"
+<details class="game-card task-block-card task-block-{{ b.phase }}{% if not b.time %} task-block-no-time{% endif %}"
          {% if viewer %}id="block-{{ b.id }}" data-block-card="{{ b.id }}"{% endif %}>
-  <div class="game-info task-block-info">
-    <div class="game-time">{{ b.time or 'Zeit offen' }}{% if b.time_date %}<small>{{ b.time_date }}</small>{% endif %}</div>
-    <div class="game-teams"><span class="task-block-icon" aria-hidden="true">{% if b.phase == 'preparation' %}↗{% else %}↘{% endif %}</span><span>{{ b.label }}</span></div>
-    <div class="game-meta">Tagesdienst · 3 Plätze</div>
-  </div>
-  <div class="game-assign task-block-assign">
+  <summary class="game-summary">
+    <div class="game-info task-block-info">
+      <div class="game-time">{{ b.time or 'Zeit offen' }}{% if b.time_date %}<small>{{ b.time_date }}</small>{% endif %}</div>
+      <div class="game-teams"><span class="task-block-icon" aria-hidden="true">{% if b.phase == 'preparation' %}↗{% else %}↘{% endif %}</span><span>{{ b.label }}</span></div>
+      <div class="game-meta">Tagesdienst</div>
+    </div>
+    <div class="game-summary-side">
+      {{ coverage(b.progress, 'block') }}
+      <span class="disclosure-label"><span class="show-label">Details anzeigen</span><span class="hide-label">Schließen</span></span>
+    </div>
+  </summary>
+  <div class="game-detail-body"><div class="game-assign task-block-assign">
     {% for s in b.slots %}
     <label class="assign-field">
       <span>{{ s.label }}</span>
@@ -79,8 +104,8 @@
       {% else %}<strong>{{ s.person_name or '– offen –' }}{% if s.person_name and viewer %} · {{ s.person_team_label }}{% endif %}</strong>{% endif %}
     </label>
     {% endfor %}
-  </div>
-</article>
+  </div></div>
+</details>
 {% endif %}
 {% endmacro %}
 
@@ -96,6 +121,15 @@
   </p>
 
   <form class="schedule-filter-card" method="get" action="{{ url_for('schedule') }}" aria-label="Spielplan filtern">
+    <div class="filter-field">
+      <label for="date-filter">Datum</label>
+      <select id="date-filter" name="date">
+        <option value="">Alle Spieltage</option>
+        {% for option in date_options %}
+        <option value="{{ option.date }}" {% if filters.date == option.date %}selected{% endif %}>{{ option.day }} {{ option.date }}</option>
+        {% endfor %}
+      </select>
+    </div>
     <div class="filter-field">
       <label for="playing-team-filter">Spielende Mannschaft</label>
       <select id="playing-team-filter" name="playing_team">
@@ -127,7 +161,7 @@
   {% if not total_games %}
   <p class="hint">Noch keine Spiele vorhanden. Führe zuerst <code>main.py</code> aus, um den Spielplan zu laden.</p>
   {% elif not upcoming and not past %}
-  <p class="schedule-empty">Keine Spiele für diese Filter gefunden. <a href="{{ url_for('schedule') }}">Filter löschen</a></p>
+  <p class="schedule-empty">Keine Spiele oder Tagesdienste für diese Filter gefunden. <a href="{{ url_for('schedule') }}">Filter löschen</a></p>
   {% endif %}
 
   {% for item in upcoming %}
@@ -144,7 +178,7 @@
   {% endfor %}
 
   {% if past %}
-  <details class="past-details">
+  <details class="past-details"{% if selected_date_is_past %} open{% endif %}>
     <summary>Vergangene Spieltage anzeigen ({{ past | selectattr("type", "equalto", "day") | list | length }})</summary>
     {% for item in past %}
       {% if item.type == "month" %}

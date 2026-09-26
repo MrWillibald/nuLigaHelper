@@ -1271,6 +1271,12 @@ def create_app() -> Flask:
         ).all()
         games.sort(key=db.game_sort_key)
         total_games = len(games)
+        date_options = []
+        seen_dates = set()
+        for game in games:
+            if game.date and game.date not in seen_dates:
+                date_options.append({"date": game.date, "day": game.day or ""})
+                seen_dates.add(game.date)
 
         persons = person_options(session)
         persons_by_id = {p["id"]: p for p in persons}
@@ -1290,7 +1296,15 @@ def create_app() -> Flask:
         playing_filter = selected_team(filters.get("playing_team", ""))
         responsible_filter = selected_team(filters.get("responsible_team", ""))
         person_filter = " ".join(filters.get("person", "").split()).casefold()
+        date_filter = filters.get("date", "")
         all_games = games
+
+        def progress_data(filled: int, total: int) -> dict[str, int]:
+            return {
+                "filled": filled,
+                "total": total,
+                "percent": (filled * 100 + total // 2) // total if total else 0,
+            }
 
         def game_view(game):
             sales = {
@@ -1367,6 +1381,10 @@ def create_app() -> Flask:
             # Persons already assigned to a task of this game must not be
             # offered for the other tasks of the same game.
             taken_person_ids = {s["person_id"] for s in slots if s["person_id"] is not None}
+            required_filled = sum(
+                s["person_id"] is not None
+                for s in slots if s["role"] in db.REQUIRED_ROLE_SLOT_COUNT
+            )
             d = parse_date(game.date)
             return {
                 "id": game.id,
@@ -1384,6 +1402,9 @@ def create_app() -> Flask:
                 "playing_team_id": playing_team_id,
                 "slots": slots,
                 "taken_person_ids": taken_person_ids,
+                "progress": progress_data(
+                    required_filled, sum(db.REQUIRED_ROLE_SLOT_COUNT.values())
+                ),
                 "past": bool(d and d < today),
             }
 
@@ -1437,6 +1458,10 @@ def create_app() -> Flask:
                 "time": calculated.strftime("%H:%M") if calculated else "",
                 "time_date": adjacent_date,
                 "slots": slots,
+                "progress": progress_data(
+                    sum(slot["person_id"] is not None for slot in slots),
+                    db.BLOCK_SLOT_COUNT,
+                ),
                 "taken_person_ids": {
                     slot["person_id"] for slot in slots if slot["person_id"] is not None
                 },
@@ -1444,36 +1469,41 @@ def create_app() -> Flask:
             }
 
         day_groups = []
-        dates = []
-        for game in all_games:
-            if game.date not in dates:
-                dates.append(game.date)
+        dates = list(dict.fromkeys(game.date for game in all_games))
         for game_date in dates:
+            if date_filter and game_date != date_filter:
+                continue
             full_date_games = [game for game in all_games if game.date == game_date]
-            visible_games = [
+            team_games = [
                 game for game in full_date_games
                 if (playing_filter is None
                     or playing_team_by_ak.get(game.ak or "") == playing_filter)
                 and (responsible_filter is None or game.team_id == responsible_filter)
             ]
-            if not visible_games:
+            if not team_games:
                 continue
-            blocks = db.get_day_blocks(session, season_year, game_date or "")
+            visible_games = team_games
             if person_filter:
-                block_match = any(
-                    person_filter in " ".join(a.person.name.split()).casefold()
-                    for block in blocks for a in block.assignments
-                )
-                if not block_match:
-                    visible_games = [
-                        game for game in visible_games
-                        if any(
-                            person_filter in " ".join(a.person.name.split()).casefold()
-                            for a in game.assignments
-                        )
-                    ]
-                if not visible_games:
-                    continue
+                visible_games = [
+                    game for game in team_games
+                    if any(
+                        person_filter in " ".join(a.person.name.split()).casefold()
+                        for a in game.assignments
+                    )
+                ]
+            blocks = [] if responsible_filter is not None else db.get_day_blocks(
+                session, season_year, game_date or ""
+            )
+            if person_filter:
+                blocks = [
+                    block for block in blocks
+                    if any(
+                        person_filter in " ".join(a.person.name.split()).casefold()
+                        for a in block.assignments
+                    )
+                ]
+            if not visible_games and not blocks:
+                continue
             views = [game_view(game) for game in visible_games]
             d = parse_date(game_date)
             month_label = f"{MONATE[d.month - 1]} {d.year}" if d else "Ohne Datum"
@@ -1481,8 +1511,9 @@ def create_app() -> Flask:
             day_groups.append({
                 "type": "day",
                 "month": month_label,
-                "day": views[0]["day"],
+                "day": full_date_games[0].day or "",
                 "date": game_date,
+                "past": bool(d and d < today),
                 "games": views,
                 "preparation": block_views.get(db.BLOCK_PREPARATION),
                 "cleanup": block_views.get(db.BLOCK_CLEANUP),
@@ -1498,9 +1529,8 @@ def create_app() -> Flask:
                 result.append(day_group)
             return result
 
-        is_past = lambda dg: all(gm["past"] for gm in dg["games"])
-        upcoming = [dg for dg in day_groups if not is_past(dg)]
-        past = [dg for dg in day_groups if is_past(dg)]
+        upcoming = [dg for dg in day_groups if not dg["past"]]
+        past = [dg for dg in day_groups if dg["past"]]
 
         return {
             "upcoming": with_month_headers(upcoming),
@@ -1509,6 +1539,7 @@ def create_app() -> Flask:
             "teams": teams,
             "support_id": support_id,
             "total_games": total_games,
+            "date_options": date_options,
         }
 
     @app.route("/")
@@ -1516,6 +1547,7 @@ def create_app() -> Flask:
         session = get_session()
         season_year = common.season_year_for(common.effective_today())
         filters = {
+            "date": request.args.get("date", "").strip(),
             "playing_team": request.args.get("playing_team", "").strip(),
             "responsible_team": request.args.get("responsible_team", "").strip(),
             "person": request.args.get("person", "").strip(),
@@ -1529,6 +1561,11 @@ def create_app() -> Flask:
             teams=data["teams"],
             support_id=data["support_id"],
             total_games=data["total_games"],
+            date_options=data["date_options"],
+            selected_date_is_past=bool(
+                (selected_date := parse_date(filters["date"]))
+                and selected_date < common.effective_today()
+            ),
             filters=filters,
             season=f"{season_year}/{str(season_year + 1)[-2:]}",
         )

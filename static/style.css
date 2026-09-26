@@ -36,7 +36,7 @@ h3{color:var(--navy)}
 .hint code{background:#eef3f8;border-radius:6px;padding:2px 6px}
 
 /* ---- schedule ---- */
-.schedule-filter-card{display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) auto;
+.schedule-filter-card{display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) auto;
   gap:14px;align-items:end;padding:18px;margin-bottom:24px;border:1px solid var(--line);
   border-radius:18px;background:#f8fafc}
 .schedule-empty{padding:20px;border:1px solid var(--line);border-radius:14px;
@@ -50,12 +50,30 @@ h3{color:var(--navy)}
   font-size:1.15rem;font-weight:900;letter-spacing:.04em;text-transform:uppercase}
 .day-block.past{background:#f5f7fa;border-color:#cfd6e1}
 .day-block.past .day-title{background:#647087}
-.game-card{display:grid;grid-template-columns:minmax(240px,340px) 1fr;gap:22px;
-  padding:20px;background:#fff;border-bottom:1px solid var(--line)}
+.game-card{background:#fff;border-bottom:1px solid var(--line)}
 .game-card:last-of-type{border-bottom:none}
 .day-block.past .game-card{background:#f5f7fa}
 .day-block.past .game-time{color:#41516d}
 .day-block.past .hex{filter:saturate(.55)}
+.game-summary{display:grid;grid-template-columns:minmax(240px,340px) minmax(0,1fr);gap:22px;
+  align-items:center;padding:18px 20px;cursor:pointer;list-style:none}
+.game-summary::-webkit-details-marker{display:none}
+.game-summary::marker{content:""}
+.game-summary:hover{background:rgba(10,29,78,.035)}
+.game-summary:focus-visible{outline:3px solid var(--kids);outline-offset:-3px}
+.game-summary-side{display:flex;flex-direction:column;gap:8px;min-width:0}
+.coverage{min-width:0}
+.coverage-text{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;
+  color:var(--navy);font-size:.88rem;font-weight:800}
+.coverage-track{display:block;width:100%;height:10px;margin-top:8px;border-radius:999px;
+  background:#e4eaf2;overflow:hidden}
+.coverage-fill{display:block;height:100%;border-radius:inherit;background:var(--navy);
+  transition:width .2s ease}
+.disclosure-label{align-self:flex-end;color:var(--navy);font-size:.83rem;font-weight:800;
+  text-decoration:underline;text-underline-offset:3px}
+.game-card .hide-label,.game-card[open] .show-label{display:none}
+.game-card[open] .hide-label{display:inline}
+.game-detail-body{padding:16px 20px 20px;border-top:1px solid var(--line)}
 .game-info{display:flex;flex-direction:column;gap:7px}
 .game-time{font-size:1.5rem;font-weight:900;color:var(--navy)}
 .game-teams{display:flex;align-items:center;gap:9px;font-weight:900;line-height:1.35}
@@ -332,7 +350,7 @@ select.select-warn{border-color:#e8b23c;background:#fffaf0}
 .footer a:hover{color:#fff;text-decoration-thickness:2px}
 
 @media(max-width:900px){
-  .game-card{grid-template-columns:1fr}
+  .game-summary{grid-template-columns:1fr;gap:12px}
   .management-card-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
   .roster-filter-card,.audit-filter-card,.schedule-filter-card{grid-template-columns:repeat(2,minmax(0,1fr))}
   .filter-actions{grid-column:1/-1}
