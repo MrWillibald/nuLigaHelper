@@ -5,6 +5,7 @@ import tempfile
 from datetime import date
 from pathlib import Path
 from unittest.mock import patch
+from lxml import html
 
 import helpers as h
 import db
@@ -57,6 +58,7 @@ with h.Session(ENGINE) as session:
     future = db.get_day_blocks(session, h.SEASON, "05.09.2026")[0]
     past = db.get_day_blocks(session, h.SEASON, "01.01.2020")[0]
     db.claim_block_slot(session, future, 0, None, member)
+    db.claim_block_slot(session, past, 1, None, member)
     session.commit()
     IDS = {
         "admin": admin.id, "mv": mv.id, "member": member.id,
@@ -101,10 +103,36 @@ def test_guest_sees_names_and_cards_without_ids_contacts_roster_or_controls(_tod
 
 
 @patch("common.effective_today", return_value=date(2026, 9, 1))
-def test_block_name_filter_keeps_whole_date_and_full_boundary_times(_today):
-    page = app.test_client().get("/?person=Block%20Match").get_data(as_text=True)
-    assert "Nr. 1" in page and "Nr. 2" in page
-    assert "08:30" in page and "19:00" in page
+def test_block_name_filter_shows_only_matching_block_with_full_boundary_time(_today):
+    page = app.test_client().get(
+        "/?date=05.09.2026&person=Block%20Match"
+    ).get_data(as_text=True)
+    assert "Nr. 1" not in page and "Nr. 2" not in page
+    assert "task-block-preparation" in page and "task-block-cleanup" not in page
+    assert "08:30" in page, "block time uses the full date even with no visible game"
+    assert "05.09.2026" in page
+
+
+@patch("common.effective_today", return_value=date(2026, 9, 1))
+def test_00_block_progress_counts_three_slots_and_starts_collapsed(_today):
+    page = html.fromstring(app.test_client().get("/").get_data(as_text=True))
+    preparation = page.xpath('//details[contains(@class, "task-block-preparation")]')[0]
+    assert preparation.get("open") is None
+    progress = preparation.xpath('.//*[@role="progressbar"]')[0]
+    assert progress.get("aria-valuenow") == "1"
+    assert progress.get("aria-valuemax") == "3"
+    assert "1 von 3 Plätzen besetzt" in preparation.xpath('./summary')[0].text_content()
+    assert "33 %" in preparation.xpath('./summary')[0].text_content()
+
+
+@patch("common.effective_today", return_value=date(2026, 9, 1))
+def test_01_selected_past_date_with_only_matching_block_is_open(_today):
+    page = app.test_client().get(
+        "/?date=01.01.2020&person=Block%20Match"
+    ).get_data(as_text=True)
+    assert '<details class="past-details" open>' in page
+    assert "Nr. 3" not in page and "Nr. 1" not in page
+    assert "task-block-preparation" in page and "task-block-cleanup" not in page
 
 
 @patch("common.effective_today", return_value=date(2026, 9, 1))

@@ -1,10 +1,4 @@
-# Schedule Overview Specification
-
-## Purpose
-
-Defines how visitors find relevant home games and distinguish completed dates from upcoming dates on the public game overview.
-
-## Requirements
+## ADDED Requirements
 
 ### Requirement: Overview filters by a selected game date
 
@@ -35,6 +29,68 @@ filters SHALL restore the all-dates option.
   value is not a current-season game date
 - **THEN** the ordinary no-results message and clear-filter action are shown
 - **AND** no other date or block is shown
+
+### Requirement: Every game and day-task card starts compact
+
+Every game, preparation block, and cleanup block SHALL start collapsed on page load,
+regardless of whether a game has a responsible team or occupied slots. A collapsed game
+card SHALL show its time, matchup or Spielfest identity, existing game metadata, its
+responsible-team name or an open placeholder when unset, and a staffing progress bar.
+A collapsed block card SHALL show its calculated time, block
+label, and staffing progress bar. Each card SHALL have a labeled control that expands
+and collapses that card independently. The expanded game SHALL reveal the responsible
+team and all existing task fields, including optional `Unterstützung`; the expanded
+block SHALL reveal all three numbered assignment fields. All viewers SHALL be able to
+expand cards, while assignment controls and private data SHALL continue to depend on
+their existing access rights. Expansion SHALL be usable with a keyboard.
+
+#### Scenario: Open and close a game
+
+- **WHEN** a visitor opens the overview containing a game without a responsible team
+- **THEN** that game starts collapsed like every other game and shows the open responsible-team placeholder
+- **AND** expanding it reveals the responsible-team field and every task field
+- **AND** collapsing it hides those fields again
+
+#### Scenario: Responsible team remains visible in a collapsed game
+
+- **WHEN** a visitor opens the overview containing a game with a responsible team
+- **THEN** its collapsed summary shows that team's name without opening the card
+- **AND** expanding it reveals the responsible-team field and every task field
+
+#### Scenario: Open a day-task block
+
+- **WHEN** a visitor expands a preparation or cleanup card
+- **THEN** all three numbered assignment fields and their visible occupants are shown
+- **AND** other cards retain their current expansion states
+
+### Requirement: Compact cards show accurate staffing progress
+
+Each game progress bar SHALL count occupied slots among the five required game task
+slots and SHALL exclude optional `Unterstützung` and responsible-team selection from
+both numerator and denominator. Each preparation and cleanup progress bar SHALL count
+occupied slots among that block's three slots. Every bar SHALL have a readable count
+and whole-number percentage, including at zero and full coverage, so meaning does not
+depend on color alone. A successful assignment or release SHALL update the affected
+card's progress without requiring a page reload; an unsuccessful or stale operation
+SHALL not show uncommitted progress.
+
+#### Scenario: Optional support does not complete a game
+
+- **WHEN** a game has three occupied required slots and an occupied `Unterstützung` slot
+- **THEN** its compact card reports 3 of 5 required slots filled and 60 percent
+
+#### Scenario: Block coverage
+
+- **WHEN** one of a preparation block's three slots is occupied
+- **THEN** its compact card reports 1 of 3 slots filled and 33 percent
+
+#### Scenario: Assignment changes progress
+
+- **WHEN** a viewer successfully claims or releases an assignment on an expanded card
+- **THEN** that card's count, percentage, and bar length reflect the saved assignment
+- **AND** a rejected assignment leaves the displayed progress at its saved value
+
+## MODIFIED Requirements
 
 ### Requirement: Overview filters games by team and assigned helper
 
@@ -123,66 +179,6 @@ identify cleanup.
 - **THEN** assigned block helper names are visible
 - **AND** the response contains no block person IDs, roster payload, contact data, or
   assignment controls
-
-### Requirement: Every game and day-task card starts compact
-
-Every game, preparation block, and cleanup block SHALL start collapsed on page load,
-regardless of whether a game has a responsible team or occupied slots. A collapsed game
-card SHALL show its time, matchup or Spielfest identity, existing game metadata, its
-responsible-team name or an open placeholder when unset, and a staffing progress bar.
-A collapsed block card SHALL show its calculated time, block
-label, and staffing progress bar. Each card SHALL have a labeled control that expands
-and collapses that card independently. The expanded game SHALL reveal the responsible
-team and all existing task fields, including optional `Unterstützung`; the expanded
-block SHALL reveal all three numbered assignment fields. All viewers SHALL be able to
-expand cards, while assignment controls and private data SHALL continue to depend on
-their existing access rights. Expansion SHALL be usable with a keyboard.
-
-#### Scenario: Open and close a game
-
-- **WHEN** a visitor opens the overview containing a game without a responsible team
-- **THEN** that game starts collapsed like every other game and shows the open responsible-team placeholder
-- **AND** expanding it reveals the responsible-team field and every task field
-- **AND** collapsing it hides those fields again
-
-#### Scenario: Responsible team remains visible in a collapsed game
-
-- **WHEN** a visitor opens the overview containing a game with a responsible team
-- **THEN** its collapsed summary shows that team's name without opening the card
-- **AND** expanding it reveals the responsible-team field and every task field
-
-#### Scenario: Open a day-task block
-
-- **WHEN** a visitor expands a preparation or cleanup card
-- **THEN** all three numbered assignment fields and their visible occupants are shown
-- **AND** other cards retain their current expansion states
-
-### Requirement: Compact cards show accurate staffing progress
-
-Each game progress bar SHALL count occupied slots among the five required game task
-slots and SHALL exclude optional `Unterstützung` and responsible-team selection from
-both numerator and denominator. Each preparation and cleanup progress bar SHALL count
-occupied slots among that block's three slots. Every bar SHALL have a readable count
-and whole-number percentage, including at zero and full coverage, so meaning does not
-depend on color alone. A successful assignment or release SHALL update the affected
-card's progress without requiring a page reload; an unsuccessful or stale operation
-SHALL not show uncommitted progress.
-
-#### Scenario: Optional support does not complete a game
-
-- **WHEN** a game has three occupied required slots and an occupied `Unterstützung` slot
-- **THEN** its compact card reports 3 of 5 required slots filled and 60 percent
-
-#### Scenario: Block coverage
-
-- **WHEN** one of a preparation block's three slots is occupied
-- **THEN** its compact card reports 1 of 3 slots filled and 33 percent
-
-#### Scenario: Assignment changes progress
-
-- **WHEN** a viewer successfully claims or releases an assignment on an expanded card
-- **THEN** that card's count, percentage, and bar length reflect the saved assignment
-- **AND** a rejected assignment leaves the displayed progress at its saved value
 
 ### Requirement: Filters are usable by all schedule viewers
 

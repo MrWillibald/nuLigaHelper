@@ -88,3 +88,50 @@ if (sibling.querySelector('option[value="7"]')) {
 if (!otherContainer.querySelector('option[value="7"]')) {
   throw new Error("block claim leaked into another assignment container");
 }
+
+function coverageCard(kind, filled, total) {
+  const count = { textContent: "" };
+  const percent = { textContent: "" };
+  const fill = { style: { width: "" } };
+  const bar = { attributes: {}, setAttribute(name, value) { this.attributes[name] = value; } };
+  const elements = {
+    "[data-progress-count]": count,
+    "[data-progress-percent]": percent,
+    ".coverage-fill": fill,
+    '[role="progressbar"]': bar,
+  };
+  const coverage = {
+    dataset: { progressKind: kind, progressFilled: String(filled), progressTotal: String(total) },
+    querySelector: (selector) => elements[selector],
+  };
+  return { card: { querySelector: () => coverage }, coverage, count, percent, fill, bar };
+}
+
+const gameProgress = coverageCard("game", 3, 5);
+const update = globalThis.nuLigaProgressTools.updateCoverage;
+update(gameProgress.card, null, 7, "Zeitnehmer");
+if (gameProgress.count.textContent !== "4 von 5 Pflichtdiensten besetzt"
+    || gameProgress.percent.textContent !== "80 %"
+    || gameProgress.fill.style.width !== "80%"
+    || gameProgress.bar.attributes["aria-valuenow"] !== "4") {
+  throw new Error("successful game claim did not update all progress views");
+}
+update(gameProgress.card, 7, 9, "Zeitnehmer");
+update(gameProgress.card, null, 10, "Unterstützung");
+if (gameProgress.coverage.dataset.progressFilled !== "4") {
+  throw new Error("replacement or optional support changed required progress");
+}
+update(gameProgress.card, 9, null, "Zeitnehmer");
+if (gameProgress.coverage.dataset.progressFilled !== "3") {
+  throw new Error("game release did not reduce required progress");
+}
+const blockProgress = coverageCard("block", 1, 3);
+update(blockProgress.card, null, 7);
+if (blockProgress.count.textContent !== "2 von 3 Plätzen besetzt"
+    || blockProgress.percent.textContent !== "67 %") {
+  throw new Error("block claim did not update three-slot progress");
+}
+update(blockProgress.card, 7, null);
+if (blockProgress.coverage.dataset.progressFilled !== "1") {
+  throw new Error("block release did not reduce progress");
+}

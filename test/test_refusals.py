@@ -4,6 +4,7 @@ import os
 import tempfile
 from datetime import date
 from unittest.mock import patch
+from lxml import html
 
 import helpers as h
 import db
@@ -130,11 +131,9 @@ def test_02_member_sees_no_foreign_contacts_and_admin_writes_are_refused():
 
 def test_03_mv_scope_requires_own_team_and_responsible_game():
     client, token = _client("mv")
-    schedule = client.get("/").get_data(as_text=True)
-    own_start = schedule.index(f'id="game-{IDS["own_game"]}"')
-    own_card = schedule[own_start:schedule.index("</article>", own_start)]
-    other_start = schedule.index(f'id="game-{IDS["other_game"]}"')
-    other_card = schedule[other_start:schedule.index("</article>", other_start)]
+    schedule = html.fromstring(client.get("/").get_data(as_text=True))
+    own_card = html.tostring(schedule.get_element_by_id(f'game-{IDS["own_game"]}'), encoding="unicode")
+    other_card = html.tostring(schedule.get_element_by_id(f'game-{IDS["other_game"]}'), encoding="unicode")
     assert f'<option value="{IDS["member"]}"' in own_card
     assert f'<option value="{IDS["member"]}"' not in other_card
     assert f'<option value="{IDS["mv"]}"' in other_card, "MV keeps ordinary self-service rights"

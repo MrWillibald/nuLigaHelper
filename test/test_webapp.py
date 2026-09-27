@@ -1,6 +1,5 @@
 """Authenticated webapp click-through scenario against a throwaway database."""
 
-import re
 import os
 import tempfile
 from datetime import datetime, timedelta
@@ -118,6 +117,13 @@ def test_01_admin_sign_in_exposes_controls_without_contacts_on_schedule():
     assert page.count('class="team-select"') == len(games)
     assert "admin@example.test" not in page and "+4917" not in page
     assert "Alex Test ·" in page, "duplicate names must be qualified by team"
+    document = html.fromstring(page)
+    game = document.get_element_by_id(f"game-{GAME_ID}")
+    assert game.tag == "details" and game.get("open") is None
+    assert game.xpath('./summary//*[@role="progressbar"]')
+    assert game.xpath('./summary//div[@class="game-responsible"]/strong/text()') == ["– offen –"]
+    assert game.xpath('./div//select[@class="team-select"]')
+    assert game.xpath('./div//select[@data-role="Unterstützung"]')
 
 
 def test_02_responsible_team_and_claim_release_flow():
@@ -220,16 +226,12 @@ def test_03_sparse_sale_slot_keeps_its_stored_position():
         "expected_person_id": None, "person_id": DUPLICATE_ID,
     })
     assert response.status_code == 200
-    page = client.get("/").get_data(as_text=True)
-    card_start = page.index(f'id="game-{GAME_ID}"')
-    card = page[card_start:page.index("</article>", card_start)]
-    sales = re.findall(
-        r'<select[^>]*data-role="Verkauf"[^>]*>.*?</select>', card, re.S
-    )
+    page = html.fromstring(client.get("/").get_data(as_text=True))
+    card = page.get_element_by_id(f"game-{GAME_ID}")
+    sales = card.xpath('.//select[@data-role="Verkauf"]')
     assert len(sales) == 2
-    selected = rf'<option value="{DUPLICATE_ID}"[^>]*selected'
-    assert not re.search(selected, sales[0])
-    assert re.search(selected, sales[1])
+    assert not sales[0].xpath(f'./option[@value="{DUPLICATE_ID}" and @selected]')
+    assert sales[1].xpath(f'./option[@value="{DUPLICATE_ID}" and @selected]')
 
 
 def test_04_person_crud_uses_internal_identity():
