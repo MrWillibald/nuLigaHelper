@@ -220,16 +220,21 @@ deliberately outside this change and remain future work.
 
 ## Private deployment
 
-The proposed operator-triggered release workflow has tracked, non-secret
+For repeat updates to an existing installation, follow the tracked
+[deployment guide](DEPLOYMENT.md). It uses a pinned commit on protected `master`
+and the installed release command; first-cutover host acceptance remains a
+separate prerequisite.
+
+The operator-triggered release workflow has tracked, non-secret
 templates in `release-assets/`. Its deploy command now implements separate
 preparation, guarded activation, explicit timer resumption, and conditional
 code-only rollback. Activation and compatible rollback wait up to 60 seconds
 for Gunicorn's loopback listener and local `/healthz` after the `Type=simple`
 web service starts; Caddy and timers remain closed if readiness fails or times
 out. These commands are **not yet approved for production**:
-the revised deployer must first pass the protected-`master` PR gate, followed
-by host preflight and operator review in the OpenSpec change. Do not activate a
-candidate or switch `current` from these
+the deployer is merged into protected `master`, but host preflight and the
+first-cutover operator review in the private operations runbook remain
+outstanding. Do not activate a candidate or switch `current` from these
 templates before that acceptance. `release-assets/README.md` explains the
 intended operator command sequence and recovery gates.
 The production database remains `/var/lib/nuligahelper/nuliga_helper.db`, and
