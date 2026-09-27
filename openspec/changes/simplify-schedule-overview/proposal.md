@@ -6,7 +6,7 @@ The home-game overview shows every assignment field at once, making a full game 
 
 - Add a single-date dropdown to the existing overview filters, with an all-dates option. The chosen date limits games and their preparation and cleanup blocks and combines with the existing filters.
 - Apply the person filter to each game and day-task block independently. Hide day-task blocks whenever a responsible-team filter is selected; a matching block alone can keep its date visible.
-- Start every game, preparation block, and cleanup block in a compact state. Each compact card shows its identifying time and title plus a labeled staffing progress bar; opening it reveals the existing team and assignment fields.
+- Start every game, preparation block, and cleanup block in a compact state. Each compact card shows its identifying time and title plus a labeled staffing progress bar. Compact game cards also show the responsible team, or an open placeholder when none is assigned; opening a card reveals its assignment fields and, for games, the responsible-team field.
 - Count the five required game slots toward game progress. Keep optional `Unterstützung` assignable in the expanded card without counting it toward completion. Count all three slots for each day-task block.
 - Make a selected past date visible inside the past-games section without an extra expand action.
 

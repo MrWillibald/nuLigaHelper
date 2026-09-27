@@ -15,6 +15,7 @@
 {% endmacro %}
 
 {% macro game_card(g, teams, support_id) %}
+{% set responsible_team_name = teams | selectattr('id', 'equalto', g.team_id) | map(attribute='name') | first | default('– offen –', true) %}
 <details class="game-card"{% if viewer %} id="game-{{ g.id }}" data-support="{{ support_id }}"{% endif %}>
   <summary class="game-summary">
     <div class="game-info">
@@ -24,6 +25,7 @@
         <span>{% if g.spielfest %}Spielfest {{ g.ak }}{% else %}{{ g.home }} &ndash; {{ g.guest }}{% endif %}</span>
       </div>
       <div class="game-meta">{{ g.ak }} &middot; Halle {{ g.hall }} &middot; Nr. {{ g.nr }}</div>
+      <div class="game-responsible">Verantwortlich: <strong>{{ responsible_team_name }}</strong></div>
     </div>
     <div class="game-summary-side">
       {{ coverage(g.progress, 'game') }}
@@ -42,7 +44,7 @@
         </option>
         {% endfor %}
       </select>
-      {% else %}<strong>{{ teams | selectattr('id', 'equalto', g.team_id) | map(attribute='name') | first | default('– offen –', true) }}</strong>{% endif %}
+      {% else %}<strong>{{ responsible_team_name }}</strong>{% endif %}
     </label>
     {% for s in g.slots %}
     <label class="assign-field">

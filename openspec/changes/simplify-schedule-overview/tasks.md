@@ -14,3 +14,4 @@
 - [x] 3.1 Update `static/app.js` to refresh the affected progress count, percentage, and bar after confirmed game or block assignment changes; verify claim, release, replacement, optional `Unterstützung`, and failed-operation behavior with the existing DOM test setup or an equivalent interaction test.
 - [x] 3.2 Document the date filter, compact cards, and required-slot progress meaning in `README.MD`; verify the instructions match the finished overview.
 - [x] 3.3 Run `test/run_tests.sh` and inspect the overview as a guest and signed-in viewer; verify the suite passes and the date, disclosure, and assignment flows work together.
+- [x] 3.4 Show the responsible team or open placeholder in each compact game summary, while keeping the team field inside the expanded card; update the plan and README, verify assigned and unassigned summaries, and run the full suite.

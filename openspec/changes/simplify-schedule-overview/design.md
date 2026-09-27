@@ -27,7 +27,7 @@ Pass the selected date to the template. When it identifies a past date, set `ope
 
 ### Use native disclosure cards
 
-Render each game and block card as a native `<details>` with a `<summary>` containing identity, metadata, a labeled progress bar, and the expand affordance. Place the existing responsible-team and assignment fields in the disclosure body. Preserve the current card IDs and data attributes on the outer card so `static/app.js` can still locate each card and its selects. Adapt the card CSS for collapsed and expanded layouts, focus visibility, and narrow screens. Native disclosure provides keyboard operation and useful behavior without adding a JavaScript state machine. A custom toggle was considered but would require extra keyboard and ARIA handling.
+Render each game and block card as a native `<details>` with a `<summary>` containing identity, metadata, a labeled progress bar, and the expand affordance. A game summary also shows the current responsible-team name, or `– offen –` when unset, as read-only text for every viewer. Keep the responsible-team field and assignment fields in the disclosure body; the team's editable picker remains admin-only. Blocks have no responsible-team line. Preserve the current card IDs and data attributes on the outer card so `static/app.js` can still locate each card and its selects. Adapt the card CSS for collapsed and expanded layouts, focus visibility, and narrow screens. Native disclosure provides keyboard operation and useful behavior without adding a JavaScript state machine. A custom toggle was considered but would require extra keyboard and ARIA handling.
 
 ### Derive progress from required slots and confirmed edits
 

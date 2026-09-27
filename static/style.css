@@ -78,6 +78,7 @@ h3{color:var(--navy)}
 .game-time{font-size:1.5rem;font-weight:900;color:var(--navy)}
 .game-teams{display:flex;align-items:center;gap:9px;font-weight:900;line-height:1.35}
 .game-meta{color:var(--muted);font-size:.88rem}
+.game-responsible{color:var(--navy);font-size:.88rem;line-height:1.35}
 .hex{width:15px;height:15px;display:inline-block;flex:0 0 auto;
   clip-path:polygon(25% 5%,75% 5%,100% 50%,75% 95%,25% 95%,0 50%)}
 

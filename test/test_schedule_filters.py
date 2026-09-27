@@ -175,6 +175,9 @@ def test_09_game_progress_counts_required_slots_and_cards_start_closed():
     assert progress.get("aria-valuemax") == "5"
     assert "3 von 5 Pflichtdiensten besetzt" in first.xpath('./summary')[0].text_content()
     assert "60 %" in first.xpath('./summary')[0].text_content()
+    assert first.xpath('./summary//div[@class="game-responsible"]/strong/text()') == ["Supporter"], (
+        "the assigned responsible team must be visible before opening the game"
+    )
     assert "Optional Test" in first.text_content(), "optional support remains in details"
     full = page.xpath('//div[contains(@class, "game-meta") and contains(., "Nr. 9001")]/ancestor::details[1]')[0]
     assert full.xpath('.//*[@role="progressbar"]')[0].get("aria-valuenow") == "5"
@@ -182,6 +185,13 @@ def test_09_game_progress_counts_required_slots_and_cards_start_closed():
     empty = page.xpath('//div[contains(@class, "game-meta") and contains(., "Nr. 1005")]/ancestor::details[1]')[0]
     assert empty.xpath('.//*[@role="progressbar"]')[0].get("aria-valuenow") == "0"
     assert "0 %" in empty.xpath('./summary')[0].text_content()
+    assert empty.xpath('./summary//div[@class="game-responsible"]/strong/text()') == ["– offen –"], (
+        "an unassigned responsible team must be clear in the collapsed game"
+    )
+    blocks = page.xpath('//details[contains(@class, "task-block-card")]')
+    assert blocks and all(not block.xpath('./summary//*[@class="game-responsible"]') for block in blocks), (
+        "task blocks have no responsible team"
+    )
 
 
 if __name__ == "__main__":

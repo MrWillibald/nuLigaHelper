@@ -121,6 +121,7 @@ def test_01_admin_sign_in_exposes_controls_without_contacts_on_schedule():
     game = document.get_element_by_id(f"game-{GAME_ID}")
     assert game.tag == "details" and game.get("open") is None
     assert game.xpath('./summary//*[@role="progressbar"]')
+    assert game.xpath('./summary//div[@class="game-responsible"]/strong/text()') == ["– offen –"]
     assert game.xpath('./div//select[@class="team-select"]')
     assert game.xpath('./div//select[@data-role="Unterstützung"]')
 

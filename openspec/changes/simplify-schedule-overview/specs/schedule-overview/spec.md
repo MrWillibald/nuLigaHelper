@@ -34,8 +34,9 @@ filters SHALL restore the all-dates option.
 
 Every game, preparation block, and cleanup block SHALL start collapsed on page load,
 regardless of whether a game has a responsible team or occupied slots. A collapsed game
-card SHALL show its time, matchup or Spielfest identity, existing game metadata, and a
-staffing progress bar. A collapsed block card SHALL show its calculated time, block
+card SHALL show its time, matchup or Spielfest identity, existing game metadata, its
+responsible-team name or an open placeholder when unset, and a staffing progress bar.
+A collapsed block card SHALL show its calculated time, block
 label, and staffing progress bar. Each card SHALL have a labeled control that expands
 and collapses that card independently. The expanded game SHALL reveal the responsible
 team and all existing task fields, including optional `Unterstützung`; the expanded
@@ -46,9 +47,15 @@ their existing access rights. Expansion SHALL be usable with a keyboard.
 #### Scenario: Open and close a game
 
 - **WHEN** a visitor opens the overview containing a game without a responsible team
-- **THEN** that game starts collapsed like every other game
+- **THEN** that game starts collapsed like every other game and shows the open responsible-team placeholder
 - **AND** expanding it reveals the responsible-team field and every task field
 - **AND** collapsing it hides those fields again
+
+#### Scenario: Responsible team remains visible in a collapsed game
+
+- **WHEN** a visitor opens the overview containing a game with a responsible team
+- **THEN** its collapsed summary shows that team's name without opening the card
+- **AND** expanding it reveals the responsible-team field and every task field
 
 #### Scenario: Open a day-task block
 
