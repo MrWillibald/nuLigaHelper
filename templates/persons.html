@@ -15,6 +15,132 @@
     {% endfor %}
   {% endwith %}
 
+  {% if viewer_tier in ('admin', 'mv') %}
+  <div class="management-divider">
+    <p class="section-eyebrow">Verwaltung</p>
+    <h3>Team organisieren</h3>
+  </div>
+  <div class="management-card-grid">
+    <form id="new-user-card" class="management-card person-form-card" method="post"
+          action="{{ url_for('add_person') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <h3>Neue Benutzer</h3>
+      <p>Neue Einträge sind sofort aktiv. E-Mail und Telefon bleiben optional, werden aber für Anmeldung und Benachrichtigungen benötigt.</p>
+      <div class="form-grid">
+        <div class="form-field full"><label for="new-name">Name *</label>
+          <input id="new-name" name="name" required maxlength="120"></div>
+        <div class="form-field full"><label for="new-team">Mannschaft{% if viewer_tier == 'admin' %}en{% endif %} *</label>
+          {% if viewer_tier == 'admin' %}
+          <div class="new-user-team-picker">
+            <div class="new-user-team-badges" data-new-team-badges aria-live="polite">
+            {% for t in creation_teams %}
+            {% if t.is_support %}<span class="new-user-team-badge">{{ t.name }}</span>{% endif %}
+            {% endfor %}
+            </div>
+            <button class="btn team-editor-trigger new-user-team-trigger" type="button"
+                    data-team-dialog-open="new-user-team-dialog">
+              Mannschaften auswählen
+            </button>
+          </div>
+          {% else %}
+          <select id="new-team" name="team_id" required>
+            {% for t in creation_teams %}
+            <option value="{{ t.id }}" {% if t.is_support %}selected{% endif %}>
+              {{ t.name }}{% if t.is_support %} (Support){% endif %}
+            </option>
+            {% endfor %}
+          </select>
+          {% endif %}</div>
+        <div class="form-field full"><label for="new-email">E-Mail</label>
+          <input id="new-email" name="email" type="email" maxlength="200"></div>
+        <div class="form-field full"><label for="new-phone">Telefon (z. B. +49170…)</label>
+          <input id="new-phone" name="phone" maxlength="60"></div>
+        <div class="form-field full">
+          <button class="submit-btn" type="submit">BENUTZER HINZUFÜGEN</button>
+        </div>
+      </div>
+    </form>
+
+    {% if viewer_tier == 'admin' %}
+    <dialog class="team-membership-dialog" id="new-user-team-dialog"
+            data-team-picker-dialog aria-labelledby="new-user-team-dialog-title">
+      <div class="team-dialog-header">
+        <div>
+          <p class="section-eyebrow">Neue Benutzer</p>
+          <h3 id="new-user-team-dialog-title">Mannschaften auswählen</h3>
+        </div>
+        <button class="team-dialog-close" type="button" data-team-dialog-close
+                aria-label="Dialog schließen">&times;</button>
+      </div>
+      <p class="team-dialog-intro">Wähle alle Mannschaften, denen die neue Person angehört.</p>
+      <div class="team-dialog-options">
+        {% for team in creation_teams %}
+        <label class="team-dialog-choice">
+          <input name="team_ids" type="checkbox" value="{{ team.id }}" form="new-user-card"
+                 data-team-picker-input data-team-name="{{ team.name }}"
+                 {% if team.is_support %}checked{% endif %}>
+          <span>{{ team.name }}{% if team.is_support %} <small>Support</small>{% endif %}</span>
+        </label>
+        {% endfor %}
+      </div>
+      <div class="team-dialog-actions">
+        <button class="btn btn-secondary" type="button" data-team-dialog-close>Abbrechen</button>
+        <button class="btn btn-primary" type="button" data-team-picker-apply>Auswahl übernehmen</button>
+      </div>
+    </dialog>
+    {% endif %}
+
+    {% if viewer_tier == 'admin' %}
+    <div id="pending-registration-card" class="management-card team-admin-card">
+      <h3>Offene Registrierungen</h3>
+      <p class="card-intro">Geprüfte Kontaktdaten, die noch auf Freigabe für eine Mannschaft warten.</p>
+      <div class="registration-list">
+        {% for p in pending %}
+        <div class="registration-row">
+          <span><strong>{{ p.name }}</strong><small>{{ membership_label(p) }}</small></span>
+          <div class="registration-actions">
+            <form method="post" action="{{ url_for('decide_registration', person_id=p.id, decision='approve') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-primary" type="submit">Freigeben</button></form>
+            <form method="post" action="{{ url_for('decide_registration', person_id=p.id, decision='reject') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-danger" type="submit">Ablehnen</button></form>
+          </div>
+        </div>
+        {% else %}
+        <p class="empty-state">Keine offenen Registrierungen.</p>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {% if viewer_tier == 'admin' %}
+    <div id="mv-assignment-card" class="management-card team-admin-card">
+      <h3>Mannschaftsverantwortliche</h3>
+      <p class="card-intro">
+        Mannschaften stammen automatisch aus dem Spielplan. Pro Mannschaft kann genau ein
+        Mitglied als MV hinterlegt werden.
+      </p>
+      <div class="team-mv-list">
+        {% for t in teams %}
+        <div class="team-mv-row">
+          <span class="team-mv-name">
+            {{ t.name }}{% if t.is_support %} <em>(Support)</em>{% endif %}
+          </span>
+          <select class="mv-select" data-team="{{ t.id }}"
+                  {% if not t.members %}disabled title="Keine Mitglieder"{% endif %}>
+            <option value="">&ndash; kein MV &ndash;</option>
+            {% for m in t.members %}
+            <option value="{{ m.id }}" {% if m.id == t.mv_person_id %}selected{% endif %}>
+              {{ m.name }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        {% else %}
+        <em>Noch keine Mannschaften vorhanden.</em>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
   <div class="roster-heading">
     <div>
       <p class="section-eyebrow">Helferteam</p>
@@ -171,131 +297,5 @@
     {% endfor %}
   </div>
 
-  {% if viewer_tier in ('admin', 'mv') %}
-  <div class="management-divider">
-    <p class="section-eyebrow">Verwaltung</p>
-    <h3>Team organisieren</h3>
-  </div>
-  <div class="management-card-grid">
-    <form id="new-user-card" class="management-card person-form-card" method="post"
-          action="{{ url_for('add_person') }}">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <h3>Neue Benutzer</h3>
-      <p>Neue Einträge sind sofort aktiv. E-Mail und Telefon bleiben optional, werden aber für Anmeldung und Benachrichtigungen benötigt.</p>
-      <div class="form-grid">
-        <div class="form-field full"><label for="new-name">Name *</label>
-          <input id="new-name" name="name" required maxlength="120"></div>
-        <div class="form-field full"><label for="new-team">Mannschaft{% if viewer_tier == 'admin' %}en{% endif %} *</label>
-          {% if viewer_tier == 'admin' %}
-          <div class="new-user-team-picker">
-            <div class="new-user-team-badges" data-new-team-badges aria-live="polite">
-            {% for t in creation_teams %}
-            {% if t.is_support %}<span class="new-user-team-badge">{{ t.name }}</span>{% endif %}
-            {% endfor %}
-            </div>
-            <button class="btn team-editor-trigger new-user-team-trigger" type="button"
-                    data-team-dialog-open="new-user-team-dialog">
-              Mannschaften auswählen
-            </button>
-          </div>
-          {% else %}
-          <select id="new-team" name="team_id" required>
-            {% for t in creation_teams %}
-            <option value="{{ t.id }}" {% if t.is_support %}selected{% endif %}>
-              {{ t.name }}{% if t.is_support %} (Support){% endif %}
-            </option>
-            {% endfor %}
-          </select>
-          {% endif %}</div>
-        <div class="form-field full"><label for="new-email">E-Mail</label>
-          <input id="new-email" name="email" type="email" maxlength="200"></div>
-        <div class="form-field full"><label for="new-phone">Telefon (z. B. +49170…)</label>
-          <input id="new-phone" name="phone" maxlength="60"></div>
-        <div class="form-field full">
-          <button class="submit-btn" type="submit">BENUTZER HINZUFÜGEN</button>
-        </div>
-      </div>
-    </form>
-
-    {% if viewer_tier == 'admin' %}
-    <dialog class="team-membership-dialog" id="new-user-team-dialog"
-            data-team-picker-dialog aria-labelledby="new-user-team-dialog-title">
-      <div class="team-dialog-header">
-        <div>
-          <p class="section-eyebrow">Neue Benutzer</p>
-          <h3 id="new-user-team-dialog-title">Mannschaften auswählen</h3>
-        </div>
-        <button class="team-dialog-close" type="button" data-team-dialog-close
-                aria-label="Dialog schließen">&times;</button>
-      </div>
-      <p class="team-dialog-intro">Wähle alle Mannschaften, denen die neue Person angehört.</p>
-      <div class="team-dialog-options">
-        {% for team in creation_teams %}
-        <label class="team-dialog-choice">
-          <input name="team_ids" type="checkbox" value="{{ team.id }}" form="new-user-card"
-                 data-team-picker-input data-team-name="{{ team.name }}"
-                 {% if team.is_support %}checked{% endif %}>
-          <span>{{ team.name }}{% if team.is_support %} <small>Support</small>{% endif %}</span>
-        </label>
-        {% endfor %}
-      </div>
-      <div class="team-dialog-actions">
-        <button class="btn btn-secondary" type="button" data-team-dialog-close>Abbrechen</button>
-        <button class="btn btn-primary" type="button" data-team-picker-apply>Auswahl übernehmen</button>
-      </div>
-    </dialog>
-    {% endif %}
-
-    {% if viewer_tier == 'admin' %}
-    <div id="pending-registration-card" class="management-card team-admin-card">
-      <h3>Offene Registrierungen</h3>
-      <p class="card-intro">Geprüfte Kontaktdaten, die noch auf Freigabe für eine Mannschaft warten.</p>
-      <div class="registration-list">
-        {% for p in pending %}
-        <div class="registration-row">
-          <span><strong>{{ p.name }}</strong><small>{{ membership_label(p) }}</small></span>
-          <div class="registration-actions">
-            <form method="post" action="{{ url_for('decide_registration', person_id=p.id, decision='approve') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-primary" type="submit">Freigeben</button></form>
-            <form method="post" action="{{ url_for('decide_registration', person_id=p.id, decision='reject') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-danger" type="submit">Ablehnen</button></form>
-          </div>
-        </div>
-        {% else %}
-        <p class="empty-state">Keine offenen Registrierungen.</p>
-        {% endfor %}
-      </div>
-    </div>
-    {% endif %}
-
-    {% if viewer_tier == 'admin' %}
-    <div id="mv-assignment-card" class="management-card team-admin-card">
-      <h3>Mannschaftsverantwortliche</h3>
-      <p class="card-intro">
-        Mannschaften stammen automatisch aus dem Spielplan. Pro Mannschaft kann genau ein
-        Mitglied als MV hinterlegt werden.
-      </p>
-      <div class="team-mv-list">
-        {% for t in teams %}
-        <div class="team-mv-row">
-          <span class="team-mv-name">
-            {{ t.name }}{% if t.is_support %} <em>(Support)</em>{% endif %}
-          </span>
-          <select class="mv-select" data-team="{{ t.id }}"
-                  {% if not t.members %}disabled title="Keine Mitglieder"{% endif %}>
-            <option value="">&ndash; kein MV &ndash;</option>
-            {% for m in t.members %}
-            <option value="{{ m.id }}" {% if m.id == t.mv_person_id %}selected{% endif %}>
-              {{ m.name }}
-            </option>
-            {% endfor %}
-          </select>
-        </div>
-        {% else %}
-        <em>Noch keine Mannschaften vorhanden.</em>
-        {% endfor %}
-      </div>
-    </div>
-    {% endif %}
-  </div>
-  {% endif %}
 </section>
 {% endblock %}
