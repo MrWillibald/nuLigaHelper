@@ -1,5 +1,8 @@
 # Reviewed production release assets
 
+For routine updates after first-cutover acceptance, use the repository's
+[existing-installation deployment guide](../DEPLOYMENT.md).
+
 This directory contains generic, non-secret files required by a clean checkout.
 The installed systemd services use `/opt/nuligahelper/current` for all code,
 virtualenv, and Gunicorn paths. The application root `/opt/nuligahelper` remains
@@ -13,10 +16,9 @@ it before interruption. Activation then stops known writers and ingress,
 creates a validated SQLite snapshot, gates the schema, switches `current`, and
 waits up to 60 seconds for the selected web unit, loopback listener, and local
 `/healthz` before reopening Caddy and checking public HTTPS readiness. A
-`Type=simple` start alone is not readiness. **The command is still a draft:** do not
-install or run its activation commands on production until this revision is
-merged through protected `master`, host preflight passes, and the operator
-approves the cutover in the OpenSpec change. Its root-only configuration template is
+`Type=simple` start alone is not readiness. **Production activation still needs
+host preflight and first-cutover operator acceptance**, even though
+the command is tracked on protected `master`. Its root-only configuration template is
 `deployment.json.example`; the real `/etc/nuligahelper/deployment.json` must
 be root-owned mode 0600 and must not enter Git. The Git source cache is outside
 the service-readable application tree. Its `database` must name the existing
