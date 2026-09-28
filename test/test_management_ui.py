@@ -80,9 +80,30 @@ def _client(person_key):
     return client, token
 
 
+def _assert_page_order(page, management_cards=()):
+    roster_heading = page.index('<div class="roster-heading">')
+    roster_filter = page.index('<form class="roster-filter-card"')
+    roster_grid = page.index('<div class="people-grid persons-grid">')
+    assert roster_heading < roster_filter < roster_grid, "roster sections must stay together"
+    if management_cards:
+        management = page.index('<div class="management-divider">')
+        card_positions = [page.index(f'id="{card}"') for card in management_cards]
+        assert management < card_positions[0], "management heading must precede its controls"
+        assert card_positions == sorted(card_positions), "management cards must retain their order"
+        assert card_positions[-1] < roster_heading, "management must precede the roster"
+    else:
+        assert '<div class="management-divider">' not in page
+
+
+def _roster_html(page):
+    start = page.index('<div class="people-grid persons-grid">')
+    return page[start:page.index("</section>", start)]
+
+
 def test_01_member_filters_only_the_visible_roster_without_contact_leaks():
     client, token = _client("member")
     page = client.get("/personen").get_data(as_text=True)
+    _assert_page_order(page)
     assert "member@management.test" in page
     assert "private@management.test" not in page
     assert 'id="new-user-card"' not in page
@@ -98,6 +119,7 @@ def test_01_member_filters_only_the_visible_roster_without_contact_leaks():
     ).status_code == 403
 
     by_name = client.get("/personen?name=other").get_data(as_text=True)
+    _assert_page_order(by_name)
     assert "Other Active" in by_name and "Visible Member" not in by_name
     assert "private@management.test" not in by_name
     by_team = client.get(
@@ -116,6 +138,7 @@ def test_01_member_filters_only_the_visible_roster_without_contact_leaks():
 def test_02_mv_can_create_contactless_people_for_every_managed_team_only():
     client, token = _client("mv")
     page = client.get("/personen").get_data(as_text=True)
+    _assert_page_order(page, ("new-user-card",))
     assert 'id="new-user-card"' in page
     assert 'id="pending-registration-card"' not in page
     assert 'id="mv-assignment-card"' not in page
@@ -125,6 +148,10 @@ def test_02_mv_can_create_contactless_people_for_every_managed_team_only():
     assert f'value="{IDS["second_team"]}"' in form
     assert f'value="{IDS["other_team"]}"' not in form
     assert f'value="{IDS["support"]}"' not in form
+    filtered = client.get("/personen?name=Other").get_data(as_text=True)
+    _assert_page_order(filtered, ("new-user-card",))
+    assert "Other Active" in _roster_html(filtered)
+    assert "Visible Member" not in _roster_html(filtered)
 
     for name, team_key in (("Created Own", "own_team"), ("Created Second", "second_team")):
         response = client.post("/personen/add", data=h.csrf_data({
@@ -238,6 +265,9 @@ def test_03_registration_decisions_are_admin_only():
 def test_04_admin_has_all_management_cards_and_status_filtering():
     client, token = _client("admin")
     page = client.get("/personen").get_data(as_text=True)
+    _assert_page_order(page, (
+        "new-user-card", "pending-registration-card", "mv-assignment-card"
+    ))
     assert 'id="new-user-card"' in page
     assert 'id="pending-registration-card"' in page
     assert 'id="mv-assignment-card"' in page
@@ -245,25 +275,19 @@ def test_04_admin_has_all_management_cards_and_status_filtering():
     assert 'data-new-team-badges' in page
     assert 'data-team-picker-apply' in page
     assert '<select id="new-team" name="team_ids"' not in page
-    assert '<select name="team_ids" multiple' not in page[
-        page.index('<div class="people-grid persons-grid">'):
-        page.index('<div class="management-divider">')
-    ]
+    assert '<select name="team_ids" multiple' not in _roster_html(page)
     assert page.count('class="person-team-badge"') >= 1
     assert 'class="team-membership-dialog"' in page
     assert page.count(f'value="{IDS["mv"]}"') >= 2
     inactive = client.get("/personen?status=inactive").get_data(as_text=True)
-    inactive_roster = inactive[
-        inactive.index('<div class="people-grid persons-grid">'):
-        inactive.index('<div class="management-divider">')
-    ]
+    _assert_page_order(inactive, (
+        "new-user-card", "pending-registration-card", "mv-assignment-card"
+    ))
+    inactive_roster = _roster_html(inactive)
     assert "Hidden Inactive" in inactive_roster and "Other Active" not in inactive_roster
     assert '<option value="inactive" selected>' in inactive
     active = client.get("/personen?status=active").get_data(as_text=True)
-    active_roster = active[
-        active.index('<div class="people-grid persons-grid">'):
-        active.index('<div class="management-divider">')
-    ]
+    active_roster = _roster_html(active)
     assert "Other Active" in active_roster and "Hidden Inactive" not in active_roster
     created = client.post("/personen/add", data=h.csrf_data({
         "name": "Admin Other", "team_ids": [IDS["other_team"], IDS["support"]],
