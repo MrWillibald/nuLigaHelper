@@ -23,6 +23,7 @@ from sqlalchemy.orm import (
     Session,
     mapped_column,
     relationship,
+    selectinload,
     sessionmaker,
 )
 
@@ -927,6 +928,7 @@ def get_all_persons(session: Session) -> list[Person]:
         session.scalars(
             select(Person)
             .where(Person.account_status == ACCOUNT_ACTIVE)
+            .options(selectinload(Person.teams))
             .order_by(Person.name, Person.id)
         )
     )

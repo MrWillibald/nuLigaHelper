@@ -116,7 +116,7 @@ def test_01_admin_sign_in_exposes_controls_without_contacts_on_schedule():
     page = client.get("/").get_data(as_text=True)
     assert page.count('class="team-select"') == len(games)
     assert "admin@example.test" not in page and "+4917" not in page
-    assert "Alex Test ·" in page, "duplicate names must be qualified by team"
+    assert "Alex Test" not in page, "unassigned roster names must not fill collapsed cards"
     document = html.fromstring(page)
     game = document.get_element_by_id(f"game-{GAME_ID}")
     assert game.tag == "details" and game.get("open") is None
@@ -156,23 +156,23 @@ def test_02_responsible_team_and_claim_release_flow():
 
 
 def test_02_task_dropdown_groups_all_four_categories_and_keeps_hints():
-    page = html.fromstring(client.get("/").get_data(as_text=True))
-    card = page.get_element_by_id(f"game-{GAME_ID}")
-    select = card.xpath('.//select[@data-role="Zeitnehmer"]')[0]
-    options = select.xpath('./option[@value!=""]')
-    assert [int(option.get("value")) for option in options] == [
+    response = client.get(f"/api/games/{GAME_ID}/candidates")
+    assert response.status_code == 200
+    assert response.headers["Cache-Control"] == "private, no-store"
+    payload = response.get_json()
+    options = payload["people"]
+    assert [option["id"] for option in options] == [
         DUPLICATE_ID, ADMIN_ID, OUTSIDER_ID, ALICE_ID,
     ]
-    assert [option.get("data-sort-group") for option in options] == [
-        "1", "2", "3", "4",
-    ]
-    assert all(option.get("data-sort-name") is not None for option in options)
-    assert all(option.get("data-sort-id") == option.get("value") for option in options)
-    assert "foreign-option" in options[2].get("class", "")
-    assert "außerhalb" in options[2].text_content()
-    assert "option-playing" in options[3].get("class", "")
-    assert "spielt selbst" in options[3].text_content()
-    assert "BL mD, Supporter" in options[3].text_content()
+    assert [option["sort_group"] for option in options] == [1, 2, 3, 4]
+    assert all(option["sort_name"] for option in options)
+    assert options[2]["hint"] == "outside"
+    assert options[3]["hint"] == "playing"
+    assert options[3]["team_label"] == "BL mD, Supporter"
+    assert [option["id"] for option in options if option["name"] == "Alex Test"] == [
+        DUPLICATE_ID, ALICE_ID,
+    ], "duplicate names must remain separate people with complete team labels"
+    assert "alex@example.test" not in response.get_data(as_text=True)
 
 
 def test_03_existing_rules_and_advisory_warning_remain():

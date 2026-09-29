@@ -34,5 +34,33 @@ def test_rejected_claim_does_not_change_displayed_progress():
     assert result.returncode == 0, result.stderr or result.stdout
 
 
+def test_candidate_loading_handles_open_cards_failures_and_slot_metadata():
+    node = shutil.which("node")
+    if node is None:
+        return
+    result = subprocess.run(
+        [node, "test/js_candidate_loading.mjs"],
+        cwd=h.PROJECT_DIR,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
+
+
+def test_expanding_a_card_requests_its_candidates_and_offers_retry():
+    node = shutil.which("node")
+    if node is None:
+        return
+    result = subprocess.run(
+        [node, "test/js_candidate_toggle.mjs"],
+        cwd=h.PROJECT_DIR,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
+
+
 if __name__ == "__main__":
     h.run_all(dict(globals()))

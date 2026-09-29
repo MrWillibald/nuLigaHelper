@@ -87,13 +87,121 @@ function insertOptionSorted(select, option) {
 }
 
 function addPersonOption(card, currentSelect, option) {
+  if (!option.dataset.sortId) return;
   const clone = option.cloneNode(true);
   clone.removeAttribute("selected");
   otherRoleSelects(card, currentSelect).forEach((s) => {
+    const allowed = card._candidateSlots?.get(candidateSlotKey(s));
+    if (allowed && !allowed.has(Number(clone.value))) return;
     if (s.querySelector('option[value="' + clone.value + '"]')) return;
     insertOptionSorted(s, clone.cloneNode(true));
   });
 }
+
+function candidateSlotKey(select) {
+  return select.hasAttribute("data-block-assignment")
+    ? select.dataset.slot : `${select.dataset.role}:${select.dataset.slot}`;
+}
+
+function makeCandidateOption(person) {
+  const option = document.createElement("option");
+  option.value = String(person.id);
+  option.dataset.sortGroup = String(person.sort_group);
+  option.dataset.sortName = person.sort_name;
+  option.dataset.sortId = String(person.id);
+  option.textContent = `${person.name} · ${person.team_label}`;
+  if (person.hint === "playing") {
+    option.className = "option-playing";
+    option.title = `${person.name} spielt in diesem Spiel selbst`;
+    option.textContent += " • spielt selbst";
+  } else if (person.hint === "outside") {
+    option.className = "foreign-option";
+    option.title = `${person.name} gehört zu ${person.team_label}`;
+    option.textContent += " • außerhalb";
+  }
+  return option;
+}
+
+function populateCandidateCard(card, payload) {
+  const selects = Array.from(card.querySelectorAll("select[data-role], select[data-block-assignment]"));
+  const people = new Map(payload.people.map((person) => [person.id, person]));
+  const taken = new Set(Array.from(card.querySelectorAll("[data-occupant-id]"))
+    .map((label) => Number(label.dataset.occupantId)).filter(Boolean));
+  const plans = selects.map((select) => {
+    const key = candidateSlotKey(select);
+    const slot = payload.slots[key];
+    const selectedId = select.value ? Number(select.value) : null;
+    if (!slot || slot.occupant_id !== selectedId) {
+      throw new Error("Die Einteilung hat sich geändert. Bitte lade die Seite neu.");
+    }
+    const allowed = new Set(slot.candidate_ids);
+    const options = slot.candidate_ids
+      .filter((id) => people.has(id) && (!taken.has(id) || id === selectedId))
+      .map((id) => makeCandidateOption(people.get(id)))
+      .sort(comparePersonOptions);
+    return { select, key, selectedId, allowed, options };
+  });
+  const allowedBySlot = new Map();
+  plans.forEach(({ select, key, selectedId, allowed, options }) => {
+    allowedBySlot.set(key, allowed);
+    if (selectedId && people.has(selectedId)) select.selectedOptions[0].remove();
+    const fragment = document.createDocumentFragment();
+    options.forEach((option) => {
+      if (Number(option.value) === selectedId) option.selected = true;
+      fragment.appendChild(option);
+    });
+    select.appendChild(fragment);
+    if (selectedId) select.value = String(selectedId);
+    select.disabled = false;
+  });
+  card._candidateSlots = allowedBySlot;
+}
+
+function candidateStatus(card, message, retry = false, login = false) {
+  const status = card.querySelector("[data-candidate-status]");
+  if (!status) return;
+  status.hidden = !message;
+  status.querySelector("[data-candidate-message]").textContent = message;
+  status.querySelector("[data-candidate-retry]").hidden = !retry;
+  status.querySelector("[data-candidate-login]").hidden = !login;
+}
+
+async function loadCandidateCard(card) {
+  if (card._candidateLoaded || card._candidateLoading) return;
+  card._candidateLoading = true;
+  candidateStatus(card, "Helferliste wird geladen …");
+  try {
+    const response = await fetch(card.dataset.candidateUrl, { cache: "no-store" });
+    if (response.status === 401) {
+      throw Object.assign(new Error("Deine Sitzung ist abgelaufen. Bitte melde dich erneut an."), { login: true });
+    }
+    if (!response.ok) throw new Error("Helferliste konnte nicht geladen werden.");
+    populateCandidateCard(card, await response.json());
+    card._candidateLoaded = true;
+    candidateStatus(card, "");
+  } catch (error) {
+    candidateStatus(card, error.message || "Helferliste konnte nicht geladen werden.", true, error.login);
+  } finally {
+    card._candidateLoading = false;
+  }
+}
+
+globalThis.nuLigaCandidateTools = { populateCandidateCard, loadCandidateCard };
+
+document.querySelectorAll("details[data-candidate-url]").forEach((card) => {
+  if (!card.querySelector("select[data-role], select[data-block-assignment]")) return;
+  card.addEventListener("toggle", () => {
+    if (card.open) loadCandidateCard(card);
+  });
+  card.querySelector("[data-candidate-retry]").addEventListener("click", () => {
+    if (card.querySelector("[data-candidate-message]").textContent.includes("Bitte lade die Seite neu")) {
+      window.location.reload();
+    } else {
+      loadCandidateCard(card);
+    }
+  });
+  if (card.open) loadCandidateCard(card);
+});
 
 function updateCoverage(card, previousId, newId, role = null) {
   const coverage = card && card.querySelector(".coverage");
@@ -149,6 +257,8 @@ document.querySelectorAll("select[data-role]").forEach((select) => {
       return;
     }
     const card = document.getElementById("game-" + select.dataset.game);
+    const label = select.closest?.("[data-occupant-id]");
+    if (label) label.dataset.occupantId = newId || "";
     updateCoverage(card, previousId, newId, select.dataset.role);
     flashCard(select.dataset.game);
     // the newly assigned person must not be offered for other tasks
@@ -203,6 +313,8 @@ document.querySelectorAll("select[data-block-assignment]").forEach((select) => {
       return;
     }
     const card = document.getElementById("block-" + select.dataset.block);
+    const label = select.closest?.("[data-occupant-id]");
+    if (label) label.dataset.occupantId = newId || "";
     if (newId) removePersonOption(card, select, newId);
     if (previousId !== null && previousId !== newId) addPersonOption(card, select, previous);
     updateCoverage(card, previousId, newId);

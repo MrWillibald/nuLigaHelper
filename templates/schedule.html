@@ -16,7 +16,7 @@
 
 {% macro game_card(g, teams, support_id) %}
 {% set responsible_team_name = teams | selectattr('id', 'equalto', g.team_id) | map(attribute='name') | first | default('– offen –', true) %}
-<details class="game-card"{% if viewer %} id="game-{{ g.id }}" data-support="{{ support_id }}"{% endif %}>
+<details class="game-card"{% if viewer %} id="game-{{ g.id }}" data-candidate-url="{{ url_for('api_game_candidates', game_id=g.id) }}"{% endif %}>
   <summary class="game-summary">
     <div class="game-info">
       <div class="game-time">{{ g.time }}</div>
@@ -47,38 +47,26 @@
       {% else %}<strong>{{ responsible_team_name }}</strong>{% endif %}
     </label>
     {% for s in g.slots %}
-    <label class="assign-field">
+    <label class="assign-field"{% if viewer %} data-occupant-id="{{ s.person_id or '' }}"{% endif %}>
       <span>{{ s.label }}</span>
       {% if s.editable %}<select data-game="{{ g.id }}" data-role="{{ s.role }}" data-slot="{{ s.slot }}"
-              {% if s.status in ("playing", "outside") %}class="select-warn"{% endif %}>
+              disabled {% if s.status in ("playing", "outside") %}class="select-warn"{% endif %}>
         <option value="">&ndash; offen &ndash;</option>
-        {% for p in s.options %}
-        {% if not (p.id in g.taken_person_ids and p.id != s.person_id) %}
-        {% set playing = g.playing_team_id in p.team_ids %}
-        {% set outside = g.team_id and g.team_id not in p.team_ids and support_id not in p.team_ids and not playing %}
-        <option value="{{ p.id }}"
-                data-sort-group="{{ p.sort_group }}"
-                data-sort-name="{{ p.sort_name }}"
-                data-sort-id="{{ p.id }}"
-                {% if p.id == s.person_id %}selected{% endif %}
-                {% if playing %}class="option-playing" title="{{ p.name }} spielt in diesem Spiel selbst"
-                {% elif outside %}class="foreign-option" title="{{ p.name }} gehört zu {{ p.team_label }}"{% endif %}>
-          {{ p.name }} · {{ p.team_label }}{% if playing %} &bull; spielt selbst{% elif outside %} &bull; außerhalb{% endif %}
-        </option>
-        {% endif %}
-        {% endfor %}
+        {% if s.person_id %}<option value="{{ s.person_id }}" selected>{{ s.person_name }} · {{ s.person_team_label }}</option>{% endif %}
       </select>
       {% else %}<strong>{{ s.person_name or '– offen –' }}{% if s.person_name %} · {{ s.person_team_label }}{% endif %}</strong>{% endif %}
     </label>
     {% endfor %}
-  </div></div>
+  </div>
+  {% if viewer %}<div class="candidate-status" data-candidate-status hidden role="status"><span data-candidate-message></span> <button type="button" data-candidate-retry hidden>Erneut laden</button> <a href="{{ url_for('login') }}" data-candidate-login hidden>Zum Login</a></div>{% endif %}
+  </div>
 </details>
 {% endmacro %}
 
 {% macro task_block_card(b) %}
 {% if b %}
 <details class="game-card task-block-card task-block-{{ b.phase }}{% if not b.time %} task-block-no-time{% endif %}"
-         {% if viewer %}id="block-{{ b.id }}" data-block-card="{{ b.id }}"{% endif %}>
+         {% if viewer %}id="block-{{ b.id }}" data-block-card="{{ b.id }}" data-candidate-url="{{ url_for('api_block_candidates', block_id=b.id) }}"{% endif %}>
   <summary class="game-summary">
     <div class="game-info task-block-info">
       <div class="game-time">{{ b.time or 'Zeit offen' }}{% if b.time_date %}<small>{{ b.time_date }}</small>{% endif %}</div>
@@ -92,21 +80,19 @@
   </summary>
   <div class="game-detail-body"><div class="game-assign task-block-assign">
     {% for s in b.slots %}
-    <label class="assign-field">
+    <label class="assign-field"{% if viewer %} data-occupant-id="{{ s.person_id or '' }}"{% endif %}>
       <span>{{ s.label }}</span>
       {% if s.editable %}
-      <select data-block="{{ b.id }}" data-slot="{{ s.slot }}" data-block-assignment>
+      <select data-block="{{ b.id }}" data-slot="{{ s.slot }}" data-block-assignment disabled>
         <option value="">&ndash; offen &ndash;</option>
-        {% for p in s.options if not (p.id in b.taken_person_ids and p.id != s.person_id) %}
-        <option value="{{ p.id }}" data-sort-group="{{ p.sort_group }}"
-                data-sort-name="{{ p.sort_name }}" data-sort-id="{{ p.id }}"
-                {% if p.id == s.person_id %}selected{% endif %}>{{ p.name }} · {{ p.team_label }}</option>
-        {% endfor %}
+        {% if s.person_id %}<option value="{{ s.person_id }}" selected>{{ s.person_name }} · {{ s.person_team_label }}</option>{% endif %}
       </select>
       {% else %}<strong>{{ s.person_name or '– offen –' }}{% if s.person_name and viewer %} · {{ s.person_team_label }}{% endif %}</strong>{% endif %}
     </label>
     {% endfor %}
-  </div></div>
+  </div>
+  {% if viewer %}<div class="candidate-status" data-candidate-status hidden role="status"><span data-candidate-message></span> <button type="button" data-candidate-retry hidden>Erneut laden</button> <a href="{{ url_for('login') }}" data-candidate-login hidden>Zum Login</a></div>{% endif %}
+  </div>
 </details>
 {% endif %}
 {% endmacro %}

@@ -93,6 +93,8 @@ option.foreign-option{color:#a0a6b5}
 option.option-playing{color:#c77700}
 select.select-warn{border-color:#e8b23c;background:#fffaf0}
 .game-card.saved{animation:savedflash .9s ease}
+.candidate-status{padding:8px 0;color:var(--muted);font-size:.9rem}
+.candidate-status button,.candidate-status a{margin-left:8px}
 .task-block-card{--block-accent:var(--navy)}
 .task-block-preparation{--block-accent:#a0e656}
 .task-block-cleanup{--block-accent:#ffb752}
