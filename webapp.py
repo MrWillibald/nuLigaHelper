@@ -1235,7 +1235,6 @@ def create_app() -> Flask:
                 "id": p.id,
                 "name": p.name,
                 "team_ids": db.membership_team_ids(p),
-                "teams": [{"id": t.id, "name": t.name} for t in db.membership_teams(p)],
                 "team_label": db.membership_label(p),
             }
             for p in db.get_all_persons(session)
@@ -1260,9 +1259,132 @@ def create_app() -> Flask:
     # Schedule overview
     # ------------------------------------------------------------------
 
+    def game_slot_scope(game: db.Game, occupant: db.Person | None) -> tuple[str | None, int | None]:
+        """Return the viewer's editable scope and managed team for one slot."""
+        if g.tier == "admin":
+            return "all", None
+        if g.viewer is None or g.tier not in {"member", "mv"}:
+            return None, None
+        game_date = parse_date(game.date)
+        if game_date is not None and game_date < common.effective_today():
+            return None, None
+        mv_team_id = game.team_id if game.team_id in g.mv_team_ids else None
+        if mv_team_id is not None and (
+            occupant is None or db.has_team(occupant, mv_team_id)
+        ):
+            return "team", mv_team_id
+        if occupant is None or occupant.id == g.viewer.id:
+            return "self", None
+        return None, None
+
+    def block_slot_scope(block: db.DayBlock, occupant: db.Person | None) -> str | None:
+        if g.tier == "admin":
+            return "all"
+        if g.viewer is None or g.tier not in {"member", "mv"}:
+            return None
+        block_date = parse_date(block.date)
+        if block_date is not None and block_date < common.effective_today():
+            return None
+        return "self" if occupant is None or occupant.id == g.viewer.id else None
+
+    def candidates_for_scope(persons: list[dict], scope: str, team_id: int | None):
+        if scope == "all":
+            return persons
+        if scope == "team":
+            return [
+                p for p in persons
+                if p["id"] == g.viewer.id or team_id in p["team_ids"]
+            ]
+        return [p for p in persons if p["id"] == g.viewer.id]
+
+    def candidate_response(people: list[dict], slots: dict):
+        response = jsonify(people=people, slots=slots)
+        response.headers["Cache-Control"] = "private, no-store"
+        return response
+
+    @app.get("/api/games/<int:game_id>/candidates")
+    def api_game_candidates(game_id: int):
+        session_db = get_session()
+        game = session_db.get(db.Game, game_id)
+        if game is None:
+            return api_error("Spiel nicht gefunden.", 404)
+        assignments = {(a.role, a.slot): a for a in game.assignments}
+        slot_scopes = {}
+        for role, count in db.ROLE_SLOT_COUNT.items():
+            for slot in range(count):
+                assignment = assignments.get((role, slot))
+                occupant = assignment.person if assignment else None
+                scope, team_id = game_slot_scope(game, occupant)
+                if scope is not None:
+                    slot_scopes[f"{role}:{slot}"] = (scope, team_id, occupant.id if occupant else None)
+        if not slot_scopes:
+            return candidate_response([], {})
+
+        persons = person_options(session_db)
+        allowed = {}
+        used_ids = set()
+        for key, (scope, team_id, occupant_id) in slot_scopes.items():
+            ids = [p["id"] for p in candidates_for_scope(persons, scope, team_id)]
+            used_ids.update(ids)
+            allowed[key] = {"candidate_ids": ids, "occupant_id": occupant_id}
+        support = db.get_support_team(session_db)
+        playing = session_db.scalar(select(db.Team).where(db.Team.name == (game.ak or "")))
+        ordered = _ordered_person_options(
+            [p for p in persons if p["id"] in used_ids],
+            game.team_id, support.id if support else None, playing.id if playing else None,
+        )
+        people = []
+        for person in ordered:
+            team_ids = person["team_ids"]
+            is_playing = playing is not None and playing.id in team_ids
+            is_outside = (
+                not is_playing and game.team_id is not None
+                and game.team_id not in team_ids
+                and (support is None or support.id not in team_ids)
+            )
+            people.append({
+                "id": person["id"], "name": person["name"],
+                "team_label": person["team_label"],
+                "sort_group": person["sort_group"], "sort_name": person["sort_name"],
+                "hint": "playing" if is_playing else "outside" if is_outside else "",
+            })
+        return candidate_response(people, allowed)
+
+    @app.get("/api/blocks/<int:block_id>/candidates")
+    def api_block_candidates(block_id: int):
+        session_db = get_session()
+        block = session_db.get(db.DayBlock, block_id)
+        if block is None:
+            return api_error("Tagesblock nicht gefunden.", 404)
+        slot_scopes = {}
+        for slot in range(db.BLOCK_SLOT_COUNT):
+            assignment = block.assignment_for_slot(slot)
+            occupant = assignment.person if assignment else None
+            scope = block_slot_scope(block, occupant)
+            if scope is not None:
+                slot_scopes[str(slot)] = (scope, occupant.id if occupant else None)
+        if not slot_scopes:
+            return candidate_response([], {})
+
+        persons = person_options(session_db)
+        allowed = {}
+        used_ids = set()
+        for key, (scope, occupant_id) in slot_scopes.items():
+            ids = [p["id"] for p in candidates_for_scope(persons, scope, None)]
+            used_ids.update(ids)
+            allowed[key] = {"candidate_ids": ids, "occupant_id": occupant_id}
+        people = [
+            {
+                "id": p["id"], "name": p["name"], "team_label": p["team_label"],
+                "sort_group": 0, "sort_name": p["name"].casefold(), "hint": "",
+            }
+            for p in persons if p["id"] in used_ids
+        ]
+        people.sort(key=lambda p: (p["sort_name"], p["id"]))
+        return candidate_response(people, allowed)
+
     def build_schedule(
-        session, season_year: int, viewer: db.Person | None = None,
-        filters: dict[str, str] | None = None,
+        session, season_year: int, filters: dict[str, str] | None = None,
     ):
         filters = filters or {}
         today = common.effective_today()
@@ -1278,9 +1400,10 @@ def create_app() -> Flask:
                 date_options.append({"date": game.date, "day": game.day or ""})
                 seen_dates.add(game.date)
 
-        persons = person_options(session)
-        persons_by_id = {p["id"]: p for p in persons}
-        teams = team_options(session)
+        teams = [
+            {"id": t.id, "name": t.name, "is_support": t.is_support}
+            for t in db.get_all_teams(session)
+        ]
         support = db.get_support_team(session)
         support_id = support.id if support else None
         playing_team_by_ak = {t["name"]: t["id"] for t in teams}
@@ -1338,35 +1461,7 @@ def create_app() -> Flask:
                 else:
                     status = "ok"
 
-                is_admin = g.tier == "admin"
-                self_allowed = g.tier in {"member", "mv", "admin"} and viewer is not None and (
-                    person_id is None or person_id == viewer.id
-                )
-                mv_game_team = (
-                    responsible_team_id
-                    if responsible_team_id in g.mv_team_ids
-                    else None
-                )
-                mv_allowed = mv_game_team is not None and (
-                    occupant is None or db.has_team(occupant, mv_game_team)
-                )
-                editable = is_admin or (
-                    not bool(d := parse_date(game.date)) or d >= today
-                ) and (self_allowed or mv_allowed)
-                if is_admin:
-                    options = persons
-                elif editable and mv_game_team is not None:
-                    options = [
-                        p for p in persons
-                        if mv_game_team in p["team_ids"] or p["id"] == viewer.id
-                    ]
-                elif editable and viewer is not None:
-                    options = [persons_by_id[viewer.id]] if viewer.id in persons_by_id else []
-                else:
-                    options = []
-                options = _ordered_person_options(
-                    options, responsible_team_id, support_id, playing_team_id
-                )
+                scope, _ = game_slot_scope(game, occupant)
                 slots.append({
                     "label": label,
                     "role": role,
@@ -1375,12 +1470,8 @@ def create_app() -> Flask:
                     "person_name": occupant.name if occupant else "",
                     "person_team_label": db.membership_label(occupant) if occupant else "",
                     "status": status,
-                    "editable": editable,
-                    "options": options,
+                    "editable": scope is not None,
                 })
-            # Persons already assigned to a task of this game must not be
-            # offered for the other tasks of the same game.
-            taken_person_ids = {s["person_id"] for s in slots if s["person_id"] is not None}
             required_filled = sum(
                 s["person_id"] is not None
                 for s in slots if s["role"] in db.REQUIRED_ROLE_SLOT_COUNT
@@ -1401,7 +1492,6 @@ def create_app() -> Flask:
                 "team_id": responsible_team_id,
                 "playing_team_id": playing_team_id,
                 "slots": slots,
-                "taken_person_ids": taken_person_ids,
                 "progress": progress_data(
                     required_filled, sum(db.REQUIRED_ROLE_SLOT_COUNT.values())
                 ),
@@ -1416,40 +1506,18 @@ def create_app() -> Flask:
                 if calculated and calculated.date() != home_date
                 else ""
             )
-            is_admin = g.tier == "admin"
-            editable_date = not home_date or home_date >= today
             slots = []
             for slot in range(db.BLOCK_SLOT_COUNT):
                 assignment = block.assignment_for_slot(slot)
                 occupant = assignment.person if assignment else None
-                editable = is_admin or (
-                    editable_date
-                    and viewer is not None
-                    and g.tier in {"member", "mv"}
-                    and (occupant is None or occupant.id == viewer.id)
-                )
-                if is_admin:
-                    options = persons
-                elif editable and viewer is not None and viewer.id in persons_by_id:
-                    options = [persons_by_id[viewer.id]]
-                else:
-                    options = []
-                options = sorted(
-                    (
-                        {**person, "sort_group": 0,
-                         "sort_name": person["name"].casefold()}
-                        for person in options
-                    ),
-                    key=lambda person: (person["sort_name"], person["id"]),
-                )
+                scope = block_slot_scope(block, occupant)
                 slots.append({
                     "label": db.block_slot_label(block, slot),
                     "slot": slot,
                     "person_id": occupant.id if occupant else None,
                     "person_name": occupant.name if occupant else "",
                     "person_team_label": db.membership_label(occupant) if occupant else "",
-                    "editable": editable,
-                    "options": options,
+                    "editable": scope is not None,
                 })
             return {
                 "id": block.id,
@@ -1462,9 +1530,6 @@ def create_app() -> Flask:
                     sum(slot["person_id"] is not None for slot in slots),
                     db.BLOCK_SLOT_COUNT,
                 ),
-                "taken_person_ids": {
-                    slot["person_id"] for slot in slots if slot["person_id"] is not None
-                },
                 "past": bool(home_date and home_date < today),
             }
 
@@ -1535,7 +1600,6 @@ def create_app() -> Flask:
         return {
             "upcoming": with_month_headers(upcoming),
             "past": with_month_headers(past),
-            "persons": persons,
             "teams": teams,
             "support_id": support_id,
             "total_games": total_games,
@@ -1552,12 +1616,11 @@ def create_app() -> Flask:
             "responsible_team": request.args.get("responsible_team", "").strip(),
             "person": request.args.get("person", "").strip(),
         }
-        data = build_schedule(session, season_year, g.viewer, filters)
+        data = build_schedule(session, season_year, filters)
         return render_template(
             "schedule.html",
             upcoming=data["upcoming"],
             past=data["past"],
-            persons=data["persons"],
             teams=data["teams"],
             support_id=data["support_id"],
             total_games=data["total_games"],
