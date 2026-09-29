@@ -92,18 +92,18 @@ The club-reviewed schedule SHALL document that assignment audit entries are appe
 
 ### Requirement: Backup retention and restoration preserve deletion intent
 
-The operational policy SHALL define backup access, encryption expectations, retention/expiry, deletion and restoration procedures for every local and Dropbox database backup. Deletion from the live database SHALL not require rewriting immutable historical backups unless the approved policy says otherwise, but expired backups SHALL be removed on schedule and shall not be kept indefinitely. After restoring a backup, the operator SHALL reapply all lifecycle cutoffs and completed deletion obligations before returning the service to public use, and SHALL verify the restored database using the safety procedure coordinated with `make-sqlite-production-safe`.
+The operational policy SHALL define backup access, protection, count-based Dropbox retention, transient local-copy cleanup and restoration procedures. Deletion from the live database SHALL not require rewriting immutable historical backups unless the approved policy says otherwise. Dated Dropbox backups beyond the approved retained count SHALL be pruned, upload copies SHALL be removed after each attempt, and manually created recovery snapshots SHALL be removed after the associated recovery or release is accepted. After restoring a backup, the operator SHALL reapply all lifecycle cutoffs and completed deletion obligations before returning the service to public use, and SHALL verify the restored database using the safety procedure coordinated with `make-sqlite-production-safe`.
 
 #### Scenario: Live data is deleted under policy
 
 - **WHEN** a lifecycle rule removes personal data from the live database
 - **THEN** new backups no longer contain that data
-- **AND** older backups remain protected and expire according to their approved retention rule
+- **AND** older backups remain protected and leave storage according to the approved count-based retention rule
 
-#### Scenario: Backup reaches retention expiry
+#### Scenario: Backup exceeds retained count
 
-- **WHEN** a backup passes its approved retention cutoff
-- **THEN** the backup is deleted from each documented storage location
+- **WHEN** a dated Dropbox backup falls outside the approved retained count
+- **THEN** it is pruned and transient local upload copies are absent
 - **AND** deletion success or failure is visible to the operator without exposing backup contents
 
 #### Scenario: Historical backup is restored
