@@ -67,6 +67,12 @@ test/run_tests.sh                          # whole suite, must stay green
   repeat. APIs and CLI mutation commands take internal IDs; person lists and
   pickers show every team beside the name. `get_or_create_person()` is only a
   seeding/test convenience.
+- **Birth dates are date-only values.** `Person.birth_date` is nullable only for
+  honestly unknown legacy data; registration, admin/MV creation and CLI creation
+  require a validated date no later than `common.effective_today()`. Self/admin
+  maintenance may complete or correct it but cannot clear a known date. Unknown
+  legacy dates do not block unrelated maintenance. Never infer dates from teams,
+  names, account state or assignments, and never persist a derived age.
 - **Access tiers are derived on every request**: guest (no session), member
   (active account), MV (active and referenced by `Team.mv_person_id`) and admin
   (active and `Person.is_admin`). Admin and MV rights form a union. Verified but
@@ -96,8 +102,9 @@ test/run_tests.sh                          # whole suite, must stay green
   in the *playing* team → greyed + "spielt selbst" hint; otherwise people with
   neither responsible nor Supporter membership → greyed when a responsible team
   is set. Category precedence is playing, responsible, Supporter, other (rendered
-  in reverse suitability order: responsible, Supporter, other, playing). Everything stays selectable;
-  duplicates within a role are rejected server-side.
+  in reverse suitability order: responsible, Supporter, other, playing). Membership
+  warnings remain advisory; selectable candidates must still pass age eligibility.
+  Duplicates within a role are rejected server-side.
 - **One task per person per game**: a person already assigned to any task of a
   game cannot be assigned to another task of the same game. Such persons are
   removed from the dropdowns of the other tasks of that game (server-rendered
@@ -109,6 +116,35 @@ test/run_tests.sh                          # whole suite, must stay green
   a conflict and current occupant without overwriting the winner. Use
   `db.claim_slot()` / `db.release_slot()` and the matching JSON endpoints, not a
   read-modify-write of a complete role.
+- **Day blocks are dated, team-independent containers.** Preparation and cleanup
+  keep three positions each; cake delivery uses `db.block_capacity()` and starts
+  with quantity/time unset. Only admins configure cakes through
+  `db.configure_cake_block()`, with expected saved settings. Zero is an explicit
+  request for no cakes. Configuration and assignment writes share serialization;
+  reductions must refuse occupied removed positions until explicit audited
+  releases, without compaction. One person may hold one position in each block
+  independently of game duties. New block audit snapshots preserve season, date
+  and original numbered position; existing snapshots stay unchanged.
+- **Game age eligibility uses the scheduled game date** and completed calendar
+  years. Youth Zeitnehmer/Sekretär require 14; adult Zeitnehmer requires 18 and
+  Sekretär 16. Adult M/F, youth mA–mE/wA–wE and SPF use the shared explicit
+  classifier; GE, missing/unsupported classes or an invalid game date cannot
+  authorize a new timing claim. Thresholds are inclusive on the birthday;
+  29 February advances on 1 March in a non-leap year.
+- **Verkauf requires collective adult coverage.** A first younger/unknown-date
+  seller is permitted while another sale slot remains free. A claim filling the
+  last slot must leave an explicitly assigned seller at least 18 on the game
+  date. The other seller has no individual minimum. Invalid game dates refuse
+  Verkauf claims even while staffing is incomplete. Revalidate saved game,
+  person and post-claim group state under write serialization and after retries;
+  every tier and CLI/system callers obey the rule, with no admin override.
+  Authorized releases remain possible, including the sole adult seller.
+- **Vacancies and age deficiencies are separate.** Existing assignments survive
+  migration, date corrections and game changes; reevaluate current/future staffing
+  without rewriting history or audits. Occupancy counts remain physical, while
+  schedule, statistics and existing MV follow-up include unresolved/invalid age
+  eligibility. Current occupants remain visible and releasable; refresh affected
+  candidates after saved claims/releases. This adds no age rules for day blocks.
 - Every successful assignment mutation writes an append-only audit snapshot.
   Deactivation keeps past assignments, releases and audits future assignments,
   clears MV records and does not restore freed slots on reactivation. Deletion is
@@ -121,13 +157,19 @@ test/run_tests.sh                          # whole suite, must stay green
   (`Team.mv_person`), who must be an active member of that team; assign via web UI
   ("Helfer verwalten" → Mannschaften) or CLI (`manage_db.py set-mv`). The MV of
   a game's responsible team receives the MV notification only while the game
-  still has open task slots (`db.missing_slots`). MV is not a per-game
+  still has open task slots or age deficiencies (`db.staffing_status`). MV is not a per-game
   assignment role anymore.
 - **Contact data (mail/phone) must never be rendered on the schedule overview.**
   Validate and canonicalize every contact at authentication and person-write
   boundaries: e-mail uses the shared offline-safe normalizer; phone uses the
   selected calling code and is stored as E.164. Run `manage_db.py contact-preflight`
   before normalizing existing data; collisions are reported, never auto-merged.
+- **Full birth dates are private to self/admin person maintenance.** MV creation
+  accepts the new date but grants no continuing access to another person's date.
+  Schedule/candidate responses, statistics, ordinary notifications, diagnostics
+  and assignment audits contain no full birth dates or exact personal ages;
+  return necessary thresholds or derived eligibility reasons instead. Database
+  backups contain dates and retain their existing protected access/retention.
 - Ordinary notifications prefer e-mail, fall back to phone and skip with warning
   if neither exists. Authentication is different: the explicitly selected E-Mail
   or SMS route receives a six-digit code even when both contacts exist.
@@ -151,6 +193,11 @@ test/run_tests.sh                          # whole suite, must stay green
   legacy `games.source_key` database must first run `migrate-game-identity
   --confirm-stopped`. Unknown/near-miss schemas fail closed; rollback restores the
   printed snapshot rather than downgrading membership in place.
+  The birth-date revision joins the single existing head, preserves unknown
+  legacy dates and all person relationships, assignments and audit snapshots,
+  and verifies retained data after upgrading. Backfill through self/admin
+  maintenance or `set-birth-date PERSON_ID YYYY-MM-DD`; rollback restores the
+  validated pre-migration snapshot and previous application with writers stopped.
 - The newspaper-article feature lives in `Notifier.send_article` but its call
   site in `main.py` is commented out.
 

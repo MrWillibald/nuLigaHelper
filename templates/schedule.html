@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 {% block title %}Heimspielplan{% endblock %}
 
-{% macro coverage(progress, kind) %}
-<div class="coverage" data-progress-filled="{{ progress.filled }}" data-progress-total="{{ progress.total }}" data-progress-kind="{{ kind }}">
+{% macro coverage(progress, kind, hidden=false) %}
+<div class="coverage" data-progress-filled="{{ progress.filled }}" data-progress-total="{{ progress.total }}" data-progress-kind="{{ kind }}"{% if hidden %} hidden{% endif %}>
   <div class="coverage-text">
-    <span data-progress-count>{{ progress.filled }} von {{ progress.total }} {% if kind == 'game' %}Pflichtdiensten{% else %}Plätzen{% endif %} besetzt</span>
+    <span data-progress-count>{{ progress.filled }} von {{ progress.total }} {% if kind == 'game' %}Pflichtdiensten{% elif kind == 'cake' %}Kuchen zugesagt{% else %}Plätzen{% endif %}{% if kind != 'cake' %} besetzt{% endif %}</span>
     <span data-progress-percent>{{ progress.percent }} %</span>
   </div>
   <div class="coverage-track" role="progressbar" aria-label="{% if kind == 'game' %}Besetzte Pflichtdienste{% else %}Besetzte Plätze{% endif %}"
@@ -29,6 +29,9 @@
     </div>
     <div class="game-summary-side">
       {{ coverage(g.progress, 'game') }}
+      <div class="eligibility-status" data-eligibility-status data-eligibility-past="{{ g.past }}" role="status" {% if not g.eligibility_deficiencies %}hidden{% endif %}>
+        {% for deficiency in g.eligibility_deficiencies %}<p>{{ deficiency.message }}</p>{% endfor %}
+      </div>
       <span class="disclosure-label"><span class="show-label">Details anzeigen</span><span class="hide-label">Schließen</span></span>
     </div>
   </summary>
@@ -65,20 +68,38 @@
 
 {% macro task_block_card(b) %}
 {% if b %}
+{% set cake = b.phase == 'cake_delivery' %}
 <details class="game-card task-block-card task-block-{{ b.phase }}{% if not b.time %} task-block-no-time{% endif %}"
          {% if viewer %}id="block-{{ b.id }}" data-block-card="{{ b.id }}" data-candidate-url="{{ url_for('api_block_candidates', block_id=b.id) }}"{% endif %}>
   <summary class="game-summary">
     <div class="game-info task-block-info">
-      <div class="game-time">{{ b.time or 'Zeit offen' }}{% if b.time_date %}<small>{{ b.time_date }}</small>{% endif %}</div>
-      <div class="game-teams"><span class="task-block-icon" aria-hidden="true">{% if b.phase == 'preparation' %}↗{% else %}↘{% endif %}</span><span>{{ b.label }}</span></div>
-      <div class="game-meta">Tagesdienst</div>
+      <div class="game-time"><span{% if cake %} data-cake-time{% endif %}>{{ b.time or ('Lieferzeit offen' if cake else 'Zeit offen') }}</span>{% if b.time_date %}<small>{{ b.time_date }}</small>{% endif %}</div>
+      <div class="game-teams"><span class="task-block-icon" aria-hidden="true">{% if b.phase == 'preparation' %}↗{% elif cake %}🍰{% else %}↘{% endif %}</span><span>{{ b.label }}</span></div>
+      <div class="game-meta">{% if cake %}<span data-cake-quantity>{% if b.cake_quantity is none %}Anzahl offen{% else %}{{ b.cake_quantity }} Kuchen angefragt{% endif %}</span>{% else %}Tagesdienst{% endif %}</div>
     </div>
     <div class="game-summary-side">
-      {{ coverage(b.progress, 'block') }}
+      {% if cake %}
+      <p class="cake-status" data-cake-status role="status"{% if b.configured and b.cake_quantity > 0 %} hidden{% endif %}>{% if not b.configured %}Admin-Einrichtung erforderlich{% elif b.cake_quantity == 0 %}Keine Kuchen angefragt{% endif %}</p>
+      {{ coverage(b.progress, 'cake', not b.configured or b.cake_quantity == 0) }}
+      {% else %}{{ coverage(b.progress, 'block') }}{% endif %}
       <span class="disclosure-label"><span class="show-label">Details anzeigen</span><span class="hide-label">Schließen</span></span>
     </div>
   </summary>
-  <div class="game-detail-body"><div class="game-assign task-block-assign">
+  <div class="game-detail-body">
+  {% if cake %}
+  <p class="hint">Ein Platz entspricht der Lieferung eines Kuchens.</p>
+  {% if viewer_tier == 'admin' %}
+  <form class="cake-settings" data-cake-config data-settings-url="{{ url_for('api_cake_settings', block_id=b.id) }}"
+        data-expected-time="{{ b.delivery_time or '' }}" data-expected-quantity="{{ b.cake_quantity if b.cake_quantity is not none else '' }}">
+    <label for="cake-time-{{ b.id }}">Lieferzeit (24 h) <input id="cake-time-{{ b.id }}" name="delivery_time" type="text" value="{{ b.delivery_time or '' }}" placeholder="HH:MM" pattern="([01][0-9]|2[0-3]):[0-5][0-9]" maxlength="5" title="24-Stunden-Format, z. B. 14:30" autocomplete="off" spellcheck="false" required></label>
+    <label for="cake-quantity-{{ b.id }}">Kuchenanzahl <input id="cake-quantity-{{ b.id }}" name="cake_quantity" type="number" min="0" step="1" value="{{ b.cake_quantity if b.cake_quantity is not none else '' }}" required></label>
+    <button class="btn btn-primary" type="submit">Einstellungen speichern</button>
+    <p class="hint">Belegte Plätze vor einer Verringerung ausdrücklich freigeben.</p>
+    <p class="cake-settings-message" data-cake-settings-message role="status" hidden></p>
+  </form>
+  {% endif %}
+  {% endif %}
+  <div class="game-assign task-block-assign"{% if cake %} data-cake-slots{% endif %}>
     {% for s in b.slots %}
     <label class="assign-field"{% if viewer %} data-occupant-id="{{ s.person_id or '' }}"{% endif %}>
       <span>{{ s.label }}</span>
@@ -107,6 +128,9 @@
     Melde dich an, um freie Dienste zu übernehmen.{% endif %}
     Kontaktdaten werden hier bewusst nicht angezeigt.
   </p>
+  {% if viewer %}<p class="hint">Zeitnehmer und Sekretär benötigen ein bekanntes Geburtsdatum und das Mindestalter am Spieltag.
+    Im vollständig besetzten Verkauf muss mindestens eine eingeteilte Person 18 Jahre oder älter sein.
+    Freigaben bleiben möglich; offene Altersanforderungen werden gesondert angezeigt.</p>{% endif %}
 
   <form class="schedule-filter-card" method="get" action="{{ url_for('schedule') }}" aria-label="Spielplan filtern">
     <div class="filter-field">
@@ -159,6 +183,7 @@
       <div class="day-block">
         <div class="day-title">{{ item.day }} {{ item.date }}</div>
         {{ task_block_card(item.preparation) }}
+        {{ task_block_card(item.cake_delivery) }}
         {% for g in item.games %}{{ game_card(g, teams, support_id) }}{% endfor %}
         {{ task_block_card(item.cleanup) }}
       </div>
@@ -175,6 +200,7 @@
         <div class="day-block past">
           <div class="day-title">{{ item.day }} {{ item.date }}</div>
           {{ task_block_card(item.preparation) }}
+          {{ task_block_card(item.cake_delivery) }}
           {% for g in item.games %}{{ game_card(g, teams, support_id) }}{% endfor %}
           {{ task_block_card(item.cleanup) }}
         </div>

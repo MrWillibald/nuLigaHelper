@@ -161,3 +161,38 @@ const expired = new FakeCard("/api/games/4/candidates", [new FakeSelect("Zeitneh
 globalThis.fetch = async () => ({ status: 401 });
 await globalThis.nuLigaCandidateTools.loadCandidateCard(expired);
 check(expired.login.hidden === false && expired.selects[0].disabled, "expired session did not show sign-in action");
+
+// A saved first younger seller changes the final slot's eligible candidates.
+// Refresh must rebuild options rather than retaining a previously offered minor.
+const firstSeller = new FakeSelect("Verkauf", 0, 1);
+const lastSeller = new FakeSelect("Verkauf", 1);
+const sales = new FakeCard("/api/games/5/candidates", [firstSeller, lastSeller], [1]);
+const salePayload = (lastIds) => ({
+  people,
+  slots: {
+    "Verkauf:0": { candidate_ids: [1, 2, 3], occupant_id: 1 },
+    "Verkauf:1": { candidate_ids: lastIds, occupant_id: null },
+  },
+});
+globalThis.nuLigaCandidateTools.populateCandidateCard(sales, salePayload([2, 3]));
+check(lastSeller.querySelector('option[value="3"]'), "initial younger sale candidate missing");
+requested = [];
+sales._candidateLoaded = true;
+globalThis.fetch = async (url) => {
+  requested.push(url);
+  return { ok: true, status: 200, json: async () => salePayload([2]) };
+};
+await globalThis.nuLigaCandidateTools.loadCandidateCard(sales, true);
+check(requested.join() === sales.dataset.candidateUrl, "sale refresh fetched unrelated cards");
+check(firstSeller.value === "1" && lastSeller.value === "", "sale refresh changed saved occupants");
+check(lastSeller.options.map((option) => option.value).join() === ",2", "final sale slot retained ineligible or duplicate options");
+globalThis.nuLigaOptionTools.addPersonOption(sales, firstSeller, makeFakePersonOption(people[2]));
+check(!lastSeller.querySelector('option[value="3"]'), "released minor bypassed refreshed adult requirement");
+await globalThis.nuLigaCandidateTools.loadCandidateCard(sales, true);
+check(lastSeller.options.map((option) => option.value).join() === ",2", "repeated refresh duplicated candidates");
+
+function makeFakePersonOption(person) {
+  const option = new FakeOption(person.id, person.name);
+  option.dataset = { sortGroup: String(person.sort_group), sortName: person.sort_name, sortId: String(person.id) };
+  return option;
+}

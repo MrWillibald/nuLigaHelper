@@ -44,11 +44,12 @@ with h.Session(ENGINE) as session:
     ]
     db.sync_games(session, rows, h.SEASON)
     team = session.query(db.Team).filter_by(name="BL mD").one()
-    admin = db.Person(name="Admin", email="admin@example.test", is_admin=True)
-    mv = db.Person(name="MV", email="mv@example.test", teams=[team])
-    member = db.Person(name="Block Match", email="member@example.test", teams=[team])
-    other = db.Person(name="Other", email="other@example.test")
+    admin = db.Person(birth_date=h.ADULT_BIRTH_DATE, name="Admin", email="admin@example.test", is_admin=True)
+    mv = db.Person(birth_date=h.ADULT_BIRTH_DATE, name="MV", email="mv@example.test", teams=[team])
+    member = db.Person(birth_date=h.ADULT_BIRTH_DATE, name="Block Match", email="member@example.test", teams=[team])
+    other = db.Person(birth_date=h.ADULT_BIRTH_DATE, name="Other", email="other@example.test")
     inactive = db.Person(
+        birth_date=h.ADULT_BIRTH_DATE,
         name="Inactive", email="inactive@example.test",
         account_status=db.ACCOUNT_INACTIVE,
     )

@@ -132,7 +132,7 @@ def test_delete_person_removes_their_assignments():
     engine = _make_engine()
     with h.Session(engine) as session:
         games = h.sync_sample_games(session)
-        person = db.get_or_create_person(session, "Alice", email="alice@x.de")
+        person = db.get_or_create_person(session, "Alice", email="alice@x.de", birth_date=h.ADULT_BIRTH_DATE)
         game = _game_by_number(session, games[0]["game_nr"])
         db.assign_person(session, game, person, db.ROLE_TIMEKEEPER)
         session.commit()
@@ -147,8 +147,8 @@ def test_set_role_assignments_replaces_all_slots_of_a_role():
     with h.Session(engine) as session:
         games = h.sync_sample_games(session)
         game = _game_by_number(session, games[0]["game_nr"])
-        alice = db.get_or_create_person(session, "Alice")
-        bob = db.get_or_create_person(session, "Bob")
+        alice = db.get_or_create_person(session, "Alice", birth_date=h.ADULT_BIRTH_DATE)
+        bob = db.get_or_create_person(session, "Bob", birth_date=h.ADULT_BIRTH_DATE)
 
         db.set_role_assignments(session, game, db.ROLE_SALE, [alice.id])
         db.set_role_assignments(session, game, db.ROLE_SALE, [alice.id, bob.id])
@@ -165,7 +165,7 @@ def test_assign_person_blocks_a_second_task_for_the_same_game():
     with h.Session(engine) as session:
         games = h.sync_sample_games(session)
         game = _game_by_number(session, games[0]["game_nr"])
-        alice = db.get_or_create_person(session, "Alice")
+        alice = db.get_or_create_person(session, "Alice", birth_date=h.ADULT_BIRTH_DATE)
 
         db.assign_person(session, game, alice, db.ROLE_TIMEKEEPER)
         session.commit()
@@ -185,8 +185,8 @@ def test_assign_person_blocks_a_second_task_for_the_same_game():
 def test_duplicate_names_are_valid_distinct_identities():
     engine = _make_engine()
     with h.Session(engine) as session:
-        first = db.Person(name="Alex")
-        second = db.Person(name="Alex")
+        first = db.Person(birth_date=h.ADULT_BIRTH_DATE, name="Alex")
+        second = db.Person(birth_date=h.ADULT_BIRTH_DATE, name="Alex")
         session.add_all([first, second])
         session.commit()
         assert first.id != second.id
@@ -197,7 +197,7 @@ def test_same_number_in_another_season_keeps_distinct_identity():
     with h.Session(engine) as session:
         base = {
             "day": "Sa", "date": "05.09.2026", "time": "10:00",
-            "hall": 280340, "game_nr": "555", "ak": "GE",
+            "hall": 280340, "game_nr": "555", "ak": "BL mD",
             "home": "TuS Raubling", "guest": "Team A", "score": "",
         }
         db.sync_games(session, [base], h.SEASON)
@@ -207,7 +207,7 @@ def test_same_number_in_another_season_keeps_distinct_identity():
         second = _game_by_number(session, "555", h.SEASON + 1)
         assert first.id != second.id
         team = db.get_or_create_team(session, "Responsible")
-        helper = db.Person(name="Helper")
+        helper = db.Person(birth_date=h.ADULT_BIRTH_DATE, name="Helper")
         session.add(helper)
         session.flush()
         first.team = team
@@ -269,7 +269,7 @@ def test_spielfest_lifecycle_uses_one_aggregate_and_date_change_is_new_identity(
         created = db.sync_games(session, aggregate, h.SEASON)
         assert len(created.new_games) == 1 and not created.referee_alerts
         game = session.query(db.Game).one()
-        helper = db.Person(name="SPF Helper")
+        helper = db.Person(birth_date=h.ADULT_BIRTH_DATE, name="SPF Helper")
         session.add(helper)
         db.assign_person(session, game, helper, db.ROLE_TIMEKEEPER)
         session.commit()
@@ -303,6 +303,7 @@ def test_registration_state_reaches_active_roster_membership():
             [team],
             email=" ALEX@Example.Test ",
             phone="+49 170 1234567",
+            birth_date=h.ADULT_BIRTH_DATE,
         )
         assert person.account_status == db.ACCOUNT_REGISTERED
         assert person.email == "alex@example.test"
@@ -319,7 +320,7 @@ def test_slot_claim_release_conflicts_and_audit_survives_person_deletion():
     with h.Session(engine) as session:
         games = h.sync_sample_games(session)
         game = _game_by_number(session, games[0]["game_nr"])
-        person = db.get_or_create_person(session, "Alex")
+        person = db.get_or_create_person(session, "Alex", birth_date=h.ADULT_BIRTH_DATE)
         db.claim_slot(session, game, db.ROLE_SALE, 0, None, person)
         session.commit()
         try:
@@ -345,11 +346,13 @@ def test_roster_queries_exclude_unapproved_and_inactive_people():
     engine = _make_engine()
     with h.Session(engine) as session:
         team = db.get_or_create_team(session, "BL mD")
-        active = db.Person(name="Active", teams=[team])
+        active = db.Person(birth_date=h.ADULT_BIRTH_DATE, name="Active", teams=[team])
         pending = db.Person(
+            birth_date=h.ADULT_BIRTH_DATE,
             name="Pending", teams=[team], account_status=db.ACCOUNT_VERIFIED
         )
         inactive = db.Person(
+            birth_date=h.ADULT_BIRTH_DATE,
             name="Inactive", teams=[team], account_status=db.ACCOUNT_INACTIVE
         )
         session.add_all([active, pending, inactive])
@@ -368,15 +371,15 @@ def test_deactivation_keeps_past_and_audits_future_release():
     engine = _make_engine()
     with h.Session(engine) as session:
         team = db.get_or_create_team(session, "BL mD")
-        person = db.Person(name="Alex", teams=[team])
-        actor = db.Person(name="Admin", is_admin=True)
+        person = db.Person(birth_date=h.ADULT_BIRTH_DATE, name="Alex", teams=[team])
+        actor = db.Person(birth_date=h.ADULT_BIRTH_DATE, name="Admin", is_admin=True)
         past = db.Game(
             season_year=h.SEASON, game_nr="9001",
-            date="01.01.2020"
+            date="01.01.2020", ak="BL mD"
         )
         future = db.Game(
             season_year=h.SEASON, game_nr="9002",
-            date="31.12.2099"
+            date="31.12.2099", ak="BL mD"
         )
         session.add_all([person, actor, past, future])
         session.flush()

@@ -414,6 +414,7 @@ def test_registration_code_replacement_verification_and_admin_approval():
         client = app.test_client()
         csrf = _csrf(client, "/registrieren")
         base = {
+            "birth_date": "1990-01-01",
             "action": "request_code",
             "name": "New Helper",
             "team_ids": [team_id, second_team_id, team_id],
@@ -630,6 +631,7 @@ def test_registration_rejects_invalid_or_unconsented_writes_and_duplicate_accoun
         client = app.test_client()
         csrf = _csrf(client, "/registrieren")
         common_data = {
+            "birth_date": "1990-01-01",
             "action": "request_code",
             "name": "New",
             "team_ids": [team_id],
@@ -640,12 +642,15 @@ def test_registration_rejects_invalid_or_unconsented_writes_and_duplicate_accoun
             **common_data, "email": "new@example.test"
         })
         invalid = client.post("/registrieren", data={
+            "birth_date": "1990-01-01",
             **common_data, "email": "invalid", "consent": "yes"
         })
         no_team = client.post("/registrieren", data={
+            "birth_date": "1990-01-01",
             **common_data, "team_ids": [], "email": "new@example.test", "consent": "yes"
         })
         unknown_team = client.post("/registrieren", data={
+            "birth_date": "1990-01-01",
             **common_data, "team_ids": [999999], "email": "new@example.test", "consent": "yes"
         })
         assert "Zustimmung" in missing.get_data(as_text=True)
@@ -660,6 +665,7 @@ def test_registration_rejects_invalid_or_unconsented_writes_and_duplicate_accoun
             assert session.query(db.Person).count() == 1
 
         duplicate = client.post("/registrieren", data={
+            "birth_date": "1990-01-01",
             **common_data,
             "email": " EXISTING@Example.Test ",
             "consent": "yes",
@@ -684,6 +690,7 @@ def test_registration_validates_and_stores_every_supplied_contact():
         client = app.test_client()
         csrf = _csrf(client, "/registrieren")
         base = {
+            "birth_date": "1990-01-01",
             "action": "request_code",
             "team_ids": [team_id],
             "consent": "yes",
@@ -784,6 +791,7 @@ def test_registration_contact_conflicts_are_atomic_and_generic():
         client = app.test_client()
         csrf = _csrf(client, "/registrieren")
         base = {
+            "birth_date": "1990-01-01",
             "action": "request_code",
             "name": "Must Not Exist",
             "team_ids": [team_id],
@@ -869,7 +877,8 @@ def test_legacy_code_urls_redirect_and_old_email_links_still_consume():
         )
         session.add_all([login_person, admin])
         verify_person = db.register_person(
-            session, "Legacy Register", [team], email="register@example.test"
+            session, "Legacy Register", [team], email="register@example.test",
+            birth_date=h.ADULT_BIRTH_DATE,
         )
         session.flush()
         now = datetime.now()
@@ -1026,6 +1035,7 @@ def test_person_contact_writes_validate_atomically_and_use_canonical_uniqueness(
         assert member.email == "member@example.test"
 
     admin_client.post("/personen/add", data={
+        "birth_date": "1990-01-01",
         "name": "Canonical",
         "team_ids": [support_id],
         "email": " Canonical@Example.Test ",
@@ -1033,6 +1043,7 @@ def test_person_contact_writes_validate_atomically_and_use_canonical_uniqueness(
         "csrf_token": csrf,
     })
     admin_client.post("/personen/add", data={
+        "birth_date": "1990-01-01",
         "name": "Duplicate",
         "team_ids": [support_id],
         "email": "canonical@example.test",

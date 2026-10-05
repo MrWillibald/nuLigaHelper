@@ -56,9 +56,9 @@
   <p class="hint">Noch keine Dienste vergeben.</p>
   {% endif %}
 
-  <h3 class="stat-title">Offene Dienste</h3>
+  <h3 class="stat-title">Offene Dienste, Altersanforderungen und Einrichtung</h3>
   {% if gaps %}
-  <p class="hint">{{ gaps | length }} anstehende Spiele oder Tagesblöcke haben noch unbesetzte Dienste:</p>
+  <p class="hint">{{ gaps | length }} anstehende Spiele oder Tagesblöcke haben freie Plätze, ungeklärte Altersanforderungen oder benötigen Einrichtung:</p>
   <div class="data-table-wrap">
   <table class="data-table responsive-table stat-table gap-table">
     <thead><tr><th>Spiel</th><th>Termin</th><th>Team</th><th>Fehlt</th></tr></thead>
@@ -72,6 +72,10 @@
           {% for role, count in g.missing %}
           <span class="chip chip-gap">{{ role }}{% if count > 1 %} ({{ count }}×){% endif %}</span>
           {% endfor %}
+          {% if g.setup_needed | default(false) %}<span class="chip chip-gap">Admin-Einrichtung erforderlich</span>{% endif %}
+          {% for deficiency in g.deficiencies | default([]) %}
+          <span class="chip chip-gap">{{ deficiency.message }}</span>
+          {% endfor %}
         </div></td>
       </tr>
       {% endfor %}
@@ -79,7 +83,7 @@
   </table>
   </div>
   {% else %}
-  <p class="hint">Alle anstehenden Spiele und Tagesblöcke sind vollständig besetzt. 🎉</p>
+  <p class="hint">Alle anstehenden Spiele und Tagesblöcke sind vollständig besetzt und erfüllen die Altersanforderungen. 🎉</p>
   {% endif %}
 </section>
 {% endblock %}

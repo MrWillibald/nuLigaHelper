@@ -314,6 +314,7 @@ def test_sms_global_cap_is_shared_with_registration_email_is_independent_and_log
             "country_code": "+49", "phone": "15111111111",
         }, environ_overrides={"REMOTE_ADDR": "198.51.100.77"})
         registration = client.post("/registrieren", data={
+            "birth_date": "1990-01-01",
             "csrf_token": _csrf(client, "/registrieren"), "action": "request_code",
             "name": "Sentinel Two", "team_ids": str(team_id), "consent": "yes",
             "channel": "sms", "country_code": "+49", "phone": "15222222222",

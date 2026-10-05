@@ -43,11 +43,12 @@ with h.Session(ENGINE) as session:
     ).first()
     support = db.get_support_team(session)
     admin = db.Person(
+        birth_date=h.ADULT_BIRTH_DATE,
         name="Admin Test", email="admin@example.test", teams=[support], is_admin=True
     )
-    alice = db.Person(name="Alex Test", email="alex@example.test", teams=[playing, support])
-    duplicate = db.Person(name="Alex Test", phone="+491700000002", teams=[responsible])
-    outsider = db.Person(name="Outside Test", teams=[unrelated])
+    alice = db.Person(birth_date=h.ADULT_BIRTH_DATE, name="Alex Test", email="alex@example.test", teams=[playing, support])
+    duplicate = db.Person(birth_date=h.ADULT_BIRTH_DATE, name="Alex Test", phone="+491700000002", teams=[responsible])
+    outsider = db.Person(birth_date=h.ADULT_BIRTH_DATE, name="Outside Test", teams=[unrelated])
     session.add_all([admin, alice, duplicate, outsider])
     session.commit()
     game = session.query(db.Game).filter_by(game_nr="1001").one()
@@ -152,7 +153,8 @@ def test_02_responsible_team_and_claim_release_flow():
         "slot": 0,
         "expected_person_id": ALICE_ID,
     })
-    assert release.get_json() == {"ok": True}
+    assert release.status_code == 200 and release.get_json()["ok"] is True
+    assert release.get_json()["staffing"]["vacancies"][db.ROLE_SALE] == 2
 
 
 def test_02_task_dropdown_groups_all_four_categories_and_keeps_hints():
@@ -236,6 +238,7 @@ def test_03_sparse_sale_slot_keeps_its_stored_position():
 
 def test_04_person_crud_uses_internal_identity():
     response = _form("/personen/add", {
+        "birth_date": "1990-01-01",
         "name": "Alex Test", "team_ids": [SUPPORT_ID], "email": "third@example.test"
     }, follow_redirects=True)
     assert response.status_code == 200
@@ -320,7 +323,7 @@ def test_08_csrf_is_required_for_json_and_forms():
         f"/api/games/{GAME_ID}/team", json={"team_id": None}
     ).status_code == 403
     assert client.post(
-        "/personen/add", data={"name": "Forged", "team_id": SUPPORT_ID}
+        "/personen/add", data={"birth_date": "1990-01-01", "name": "Forged", "team_id": SUPPORT_ID}
     ).status_code == 403
     with open(h.PROJECT_DIR + "/static/app.js", encoding="utf-8") as source:
         javascript = source.read()

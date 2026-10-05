@@ -53,13 +53,13 @@ def _setup(fully_assigned: bool = False):
     game.team_id = team.id
     game.jteam = "BL mD"
 
-    alice = db.get_or_create_person(session, "Alice", email="alice@x.de")
-    bob = db.get_or_create_person(session, "Bob", phone="+491700000001")
-    caro = db.get_or_create_person(session, "Caro", email="caro@x.de")
-    dora = db.get_or_create_person(session, "Dora", phone="+491700000003")
-    ed = db.get_or_create_person(session, "Ed", email="ed@x.de")
-    frida = db.get_or_create_person(session, "Frida", phone="+491700000004")
-    frank = db.get_or_create_person(session, "Frank", phone="+491700000002")
+    alice = db.get_or_create_person(session, "Alice", email="alice@x.de", birth_date=h.ADULT_BIRTH_DATE)
+    bob = db.get_or_create_person(session, "Bob", phone="+491700000001", birth_date=h.ADULT_BIRTH_DATE)
+    caro = db.get_or_create_person(session, "Caro", email="caro@x.de", birth_date=h.ADULT_BIRTH_DATE)
+    dora = db.get_or_create_person(session, "Dora", phone="+491700000003", birth_date=h.ADULT_BIRTH_DATE)
+    ed = db.get_or_create_person(session, "Ed", email="ed@x.de", birth_date=h.ADULT_BIRTH_DATE)
+    frida = db.get_or_create_person(session, "Frida", phone="+491700000004", birth_date=h.ADULT_BIRTH_DATE)
+    frank = db.get_or_create_person(session, "Frank", phone="+491700000002", birth_date=h.ADULT_BIRTH_DATE)
     frank.teams = [team]
     db.set_team_mv(session, team, frank)
 
@@ -96,9 +96,10 @@ def test_notify_game_day_prefers_mail_then_sms_and_skips_missing_contacts():
 def test_automatic_account_messages_prefer_mail_with_sms_as_fallback():
     session, game, n, rec = _setup()
     both = db.Person(
+        birth_date=h.ADULT_BIRTH_DATE,
         name="Both", email="both@example.test", phone="+491709999998"
     )
-    phone_only = db.Person(name="Phone Only", phone="+491709999999")
+    phone_only = db.Person(birth_date=h.ADULT_BIRTH_DATE, name="Phone Only", phone="+491709999999")
     session.add_all([both, phone_only])
     session.commit()
 
@@ -193,12 +194,12 @@ def test_same_number_in_different_seasons_notifies_only_the_exact_game():
     db.sync_games(session, [rows[1]], h.SEASON + 1)
     first = session.query(db.Game).filter_by(season_year=h.SEASON, game_nr="555").one()
     second = session.query(db.Game).filter_by(season_year=h.SEASON + 1, game_nr="555").one()
-    first_helper = db.Person(name="First Helper", email="first@x.de")
-    second_helper = db.Person(name="Second Helper", email="second@x.de")
+    first_helper = db.Person(birth_date=h.ADULT_BIRTH_DATE, name="First Helper", email="first@x.de")
+    second_helper = db.Person(birth_date=h.ADULT_BIRTH_DATE, name="Second Helper", email="second@x.de")
     first_team = db.get_or_create_team(session, "First Team")
     second_team = db.get_or_create_team(session, "Second Team")
-    first_mv = db.Person(name="First MV", email="first-mv@x.de", teams=[first_team])
-    second_mv = db.Person(name="Second MV", email="second-mv@x.de", teams=[second_team])
+    first_mv = db.Person(birth_date=h.ADULT_BIRTH_DATE, name="First MV", email="first-mv@x.de", teams=[first_team])
+    second_mv = db.Person(birth_date=h.ADULT_BIRTH_DATE, name="Second MV", email="second-mv@x.de", teams=[second_team])
     session.add_all([first_helper, second_helper, first_mv, second_mv])
     session.flush()
     first.team, second.team = first_team, second_team
@@ -239,7 +240,7 @@ def test_spielfest_notifications_describe_the_aggregate_event():
     }]
     db.sync_games(session, scraper.collapse_spielfeste(rows), h.SEASON)
     game = session.query(db.Game).one()
-    helper = db.Person(name="SPF Helper", email="spf@example.test")
+    helper = db.Person(birth_date=h.ADULT_BIRTH_DATE, name="SPF Helper", email="spf@example.test")
     session.add(helper)
     db.assign_person(session, game, helper, db.ROLE_TIMEKEEPER)
     session.commit()

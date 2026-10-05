@@ -134,7 +134,7 @@ A collapsed block card SHALL show its calculated time, block
 label, and staffing progress bar. Each card SHALL have a labeled control that expands
 and collapses that card independently. The expanded game SHALL reveal the responsible
 team and all existing task fields, including optional `Unterstützung`; the expanded
-block SHALL reveal all three numbered assignment fields. All viewers SHALL be able to
+preparation or cleanup block SHALL reveal all three numbered assignment fields. All viewers SHALL be able to
 expand cards, while assignment controls and private data SHALL continue to depend on
 their existing access rights. Expansion SHALL be usable with a keyboard.
 
@@ -271,3 +271,86 @@ The initial schedule response SHALL show the current assignment state without in
 - **THEN** the affected controls remain unable to submit an assignment based on an incomplete list
 - **AND** the viewer sees a German error or sign-in message and can retry after recovery
 - **AND** current assignments remain visible and unchanged
+
+### Requirement: Age compliance is distinct from physical staffing progress
+
+Game cards SHALL distinguish physical required-slot occupancy from unresolved or invalid age eligibility. An age deficiency SHALL NOT invent an empty slot, conceal an assigned occupant, or alter the physical occupancy count. A game with an outstanding age deficiency SHALL not be presented as having complete valid staffing solely because its occupancy bar is full.
+
+Current/future game cards SHALL provide a readable German eligibility indication identifying the affected duty or adult-coverage requirement without exposing a full birth date or exact personal age. Saved assignment changes and refreshed game data SHALL update the affected indication.
+
+#### Scenario: Full game lacks an adult seller
+
+- **WHEN** every required slot of a current/future game is occupied but Verkauf has no qualifying adult seller
+- **THEN** the occupancy count remains accurate
+- **AND** the card visibly reports outstanding adult coverage instead of complete valid staffing
+
+#### Scenario: Timing eligibility is unresolved
+
+- **WHEN** a current/future timing assignment cannot be verified because of missing birth-date or game information
+- **THEN** the assigned helper remains visible
+- **AND** the duty carries an unresolved-eligibility indication
+
+#### Scenario: Stored data changes compliance
+
+- **WHEN** a successful correction or assignment mutation changes a game's eligibility status
+- **THEN** the card reflects saved occupancy and eligibility state
+- **AND** a rejected mutation does not display an uncommitted improvement
+
+#### Scenario: Guest sees eligibility status
+
+- **WHEN** a guest views a deficient game's public card
+- **THEN** the card can explain the outstanding duty requirement
+- **AND** its response contains no full birth date, exact personal age, private roster payload, or assignment controls
+
+### Requirement: Cake delivery appears as a compact dated task card
+
+The overview SHALL show the date's cake-delivery block alongside its existing preparation, game and cleanup cards. The cake card SHALL start collapsed and SHALL show its label, configured delivery time or setup-needed state, requested cake quantity and staffing progress. Expanding it SHALL reveal one numbered volunteer position per requested cake and each position's assigned helper name. Each position SHALL represent one cake contribution. For a configured quantity, progress SHALL count occupied positions out of that quantity and SHALL update after successful assignments or configuration edits. A refused or stale operation SHALL not show uncommitted progress. Configured zero SHALL show that no cakes are requested without division-by-zero or invented staffing percentages.
+
+The cake card SHALL use the established plain card treatment, a small 🍰 emoji beside its label and a labeled keyboard-operable expansion control. It SHALL have no responsible-team field. Administrators SHALL be offered controls for the date's delivery time and quantity; delivery time entry SHALL consistently use 24-hour `HH:MM` regardless of the browser locale. Other viewers SHALL see those settings without edit controls. An unconfigured block SHALL visibly require administrator setup and SHALL not offer claim controls.
+
+#### Scenario: Configured cake block is expanded
+
+- **WHEN** a viewer expands a cake block configured for four cakes at 10:00
+- **THEN** the card shows that delivery time and quantity
+- **AND** exactly four independently displayed cake positions are shown
+
+#### Scenario: Cake block needs setup
+
+- **WHEN** a cake block has no delivery time or requested quantity
+- **THEN** it shows that administrator setup is needed
+- **AND** no invented time, quantity or claimable volunteer positions are shown
+
+#### Scenario: Administrator adjusts delivery settings
+
+- **WHEN** an administrator saves valid new delivery settings
+- **THEN** the card shows the saved time and requested quantity
+- **AND** its position count and progress reflect the saved configuration
+
+### Requirement: Cake cards follow day-block filtering and privacy
+
+Cake cards SHALL participate in date and assigned-person filtering under the same rules as other day-task cards. A playing-team filter SHALL retain a cake card only for a date with a qualifying game. A responsible-team filter SHALL hide the cake card because it has no responsible team. A person-name filter SHALL retain the cake card only when one of its own assignments matches, and SHALL allow it to retain a qualifying date without a matching game card. Clearing filters SHALL restore cake cards in their normal upcoming or past date groups.
+
+Guests SHALL see assigned names without roster payloads, person identifiers, contact data or assignment/configuration controls. Editable cake cards SHALL load their permitted candidates only when opened, retaining the existing conflict and candidate-failure behavior.
+
+#### Scenario: Find a cake volunteer
+
+- **WHEN** a person-name filter matches only a cake volunteer on a qualifying date
+- **THEN** the date and cake card remain visible
+- **AND** unrelated games and other day blocks are not shown merely because they share that date
+
+#### Scenario: Responsible-team filter is selected
+
+- **WHEN** a viewer selects a responsible-team filter
+- **THEN** cake cards are hidden
+
+#### Scenario: Guest views cake assignments
+
+- **WHEN** a guest expands a configured cake card
+- **THEN** the assigned helper names are visible
+- **AND** the response contains no roster payload, person identifiers, contacts or editing controls
+
+#### Scenario: Open an editable cake card
+
+- **WHEN** a signed-in viewer opens an editable cake card
+- **THEN** only that card loads its permitted candidates
+- **AND** a failed request leaves its controls unable to submit claims based on an incomplete candidate list

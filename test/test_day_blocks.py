@@ -26,13 +26,13 @@ def test_sync_creates_exact_blocks_reuses_them_and_calculates_midnight_offsets()
         assert [block.phase for block in blocks] == list(db.BLOCK_PHASES)
         original_ids = [block.id for block in blocks]
         assert db.calculated_block_time(blocks[0]) == datetime(2026, 9, 4, 23, 0)
-        assert db.calculated_block_time(blocks[1]) == datetime(2026, 9, 5, 1, 30)
+        assert db.calculated_block_time(blocks[-1]) == datetime(2026, 9, 5, 1, 30)
 
         later = _one_game(time="22:30", number="1002")
         db.sync_games(session, [_one_game(), later], h.SEASON)
         blocks = db.get_day_blocks(session, h.SEASON, "05.09.2026")
         assert [block.id for block in blocks] == original_ids
-        assert db.calculated_block_time(blocks[1]) == datetime(2026, 9, 5, 23, 30)
+        assert db.calculated_block_time(blocks[-1]) == datetime(2026, 9, 5, 23, 30)
 
 
 def test_invalid_boundary_times_leave_both_blocks_available_without_invented_time():
@@ -40,7 +40,7 @@ def test_invalid_boundary_times_leave_both_blocks_available_without_invented_tim
     with h.Session(engine) as session:
         db.sync_games(session, [_one_game(time="unbekannt")], h.SEASON)
         blocks = db.get_day_blocks(session, h.SEASON, "05.09.2026")
-        assert len(blocks) == 2
+        assert len(blocks) == 3
         assert all(db.calculated_block_time(block) is None for block in blocks)
 
 
@@ -48,7 +48,7 @@ def test_block_claim_release_enforces_container_scope_and_writes_atomic_audits()
     engine = h.make_engine()
     with h.Session(engine) as session:
         db.sync_games(session, [_one_game()], h.SEASON)
-        preparation, cleanup = db.get_day_blocks(session, h.SEASON, "05.09.2026")
+        preparation, _cake, cleanup = db.get_day_blocks(session, h.SEASON, "05.09.2026")
         assert preparation.label == "Vorbereitung"
         assert cleanup.label == "Aufräumen"
         assert db.block_slot_label(preparation, 1) == "Vorbereitung 2"
@@ -69,6 +69,11 @@ def test_block_claim_release_enforces_container_scope_and_writes_atomic_audits()
         assert [entry.action for entry in audits] == ["claim", "claim", "release"]
         assert all(entry.block_snapshot for entry in audits)
         assert all(entry.game_id is None for entry in audits)
+        assert [entry.block_snapshot for entry in audits] == [
+            "Saison 2026 | 05.09.2026 | Vorbereitung 1",
+            "Saison 2026 | 05.09.2026 | Aufräumen 1",
+            "Saison 2026 | 05.09.2026 | Vorbereitung 1",
+        ], "Every new day-block audit records the season and original named slot."
 
 
 def test_reconcile_removed_date_audits_occupied_slot_and_keeps_snapshot():
@@ -86,7 +91,7 @@ def test_reconcile_removed_date_audits_occupied_slot_and_keeps_snapshot():
         session.commit()
         removal = session.query(db.AssignmentAudit).filter_by(action="remove").one()
         assert removal.block_id is None
-        assert "05.09.2026" in removal.block_snapshot
+        assert removal.block_snapshot == "Saison 2026 | 05.09.2026 | Vorbereitung 1"
         assert session.query(db.DayBlock).count() == 0
 
 
@@ -112,7 +117,7 @@ def test_successful_sync_removes_vanished_blocks_logs_each_and_invalid_sync_does
             call for call in info.call_args_list
             if call.args and call.args[0].startswith("day_block_removed")
         ]
-        assert len(removals) == 2
+        assert len(removals) == 3
         assert all(call.args[-1] == 0 for call in removals)
 
 
@@ -124,7 +129,7 @@ def test_optional_support_role_is_assignable_but_not_missing():
         people = []
         for index, (role, count) in enumerate(db.REQUIRED_ROLE_SLOT_COUNT.items()):
             for slot in range(count):
-                person = db.Person(name=f"Helfer {index}-{slot}")
+                person = db.Person(name=f"Helfer {index}-{slot}", birth_date=h.ADULT_BIRTH_DATE)
                 session.add(person)
                 session.flush()
                 db.claim_slot(session, game, role, slot, None, person)

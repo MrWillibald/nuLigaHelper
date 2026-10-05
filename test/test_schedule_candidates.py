@@ -33,12 +33,12 @@ def _site():
         team = session.query(db.Team).filter_by(name="BL mD").one()
         other_team = session.query(db.Team).filter_by(name="BL F").one()
         support = db.get_support_team(session)
-        admin = db.Person(name="Admin", email="admin@fixture.test", is_admin=True)
-        mv = db.Person(name="MV", email="mv@fixture.test", teams=[team])
-        member = db.Person(name="Member", email="member@fixture.test", teams=[team, support])
-        outsider = db.Person(name="Outsider", email="outsider@fixture.test", teams=[other_team])
-        pending = db.Person(name="Pending", email="pending@fixture.test", account_status=db.ACCOUNT_VERIFIED)
-        inactive = db.Person(name="Inactive", email="inactive@fixture.test", account_status=db.ACCOUNT_INACTIVE)
+        admin = db.Person(birth_date=h.ADULT_BIRTH_DATE, name="Admin", email="admin@fixture.test", is_admin=True)
+        mv = db.Person(birth_date=h.ADULT_BIRTH_DATE, name="MV", email="mv@fixture.test", teams=[team])
+        member = db.Person(birth_date=h.ADULT_BIRTH_DATE, name="Member", email="member@fixture.test", teams=[team, support])
+        outsider = db.Person(birth_date=h.ADULT_BIRTH_DATE, name="Outsider", email="outsider@fixture.test", teams=[other_team])
+        pending = db.Person(birth_date=h.ADULT_BIRTH_DATE, name="Pending", email="pending@fixture.test", account_status=db.ACCOUNT_VERIFIED)
+        inactive = db.Person(birth_date=h.ADULT_BIRTH_DATE, name="Inactive", email="inactive@fixture.test", account_status=db.ACCOUNT_INACTIVE)
         session.add_all([admin, mv, member, outsider, pending, inactive])
         session.flush()
         team.mv_person_id = mv.id
@@ -75,7 +75,7 @@ def test_initial_schedule_size_does_not_grow_with_unassigned_roster(_today):
     with h.Session(engine) as session:
         support = db.get_support_team(session)
         session.add_all([
-            db.Person(name=f"Extra {index:03}", email=f"extra{index}@fixture.test", teams=[support])
+            db.Person(birth_date=h.ADULT_BIRTH_DATE, name=f"Extra {index:03}", email=f"extra{index}@fixture.test", teams=[support])
             for index in range(120)
         ])
         session.commit()
@@ -143,7 +143,7 @@ def test_candidate_query_count_is_bounded_when_roster_grows(_today):
         with h.Session(engine) as session:
             team = session.get(db.Team, ids["team"])
             session.add_all([
-                db.Person(name=f"More {index:03}", teams=[team])
+                db.Person(birth_date=h.ADULT_BIRTH_DATE, name=f"More {index:03}", teams=[team])
                 for index in range(100)
             ])
             session.commit()

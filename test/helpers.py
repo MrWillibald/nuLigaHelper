@@ -13,6 +13,7 @@ import os
 import sys
 import tempfile
 import traceback
+from datetime import date
 
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_DIR not in sys.path:
@@ -30,6 +31,7 @@ import db as _db
 _db.initialize_db(_db.make_engine(os.environ["NULIGAHELPER_DB"]))
 
 SEASON = 2026
+ADULT_BIRTH_DATE = date(1990, 1, 1)
 
 
 def make_engine():
