@@ -302,7 +302,7 @@ After a registrant successfully verifies their contact, the system SHALL send an
 
 ### Requirement: Approved registrants receive a welcome notification
 
-After an administrator successfully approves a verified registration, the system SHALL send the newly active user an automatic welcome notification using e-mail when usable and otherwise their stored phone number. The notification SHALL confirm that the registration was approved and invite the user to sign in and take open duties in the Heimspielplan. The greeting SHALL say "herzlich willkommen beim nuLigaHelper des TuS Raubling Handball!"
+After an administrator successfully approves a verified registration, the system SHALL send the newly active user an automatic welcome notification using e-mail when usable and otherwise their stored phone number. The notification SHALL confirm that the registration was approved and invite the user to sign in and take open duties in the Heimspielplan. The greeting SHALL say "herzlich Willkommen beim nuLigaHelper des TuS Raubling Handball!"
 
 #### Scenario: Registration is approved
 

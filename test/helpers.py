@@ -75,7 +75,7 @@ def csrf_data(data: dict | None = None, token: str = "test-csrf-token") -> dict:
 
 
 def load_club_config() -> dict:
-    """Load the sample club configuration (texts etc.) shipped with the repo."""
+    """Load public settings and add synthetic provider configuration."""
     with open(os.path.join(PROJECT_DIR, "config_template.json"), encoding="utf-8") as f:
         club = json.load(f)["club"]
     club["email"] = {

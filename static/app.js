@@ -7,6 +7,232 @@ function showToast(message, ok) {
   toast._timer = setTimeout(() => toast.classList.remove("show"), 2600);
 }
 
+const activeTaskHelp = new Set();
+
+function taskHelpPlacement(anchor, size, viewport) {
+  const margin = 12;
+  const gap = 6;
+  const viewportLeft = viewport.left || 0;
+  const viewportTop = viewport.top || 0;
+  const below = Math.max(0, viewportTop + viewport.height - margin - anchor.bottom - gap);
+  const above = Math.max(0, anchor.top - gap - viewportTop - margin);
+  const side = size.height <= below || below >= above ? "below" : "above";
+  const maxHeight = Math.max(0, Math.min(viewport.height - margin * 2, side === "below" ? below : above));
+  const height = Math.min(size.height, maxHeight);
+  const left = Math.max(viewportLeft + margin, Math.min(
+    anchor.left + ((anchor.width ?? anchor.right - anchor.left) - size.width) / 2,
+    viewportLeft + viewport.width - margin - size.width,
+  ));
+  const top = Math.max(viewportTop + margin, Math.min(
+    side === "below" ? anchor.bottom + gap : anchor.top - gap - height,
+    viewportTop + viewport.height - margin - height,
+  ));
+  return { left, top, maxHeight, side };
+}
+
+function positionTaskHelp(button, description) {
+  if (!button.getBoundingClientRect || !description.getBoundingClientRect) return;
+  const visual = globalThis.window?.visualViewport;
+  const viewport = {
+    width: visual?.width || globalThis.window?.innerWidth || document.documentElement?.clientWidth,
+    height: visual?.height || globalThis.window?.innerHeight || document.documentElement?.clientHeight,
+    left: visual?.offsetLeft || 0,
+    top: visual?.offsetTop || 0,
+  };
+  if (!viewport.width || !viewport.height) return;
+  const scrollTop = description.scrollTop;
+  description.style.width = `${Math.min(400, viewport.width - 24)}px`;
+  description.style.maxHeight = `${viewport.height - 24}px`;
+  const placement = taskHelpPlacement(
+    button.getBoundingClientRect(), description.getBoundingClientRect(), viewport,
+  );
+  description.style.left = `${placement.left}px`;
+  description.style.top = `${placement.top}px`;
+  description.style.maxHeight = `${placement.maxHeight}px`;
+  description.scrollTop = scrollTop;
+}
+
+function refreshTaskHelp() {
+  Array.from(activeTaskHelp).forEach((help) => {
+    if (help.available()) help.position();
+    else help.dismiss();
+  });
+}
+
+function initializeTaskHelp(field) {
+  const button = field.querySelector("[data-task-help]");
+  const description = field.querySelector("[data-task-description]");
+  if (!button || !description || button._taskHelpBound) return;
+  button._taskHelpBound = true;
+  let hovered = false;
+  let focused = false;
+  let pinned = false;
+  let hoverDismissed = false;
+  let focusDismissed = false;
+  let leaveTimer;
+  const nativePopover = typeof description.showPopover === "function";
+  const available = () => {
+    if (button.isConnected === false) return false;
+    for (let card = field.closest?.("details"); card; card = card.parentElement?.closest?.("details")) {
+      if (card.open === false) return false;
+    }
+    return true;
+  };
+  const help = {
+    available, position: () => positionTaskHelp(button, description),
+    dismiss: () => dismiss(),
+  };
+  const render = () => {
+    const visible = available() && (pinned || (hovered && !hoverDismissed) || (focused && !focusDismissed));
+    if (visible) {
+      const opening = description.hidden;
+      description.hidden = false;
+      if (opening && nativePopover) description.showPopover();
+      activeTaskHelp.add(help);
+      help.position();
+    } else {
+      if (!description.hidden && nativePopover) {
+        try {
+          description.hidePopover();
+        } catch (error) {
+          // Removed popovers have already left the top layer before the
+          // mutation observer runs; their disconnected state forbids this API.
+          if (error.name !== "InvalidStateError") throw error;
+        }
+      }
+      description.hidden = true;
+      activeTaskHelp.delete(help);
+    }
+    button.setAttribute("aria-expanded", String(visible));
+  };
+  const dismiss = () => {
+    clearTimeout(leaveTimer);
+    if (description.contains?.(document.activeElement) && available()) {
+      // A hidden bubble cannot retain focus. Return keyboard readers to the
+      // information control before closing, without scrolling the page.
+      button.focus({ preventScroll: true });
+    }
+    pinned = false;
+    hoverDismissed = hovered;
+    focusDismissed = focused;
+    render();
+  };
+  const enter = () => {
+    clearTimeout(leaveTimer);
+    hovered = true;
+    hoverDismissed = false;
+    render();
+  };
+  const leave = (event) => {
+    if (button.contains?.(event.relatedTarget) || description.contains?.(event.relatedTarget)) return;
+    clearTimeout(leaveTimer);
+    // Allow the pointer to cross the small gap into the floating description.
+    leaveTimer = setTimeout(() => {
+      hovered = false;
+      hoverDismissed = false;
+      render();
+    }, 120);
+  };
+  button.addEventListener("pointerenter", enter);
+  button.addEventListener("pointerleave", leave);
+  description.addEventListener("pointerenter", enter);
+  description.addEventListener("pointerleave", leave);
+  field.addEventListener("pointerleave", leave);
+  const focus = () => {
+    focused = true;
+    focusDismissed = false;
+    render();
+  };
+  const blur = (event) => {
+    if (button.contains?.(event?.relatedTarget) || description.contains?.(event?.relatedTarget)) return;
+    focused = false;
+    focusDismissed = false;
+    render();
+  };
+  button.addEventListener("focus", focus);
+  button.addEventListener("blur", blur);
+  description.addEventListener("focus", focus);
+  description.addEventListener("blur", blur);
+  button.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (pinned) {
+      dismiss();
+    } else {
+      pinned = true;
+      render();
+    }
+  });
+  field.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape" || description.hidden) return;
+    event.preventDefault();
+    event.stopPropagation();
+    // Keep focus on the information control or the existing assignment field.
+    dismiss();
+  });
+}
+
+let dynamicTaskHelpIndex = 0;
+function createTaskHelp(label, description, editable = false) {
+  const index = `dynamic-${++dynamicTaskHelpIndex}`;
+  const field = document.createElement("div");
+  field.className = "assign-field";
+  const heading = document.createElement("div");
+  heading.className = "assign-task-heading";
+  const name = document.createElement(editable ? "label" : "span");
+  name.textContent = label;
+  if (editable) name.setAttribute("for", `task-assignment-${index}`);
+  const button = document.createElement("button");
+  button.className = "task-help";
+  button.type = "button";
+  button.setAttribute("data-task-help", "");
+  button.setAttribute("aria-label", `Informationen zu ${label}`);
+  button.setAttribute("aria-expanded", "false");
+  button.setAttribute("aria-controls", `task-description-${index}`);
+  button.setAttribute("aria-describedby", `task-description-${index}`);
+  const icon = document.createElement("span");
+  icon.setAttribute("aria-hidden", "true");
+  icon.textContent = "i";
+  button.appendChild(icon);
+  heading.appendChild(name);
+  heading.appendChild(button);
+  const text = document.createElement("p");
+  text.className = "task-description";
+  text.id = `task-description-${index}`;
+  text.setAttribute("data-task-description", "");
+  text.setAttribute("popover", "manual");
+  text.setAttribute("tabindex", "0");
+  text.hidden = true;
+  text.textContent = description;
+  field.appendChild(heading);
+  field.appendChild(text);
+  initializeTaskHelp(field);
+  return field;
+}
+
+document.querySelectorAll(".assign-field").forEach(initializeTaskHelp);
+globalThis.window?.addEventListener?.("resize", refreshTaskHelp);
+globalThis.window?.visualViewport?.addEventListener("resize", refreshTaskHelp);
+globalThis.window?.visualViewport?.addEventListener("scroll", refreshTaskHelp);
+document.addEventListener?.("scroll", (event) => {
+  // Reading the bounded bubble must not remeasure it and reset its scroll.
+  if (event.target?.getAttribute?.("data-task-description") != null) return;
+  refreshTaskHelp();
+}, true);
+document.addEventListener?.("keydown", (event) => {
+  if (event.key !== "Escape" || !activeTaskHelp.size) return;
+  event.preventDefault();
+  Array.from(activeTaskHelp).forEach((help) => help.dismiss());
+});
+if (globalThis.MutationObserver && document.body) {
+  new MutationObserver(refreshTaskHelp).observe(document.body, {
+    childList: true, subtree: true, attributes: true, attributeFilter: ["open"],
+  });
+}
+globalThis.nuLigaTaskHelpTools = {
+  initializeTaskHelp, createTaskHelp, taskHelpPlacement, positionTaskHelp, refreshTaskHelp,
+};
+
 async function postJSON(url, body) {
   try {
     const response = await fetch(url, {
@@ -468,16 +694,38 @@ function renderCakeBlock(card, block, resetForm = false) {
     form.querySelector('[name="cake_quantity"]').value = form.dataset.expectedQuantity;
   }
   const positions = card.querySelector("[data-cake-slots]");
-  positions.replaceChildren();
-  block.slots.forEach((slot) => {
-    const label = document.createElement("label");
-    label.className = "assign-field";
-    label.dataset.occupantId = slot.person_id ? String(slot.person_id) : "";
-    const name = document.createElement("span");
-    name.textContent = slot.label;
-    label.appendChild(name);
+  const previousFields = Array.from(positions.children);
+  const fieldsBySlot = new Map(previousFields.map((field) => [field.dataset.blockSlot, field]));
+  const nextFields = block.slots.map((slot) => {
+    const description = slot.description || block.description;
+    const signature = JSON.stringify([
+      slot.label, description, Boolean(slot.editable), slot.person_id || null,
+      slot.person_name || "", slot.person_team_label || "",
+    ]);
+    let field = fieldsBySlot.get(String(slot.slot));
+    if (field && !field._cakeSlotSignature) {
+      // Recognize the initial server markup without replacing a help control
+      // that the viewer may already be reading while candidates are loading.
+      const name = field.querySelector("label") || field.querySelector("span");
+      const select = field.querySelector("select");
+      const occupant = select?.selectedOptions[0] || field.querySelector("strong");
+      const occupantText = slot.person_id ? `${slot.person_name} · ${slot.person_team_label}` : "";
+      if (name?.textContent === slot.label
+          && field.querySelector("[data-task-description]")?.textContent === description
+          && Boolean(select) === Boolean(slot.editable)
+          && field.dataset.occupantId === (slot.person_id ? String(slot.person_id) : "")
+          && (!slot.person_id || occupant?.textContent === occupantText)) {
+        field._cakeSlotSignature = signature;
+      }
+    }
+    if (field?._cakeSlotSignature === signature) return field;
+    field = createTaskHelp(slot.label, description, slot.editable);
+    field.dataset.blockSlot = String(slot.slot);
+    field.dataset.occupantId = slot.person_id ? String(slot.person_id) : "";
+    field._cakeSlotSignature = signature;
     if (slot.editable) {
       const select = document.createElement("select");
+      select.id = field.querySelector("label").getAttribute("for");
       select.dataset.block = String(block.id);
       select.dataset.slot = String(slot.slot);
       select.setAttribute("data-block-assignment", "");
@@ -494,14 +742,24 @@ function renderCakeBlock(card, block, resetForm = false) {
         select.appendChild(occupant);
       }
       bindBlockSelect(select);
-      label.appendChild(select);
+      field.appendChild(select);
     } else {
       const occupant = document.createElement("strong");
       occupant.textContent = slot.person_name
         ? `${slot.person_name} · ${slot.person_team_label}` : "– offen –";
-      label.appendChild(occupant);
+      field.appendChild(occupant);
     }
-    positions.appendChild(label);
+    return field;
+  });
+  // Leave unchanged nodes in place: detach/reappend would discard keyboard
+  // focus even when a saved roster refresh has identical slot metadata.
+  previousFields.forEach((field) => {
+    if (!nextFields.includes(field)) field.remove();
+  });
+  nextFields.forEach((field, index) => {
+    if (positions.children[index] !== field) {
+      positions.insertBefore(field, positions.children[index] || null);
+    }
   });
 }
 

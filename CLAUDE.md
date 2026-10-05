@@ -26,8 +26,9 @@ There is no linter or formatter configured; match the surrounding style (module 
 comments, English code/comments, German UI and notification strings).
 
 `config.json` (gitignored) must exist for `main.py`/`notifier.py`; `config_template.json`
-lists every key that is read (`club.{info,email,dropbox,twilio,database,texts}`). Tests
-never touch `config.json` or `nuliga_helper.db` — they use `config_template.json` texts
+lists club, recipient and operational settings; providers come from the environment.
+Tests never touch private `config.json` or `nuliga_helper.db` — they use public settings,
+the `messages.py` catalog
 and temp databases from `test/helpers.py`.
 
 ## Architecture
@@ -55,8 +56,10 @@ constants + `ROLE_SLOT_COUNT`, and every mutation helper (`assign_person`,
 belong here, not in `webapp.py` or `manage_db.py` — both are thin callers, and the tests
 target `db.py` directly.
 
-`notifier.py` reads assignments straight from the DB and formats German `str.format`
-templates from `config["texts"]`; placeholder order and count are part of the contract.
+`notifier.py` reads assignments straight from the DB and renders German messages
+from `messages.py` with descriptive named placeholder contracts. Legacy
+`config["texts"]` is deprecated and cannot override wording; `message_config.py`
+provides read-only preflight and referee-recipient compatibility.
 `_dispatch()` centralizes channel choice (e-mail preferred, phone fallback, skip with a
 warning if neither) and its return counts are asserted by `test_notifier.py`.
 

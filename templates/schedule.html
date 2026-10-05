@@ -1,6 +1,16 @@
 {% extends "base.html" %}
 {% block title %}Heimspielplan{% endblock %}
 
+{% set task_help_ids = namespace(index=0) %}
+{% macro task_help(s, index) %}
+<div class="assign-task-heading">
+  {% if s.editable %}<label for="task-assignment-{{ index }}">{{ s.label }}</label>{% else %}<span>{{ s.label }}</span>{% endif %}
+  <button class="task-help" type="button" data-task-help aria-label="Informationen zu {{ s.label }}"
+          aria-expanded="false" aria-controls="task-description-{{ index }}" aria-describedby="task-description-{{ index }}"><span aria-hidden="true">i</span></button>
+</div>
+<p class="task-description" id="task-description-{{ index }}" data-task-description popover="manual" tabindex="0" hidden>{{ s.description }}</p>
+{% endmacro %}
+
 {% macro coverage(progress, kind, hidden=false) %}
 <div class="coverage" data-progress-filled="{{ progress.filled }}" data-progress-total="{{ progress.total }}" data-progress-kind="{{ kind }}"{% if hidden %} hidden{% endif %}>
   <div class="coverage-text">
@@ -51,9 +61,11 @@
       {% else %}<strong>{{ responsible_team_name }}</strong>{% endif %}
     </label>
     {% for s in g.slots %}
-    <label class="assign-field" data-required="{{ 'true' if s.required else 'false' }}"{% if viewer %} data-occupant-id="{{ s.person_id or '' }}"{% endif %}>
-      <span>{{ s.label }}{% if s.retained %} <small class="retained-duty">Bestehende Einteilung – nur Freigabe</small>{% endif %}</span>
-      {% if s.editable %}<select data-game="{{ g.id }}" data-role="{{ s.role }}" data-slot="{{ s.slot }}"
+    {% set task_help_ids.index = task_help_ids.index + 1 %}
+    <div class="assign-field" data-required="{{ 'true' if s.required else 'false' }}"{% if viewer %} data-occupant-id="{{ s.person_id or '' }}"{% endif %}>
+      {{ task_help(s, task_help_ids.index) }}
+      {% if s.retained %}<small class="retained-duty">Bestehende Einteilung – nur Freigabe</small>{% endif %}
+      {% if s.editable %}<select id="task-assignment-{{ task_help_ids.index }}" data-game="{{ g.id }}" data-role="{{ s.role }}" data-slot="{{ s.slot }}"
               data-required="{{ 'true' if s.required else 'false' }}"
               {% if s.retained %}data-release-only="true"{% endif %}
               disabled {% if s.status in ("playing", "outside") %}class="select-warn"{% endif %}>
@@ -61,7 +73,7 @@
         {% if s.person_id %}<option value="{{ s.person_id }}" selected>{{ s.person_name }} · {{ s.person_team_label }}</option>{% endif %}
       </select>
       {% else %}<strong>{{ s.person_name or '– offen –' }}{% if s.person_name %} · {{ s.person_team_label }}{% endif %}</strong>{% endif %}
-    </label>
+    </div>
     {% endfor %}
   </div>
   {% if viewer %}<div class="candidate-status" data-candidate-status hidden role="status"><span data-candidate-message></span> <button type="button" data-candidate-retry hidden>Erneut laden</button> <a href="{{ url_for('login') }}" data-candidate-login hidden>Zum Login</a></div>{% endif %}
@@ -104,15 +116,16 @@
   {% endif %}
   <div class="game-assign task-block-assign"{% if cake %} data-cake-slots{% endif %}>
     {% for s in b.slots %}
-    <label class="assign-field"{% if viewer %} data-occupant-id="{{ s.person_id or '' }}"{% endif %}>
-      <span>{{ s.label }}</span>
+    {% set task_help_ids.index = task_help_ids.index + 1 %}
+    <div class="assign-field"{% if viewer %} data-block-slot="{{ s.slot }}" data-occupant-id="{{ s.person_id or '' }}"{% endif %}>
+      {{ task_help(s, task_help_ids.index) }}
       {% if s.editable %}
-      <select data-block="{{ b.id }}" data-slot="{{ s.slot }}" data-block-assignment disabled>
+      <select id="task-assignment-{{ task_help_ids.index }}" data-block="{{ b.id }}" data-slot="{{ s.slot }}" data-block-assignment disabled>
         <option value="">&ndash; offen &ndash;</option>
         {% if s.person_id %}<option value="{{ s.person_id }}" selected>{{ s.person_name }} · {{ s.person_team_label }}</option>{% endif %}
       </select>
       {% else %}<strong>{{ s.person_name or '– offen –' }}{% if s.person_name and viewer %} · {{ s.person_team_label }}{% endif %}</strong>{% endif %}
-    </label>
+    </div>
     {% endfor %}
   </div>
   {% if viewer %}<div class="candidate-status" data-candidate-status hidden role="status"><span data-candidate-message></span> <button type="button" data-candidate-retry hidden>Erneut laden</button> <a href="{{ url_for('login') }}" data-candidate-login hidden>Zum Login</a></div>{% endif %}

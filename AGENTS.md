@@ -28,6 +28,8 @@ Language: code/comments in English, UI texts and notification templates in Germa
 | `db.py`             | Models incl. accounts, assignment slots/auth tokens/audit, sync and domain helpers |
 | `scraper.py`        | Scrapes nuLiga into plain dicts (keys see `GAME_FIELDS`)                 |
 | `notifier.py`       | All mail/SMS notifications; reads assignments from the DB               |
+| `messages.py`       | Authoritative German notification catalog, descriptive named fields and validated plain-text rendering |
+| `message_config.py` | Read-only legacy-message preflight and referee-recipient compatibility |
 | `webapp.py`         | Flask app factory: auth/registration, tier checks, pages and JSON APIs   |
 | `manage_db.py`      | CLI to manage persons/games until the web UI covers everything          |
 | `main.py`           | Daily job entry point incl. Dropbox DB backup                           |
@@ -44,10 +46,16 @@ test/run_tests.sh                          # whole suite, must stay green
 ./run_webapp.sh                            # web UI on http://<ip>:8080
 ```
 
-- `config.json` holds club data/texts; it is gitignored. Email, Twilio and Dropbox
+- `config.json` holds club, recipient and operational settings; it is gitignored. Email, Twilio and Dropbox
   settings come from environment variables mapped in `common.PROVIDER_ENV`.
-  Production rejects provider sections in JSON. Notification texts are `str.format` templates —
-  placeholder **order and count are part of the contract**, don't reorder lightly.
+  Production rejects provider sections in JSON. All retained notification wording
+  lives in `messages.py`, with descriptive named placeholders and documented meanings.
+  Use its validated renderer; change declared fields and callers together, never
+  return to positional formatting or caller-local text. Legacy `club.texts` is
+  deprecated and cannot override wording. Run `python -m message_config --config
+  CONFIG_PATH` before deployment to reconcile customized legacy templates privately.
+  Referee recipients live in `club.notifications.referee_targets`; the old
+  `club.texts.mailRefCoordTargets` is only a fallback when the new key is absent.
 - `NULIGAHELPER_SECRET` is mandatory for the webapp and daily job. Store a
   persistent random value in the environment or the gitignored
   `.nuligahelper_secret` file; rotating it invalidates all sessions.

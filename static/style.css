@@ -82,9 +82,26 @@ h3{color:var(--navy)}
 .hex{width:15px;height:15px;display:inline-block;flex:0 0 auto;
   clip-path:polygon(25% 5%,75% 5%,100% 50%,75% 95%,25% 95%,0 50%)}
 
-.game-assign{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:11px}
-.assign-field{display:flex;flex-direction:column;gap:4px}
+.game-assign{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(170px,100%),1fr));gap:11px;align-items:start}
+.assign-field{display:flex;flex-direction:column;gap:4px;min-width:0}
 .assign-field>span{font-size:.74rem;font-weight:800;color:var(--navy);text-transform:uppercase;letter-spacing:.05em}
+.assign-task-heading{display:flex;align-items:center;gap:5px;min-width:0}
+.assign-task-heading>label,.assign-task-heading>span{font-size:.74rem;font-weight:800;color:var(--navy);
+  text-transform:uppercase;letter-spacing:.05em;overflow-wrap:anywhere}
+.task-help{display:inline-grid;place-items:center;flex:0 0 auto;width:28px;height:28px;padding:0;
+  border:0;border-radius:50%;background:transparent;color:var(--navy);cursor:pointer;font:inherit}
+.task-help>span{display:inline-grid;place-items:center;width:18px;height:18px;border:1.5px solid currentColor;
+  border-radius:50%;font:700 .78rem Georgia,serif;line-height:1}
+.task-help:hover,.task-help[aria-expanded="true"]{background:#e8edf5}
+.task-help:focus-visible{outline:3px solid var(--kids);outline-offset:1px}
+.task-description{position:fixed;inset:auto;z-index:2100;width:min(400px,calc(100vw - 24px));
+  max-width:calc(100vw - 24px);max-height:calc(100dvh - 24px);margin:0;padding:14px 16px;
+  border:1px solid #cfd6e1;border-radius:12px;background:#eef3f8;color:var(--text);
+  box-shadow:0 8px 28px rgba(10,29,78,.2);font-size:.9rem;line-height:1.5;
+  overflow-wrap:anywhere;overflow:auto;overscroll-behavior:contain}
+.task-description::backdrop{background:transparent;pointer-events:none}
+.task-description:focus-visible{outline:3px solid var(--kids);outline-offset:1px}
+.task-description[hidden]{display:none}
 .retained-duty{display:block;color:var(--muted);font-size:.7rem;font-weight:600;text-transform:none;letter-spacing:normal}
 .classification-status{color:#8a3b00;font-size:.85rem}
 .assign-field select,.assign-field input,.form-field input{width:100%;border:1px solid var(--line);

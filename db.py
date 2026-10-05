@@ -91,6 +91,67 @@ BLOCK_PHASE_LABELS = {
     BLOCK_CLEANUP: "Aufräumen",
 }
 
+# Public task guidance, keyed by semantic role rather than numbered positions.
+# Keep coverage in sync with ROLE_SLOT_COUNT and BLOCK_PHASES.
+TASK_DESCRIPTIONS = {
+    ROLE_TIMEKEEPER: (
+        "Mindestalter am Spieltag: 14 Jahre bei Jugendspielen, 18 Jahre bei Erwachsenenspielen. "
+        "Mindestens eine Stunde vor dem angesetzten Spielbeginn am Spielort sein. "
+        "An den technischen Besprechungen mit den Schiedsrichtern spätestens 30 Minuten "
+        "vor dem Spiel und direkt nach dem Spiel teilnehmen. "
+        "Spieluhr und Anzeigetafel bedienen, Zwei-Minuten-Strafen verwalten und "
+        "korrekte Spielerwechsel sicherstellen. "
+        "Eine offizielle Zeitnehmer-Schulung ist nicht erforderlich."
+    ),
+    ROLE_SECRETARY: (
+        "Mindestalter am Spieltag: 14 Jahre bei Jugendspielen, 16 Jahre bei Erwachsenenspielen. "
+        "Mindestens eine Stunde vor dem angesetzten Spielbeginn am Spielort sein. "
+        "An den technischen Besprechungen mit den Schiedsrichtern spätestens 30 Minuten "
+        "vor dem Spiel und direkt nach dem Spiel teilnehmen. "
+        "nuScore für den elektronischen Spielbericht bedienen und korrekte Spielerwechsel "
+        "sicherstellen. Eine offizielle Sekretär-Schulung ist nicht erforderlich."
+    ),
+    ROLE_SALE: (
+        "Mindestens eine Stunde vor dem angesetzten Spielbeginn am Spielort sein. "
+        "Mindestens eine der eingeteilten Verkaufspersonen muss am Spieltag 18 Jahre "
+        "oder älter sein. Bei der Vorbereitung von Speisen und Getränken für den "
+        "Verkaufsstand helfen und diese während des Spiels verkaufen."
+    ),
+    ROLE_SECURITY: (
+        "Mindestens eine Stunde vor dem angesetzten Spielbeginn am Spielort sein. "
+        "An den technischen Besprechungen mit den Schiedsrichtern spätestens 30 Minuten "
+        "vor dem Spiel und direkt nach dem Spiel teilnehmen. Für einen sicheren Spielablauf "
+        "sorgen. Zuschauer, die sich unangemessen verhalten oder Spieler bzw. Schiedsrichter "
+        "beleidigen, vom Spielort verweisen. Während des Spiels sichtbar durch ein Abzeichen "
+        "oder eine Weste gekennzeichnet sein."
+    ),
+    ROLE_CASH: (
+        "Mindestens eine Stunde vor dem angesetzten Spielbeginn am Spielort sein. "
+        "Am Eingang Zuschauerkarten für die Erwachsenenspiele verkaufen und den "
+        "Ordnungsdienst als zweiter Ordner unterstützen. Eine Teilnahme an den technischen "
+        "Besprechungen mit den Schiedsrichtern ist nicht erforderlich."
+    ),
+    ROLE_CLEANING: (
+        "Während des Spiels bei Bedarf bei der Reinigung einzelner Stellen des Spielfelds "
+        "helfen. In Spielfeldnähe bereithalten, jedoch nicht auf der Auswechselbank. "
+        "Eine Teilnahme an den technischen Besprechungen mit den Schiedsrichtern ist "
+        "nicht erforderlich. Die Schiedsrichter nehmen die Anwesenheit der Reinigungskräfte "
+        "zur Kenntnis."
+    ),
+    BLOCK_PREPARATION: (
+        "Zur angegebenen Uhrzeit am Spielort sein. "
+        "Bei der Vorbereitung des Spielfelds und des Verkaufsstands helfen."
+    ),
+    BLOCK_CAKE_DELIVERY: (
+        "Zur angegebenen Lieferzeit einen Kuchen zum Verkaufsstand bringen. "
+        "Ein Platz entspricht einem Kuchen."
+    ),
+    BLOCK_CLEANUP: (
+        "Zur angegebenen Uhrzeit am Spielort sein. "
+        "Beim Abbau des Verkaufsstands und bei der Reinigung des Spielfelds helfen."
+    ),
+}
+
 DEFAULT_DB_PATH = "nuliga_helper.db"
 SQLITE_TIMEOUT_SECONDS = 5.0
 SQLITE_BUSY_TIMEOUT_MS = 5000

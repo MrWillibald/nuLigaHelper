@@ -44,6 +44,24 @@ Registration and login each use one two-step form: request a six-digit code, the
 
 New people need a real calendar birth date that is not after `common.effective_today()`, including contactless admin/MV creation and CLI creation. A member can complete or correct their own date; an admin can do so for any person. A known date cannot be cleared. Existing people with an unknown date can still receive unrelated profile repairs. Dates are self-reported; the application does not verify identity documents. Full dates are limited to own/admin person maintenance and are absent from schedules, candidates, statistics, ordinary notifications, diagnostic logs and assignment audits. See the [data inventory](DATA-INVENTORY.md).
 
+## Task descriptions
+
+Every assignment-task label in an expanded game or day-task card has a small **i**
+information button, available to guests and signed-in viewers. Hover over it or
+focus it with the keyboard to read the German task description. Click or tap to
+keep the description open; click or tap again, or press **Escape**, to close it.
+The description floats over the underlying content without moving the page or
+changing an assignment. It wraps within the viewport on narrow screens; longer
+text scrolls inside the help bubble. Numbered positions of the same task share
+one description.
+
+Developers maintain the public text in `db.TASK_DESCRIPTIONS`, keyed by semantic
+game roles and day-block phases. Add or rename descriptions alongside
+`db.ROLE_SLOT_COUNT` or `db.BLOCK_PHASES`; do not add numbered keys or obsolete
+roles. Schedule views and dynamically refreshed cake positions reuse this catalog.
+`test/test_task_descriptions.py` checks coverage against the actual supported
+catalog, repeated-position wording, rendering and public-response privacy.
+
 ## Game duty positions
 
 All offered game duties are mandatory. Position numbers distinguish occupants of
@@ -321,7 +339,7 @@ missing cake duties.
 
 # Getting started
 
-Clone the repository and open `config_template.json`. Modify the club data and notification texts, then save it as `config.json`. Email, Twilio and Dropbox settings belong in environment variables mapped in `common.PROVIDER_ENV`. Production refuses provider sections in `config.json`; local legacy files remain readable during transition. Install all libraries from `requirements.txt`; this includes the pinned `email-validator` and `phonenumbers` packages used for deterministic, offline-safe contact validation.
+Clone the repository and open `config_template.json`. Modify the club and recipient settings, then save it as `config.json`. Notification wording is maintained in `messages.py`. Email, Twilio and Dropbox settings belong in environment variables mapped in `common.PROVIDER_ENV`. Production refuses provider sections in `config.json`; local legacy files remain readable during transition. Install all libraries from `requirements.txt`; this includes the pinned `email-validator` and `phonenumbers` packages used for deterministic, offline-safe contact validation.
 
 Initialize the database and manage persons, games and assignments via the management CLI:
 
@@ -395,6 +413,71 @@ retention settings; technical host checks run separately.
 Production uses a stable `NULIGAHELPER_SECRET`, an absolute `NULIGAHELPER_DB`
 shared by the web app, daily job, cleanup and backup,
 exact `NULIGAHELPER_TRUSTED_HOSTS`, and provider settings from environment
-variables. Production `config.json` contains club data and notification texts,
+variables. Production `config.json` contains club, recipient and operational settings,
 not email, Twilio or Dropbox provider sections. Host setup and public launch
 require separate operator review.
+
+# Notification wording and migration
+
+`messages.py` is the single editing point for retained notification subjects,
+e-mail/SMS bodies and fragments. Its catalog uses explicit keys for day-before
+and weekly reminders, ordinary games and Spielfeste, day blocks, account actions,
+operator alerts and the dormant newspaper feature. Each entry declares the
+required named fields, with their meanings documented beside the catalog.
+For example, `{recipient_name}`, `{task_label}`, `{game_date}` and
+`{game_start_time}` identify a game duty, while `{block_meeting_time}` identifies
+the meeting or delivery time of a day block. Display labels come from domain
+data, so numbered positions do not become separate task names in notifications.
+
+Developers edit the relevant catalog entry, preserve the named field contract,
+then review synthetic rendered examples and run `test/run_tests.sh`. When a
+contract changes, update its declaration, meanings and callers together.
+`messages.render(key, **context)` returns `subject`, `email` and `sms` variants;
+`messages.render_fragment(key, **context)` renders a reusable fragment.
+An explicitly shared variant is declared in the catalog. Ordinary notifications
+prefer e-mail and fall back to SMS; authentication uses the explicitly selected
+route. Rendering rejects unknown keys, missing or extra fields, and line breaks
+in subjects before dispatch. Values stay plain text, including literal braces.
+Rendering diagnostics contain identifiers and field names, never values or codes.
+
+For an existing deployment, run this **read-only** preflight from the candidate
+release before activation, using the actual private configuration path:
+
+```bash
+./venv/bin/python -m message_config --config /path/to/private/config.json
+```
+
+The command opens no database or provider connection and sends no notifications.
+It reports obsolete keys, their destinations and `prior-default`, `customized`
+or `unrecognized` status. Comparison fingerprints cover the last public positional
+example and notifier fallback defaults; other historical versions are treated as
+customized for review. No message contents or recipient values are printed.
+Privately inspect customized or unrecognized entries, map the old positional
+values to the documented named fields, and reconcile intended wording into
+`messages.py` through normal code review **before deployment**. Referee alerts
+now explicitly place age class, game date, start time and notified names; the old
+sample's shifted positional values must not be copied into the new contract.
+
+Move `club.texts.mailRefCoordTargets` unchanged to
+`club.notifications.referee_targets`; entries retain their `Name` and `Address`
+shape. If both are present, the new key takes precedence, including an empty
+list; conflicting metadata produces a value-free warning. When only the old key
+exists it remains a recipient fallback. Remove `club.texts` once wording and
+metadata have been reconciled, and retain a private configuration snapshot for
+rollback together with the previous application release. Legacy text presence
+alone does not reject startup, but produces key-only deprecation warnings and
+never overrides the catalog. Provider/environment settings are unchanged.
+No database migration is involved.
+
+The [message inventory](openspec/changes/archive/2026-10-05-centralize-message-templates/message-inventory.md)
+records every legacy key, channel and caller, including removed unused early-task
+definitions. `send_article` remains callable with centralized newspaper content;
+its daily-job call site remains disabled.
+
+Copy review covers spelling and grammar, current task labels, greetings and
+sign-offs, readable paragraphs, complete date/time information and a clear next
+action. Spielfeste have no invented opponents; block meeting/delivery times are
+distinct from match start times. Required welcome wording and the 15-minute code
+lifetime must remain intact. Existing club-specific arrival instructions are
+retained and need club/domain review before anyone changes their policy;
+centralizing text introduces no new duty rules.
