@@ -104,26 +104,33 @@ function coverageCard(kind, filled, total) {
     dataset: { progressKind: kind, progressFilled: String(filled), progressTotal: String(total) },
     querySelector: (selector) => elements[selector],
   };
-  return { card: { querySelector: () => coverage }, coverage, count, percent, fill, bar };
+  return { card: { querySelector: (selector) => selector === ".coverage" ? coverage : null }, coverage, count, percent, fill, bar };
 }
 
 const gameProgress = coverageCard("game", 3, 5);
 const update = globalThis.nuLigaProgressTools.updateCoverage;
-update(gameProgress.card, null, 7, "Zeitnehmer");
+const savedGame = globalThis.nuLigaProgressTools.updateGameStaffing;
+savedGame(gameProgress.card, { required_filled: 4, required_total: 5, deficiencies: [] });
 if (gameProgress.count.textContent !== "4 von 5 Pflichtdiensten besetzt"
     || gameProgress.percent.textContent !== "80 %"
     || gameProgress.fill.style.width !== "80%"
     || gameProgress.bar.attributes["aria-valuenow"] !== "4") {
   throw new Error("successful game claim did not update all progress views");
 }
-update(gameProgress.card, 7, 9, "Zeitnehmer");
-update(gameProgress.card, null, 10, "Unterstützung");
+// A youth Kasse/Reinigung change retains the server's five required positions.
+savedGame(gameProgress.card, { required_filled: 4, required_total: 5, deficiencies: [] });
 if (gameProgress.coverage.dataset.progressFilled !== "4") {
-  throw new Error("replacement or optional support changed required progress");
+  throw new Error("saved optional assignment changed required progress");
 }
-update(gameProgress.card, 9, null, "Zeitnehmer");
+savedGame(gameProgress.card, { required_filled: 3, required_total: 5, deficiencies: [] });
 if (gameProgress.coverage.dataset.progressFilled !== "3") {
   throw new Error("game release did not reduce required progress");
+}
+const adultProgress = coverageCard("game", 5, 8);
+savedGame(adultProgress.card, { required_filled: 6, required_total: 8, deficiencies: [] });
+if (adultProgress.count.textContent !== "6 von 8 Pflichtdiensten besetzt"
+    || adultProgress.percent.textContent !== "75 %") {
+  throw new Error("saved adult added duty did not update the eight-position denominator");
 }
 const blockProgress = coverageCard("block", 1, 3);
 update(blockProgress.card, null, 7);

@@ -152,12 +152,14 @@ MONATE = [
 ]
 
 SLOT_LABELS = [
-    ("Zeitnehmer", db.ROLE_TIMEKEEPER),
-    ("Sekretär", db.ROLE_SECRETARY),
-    ("Verkauf 1", db.ROLE_SALE),
-    ("Verkauf 2", db.ROLE_SALE),
-    ("Ordnungsdienst", db.ROLE_SECURITY),
-    ("Unterstützung", db.ROLE_SUPPORT),
+    ("Zeitnehmer", db.ROLE_TIMEKEEPER, 0),
+    ("Sekretär", db.ROLE_SECRETARY, 0),
+    ("Verkauf 1", db.ROLE_SALE, 0),
+    ("Verkauf 2", db.ROLE_SALE, 1),
+    ("Ordnungsdienst", db.ROLE_SECURITY, 0),
+    ("Kasse", db.ROLE_CASH, 0),
+    ("Reinigung 1", db.ROLE_CLEANING, 0),
+    ("Reinigung 2", db.ROLE_CLEANING, 1),
 ]
 
 COUNTRY_CODES = [
@@ -1318,10 +1320,13 @@ def create_app() -> Flask:
         if game is None:
             return api_error("Spiel nicht gefunden.", 404)
         assignments = {(a.role, a.slot): a for a in game.assignments}
+        offered = set(db.offered_positions(game))
         slot_scopes = {}
         for role, count in db.ROLE_SLOT_COUNT.items():
             for slot in range(count):
                 assignment = assignments.get((role, slot))
+                if (role, slot) not in offered and assignment is None:
+                    continue
                 occupant = assignment.person if assignment else None
                 scope, team_id = game_slot_scope(game, occupant)
                 if scope is not None:
@@ -1337,15 +1342,19 @@ def create_app() -> Flask:
         used_ids = set()
         for key, (scope, team_id, occupant_id) in slot_scopes.items():
             role, raw_slot = key.rsplit(":", 1)
+            retained = (role, int(raw_slot)) not in offered
             ids = [
                 p["id"] for p in candidates_for_scope(persons, scope, team_id)
                 if p["id"] == occupant_id or (
+                    not retained
+                    and
                     p["id"] not in assigned_ids
                     and db.claim_eligibility(game, role, person_records[p["id"]], int(raw_slot)) is None
                 )
             ]
             used_ids.update(ids)
-            allowed[key] = {"candidate_ids": ids, "occupant_id": occupant_id}
+            allowed[key] = {"candidate_ids": ids, "occupant_id": occupant_id,
+                            "release_only": retained}
         support = db.get_support_team(session_db)
         playing = session_db.scalar(select(db.Team).where(db.Team.name == (game.ak or "")))
         ordered = _ordered_person_options(
@@ -1492,23 +1501,16 @@ def create_app() -> Flask:
         all_games = games
 
         def game_view(game):
-            sales = {
-                assignment.slot: assignment
-                for assignment in game.assignments_by_role(db.ROLE_SALE)
-            }
+            assignments = {(a.role, a.slot): a for a in game.assignments}
+            required = set(db.required_positions(game))
             responsible_team_id = game.team_id
             # the age class of the game itself identifies the team that PLAYS
             playing_team_id = playing_team_by_ak.get(game.ak or "")
             slots = []
-            sale_idx = 0
-            for label, role in SLOT_LABELS:
-                if role == db.ROLE_SALE:
-                    assignment = sales.get(sale_idx)
-                    slot = sale_idx
-                    sale_idx += 1
-                else:
-                    assignment = game.assignment_by_role(role)
-                    slot = 0
+            for label, role, slot in SLOT_LABELS:
+                assignment = assignments.get((role, slot))
+                if (role, slot) not in required and assignment is None:
+                    continue
                 person_id = assignment.person_id if assignment is not None else None
                 occupant = assignment.person if assignment is not None else None
 
@@ -1528,16 +1530,14 @@ def create_app() -> Flask:
                     "label": label,
                     "role": role,
                     "slot": slot,
+                    "required": (role, slot) in required,
+                    "retained": (role, slot) not in required,
                     "person_id": person_id,
                     "person_name": occupant.name if occupant else "",
                     "person_team_label": db.membership_label(occupant) if occupant else "",
                     "status": status,
                     "editable": scope is not None,
                 })
-            required_filled = sum(
-                s["person_id"] is not None
-                for s in slots if s["role"] in db.REQUIRED_ROLE_SLOT_COUNT
-            )
             d = parse_date(game.date)
             staffing = db.staffing_status(game)
             return {
@@ -1556,8 +1556,9 @@ def create_app() -> Flask:
                 "playing_team_id": playing_team_id,
                 "slots": slots,
                 "progress": progress_data(
-                    required_filled, sum(db.REQUIRED_ROLE_SLOT_COUNT.values())
+                    staffing["required_filled"], staffing["required_total"]
                 ),
+                "classification_unresolved": staffing["classification_unresolved"],
                 "past": bool(d and d < today),
                 "eligibility_deficiencies": staffing["deficiencies"] if not d or d >= today else [],
             }

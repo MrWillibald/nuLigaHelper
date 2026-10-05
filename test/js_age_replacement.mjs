@@ -33,7 +33,8 @@ const requests = [];
 globalThis.fetch = async (url) => {
   requests.push(url);
   return { status: 200, json: async () => url.endsWith("/release")
-    ? { ok: true } : { ok: false, error: "Verkauf benötigt eine erwachsene Person." } };
+    ? { ok: true, staffing: { required_filled: 1, required_total: 5, deficiencies: [] } }
+    : { ok: false, error: "Verkauf benötigt eine erwachsene Person." } };
 };
 globalThis.setTimeout = () => 0;
 globalThis.clearTimeout = () => {};

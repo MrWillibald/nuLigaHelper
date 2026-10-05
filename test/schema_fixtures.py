@@ -4,6 +4,9 @@ import sqlite3
 from pathlib import Path
 
 
+PRE_GAME_DUTY_REVISION = "0005_cake_delivery_blocks"
+
+
 LEGACY_SCHEMA = """
 CREATE TABLE persons (
     id INTEGER NOT NULL PRIMARY KEY,
@@ -114,4 +117,57 @@ def create_versioned_database(path: str | Path, revision: str):
         schema_migrations._run_alembic(connection, command.upgrade, revision)
         connection.commit()
         connection.exec_driver_sql("PRAGMA foreign_keys=ON")
+    return engine
+
+
+def create_game_duty_source(path: str | Path):
+    """Populated reviewed predecessor with literal historical role names."""
+    engine = create_versioned_database(path, PRE_GAME_DUTY_REVISION)
+    with sqlite3.connect(path) as connection:
+        connection.executemany(
+            "INSERT INTO persons (id, name, is_admin, account_status, birth_date, email) "
+            "VALUES (?, ?, 0, 'active', ?, ?)",
+            [(11, "Legacy cashier", "1980-02-29", "cashier@example.test"),
+             (12, "Legacy security", None, None),
+             (13, "Legacy seller", "1990-01-01", None),
+             (14, "Legacy cake helper", None, None),
+             (15, "Unassigned helper", None, None)],
+        )
+        connection.executemany("INSERT INTO person_teams VALUES (?, 1)",
+                               [(11,), (12,), (13,), (14,), (15,)])
+        connection.execute("UPDATE teams SET mv_person_id=11 WHERE id=1")
+        connection.executemany(
+            "INSERT INTO games (id, season_year, game_nr, date, ak) VALUES (?, 2026, ?, ?, ?)",
+            [(100, "9001", "01.11.2026", "BL M"),
+             (101, "9002", "08.11.2026", "BL mD")],
+        )
+        connection.executemany("INSERT INTO assignments VALUES (?, 100, ?, ?, ?)",
+                               [(401, 11, "Unterstützung", 0),
+                                (402, 12, "Ordnungsdienst", 0),
+                                (403, 13, "Verkauf", 1)])
+        connection.execute(
+            "INSERT INTO day_blocks (id, season_year, date, phase, cake_quantity, delivery_time) "
+            "VALUES (201, 2026, '01.11.2026', 'cake_delivery', 4, '09:30')"
+        )
+        connection.execute("INSERT INTO block_assignments VALUES (301, 201, 14, 3)")
+        connection.executemany(
+            "INSERT INTO assignment_audit "
+            "(id, changed_at, actor_tier, action, affected_person_id, game_id, role, slot, "
+            "actor_name, affected_person_name, game_snapshot) "
+            "VALUES (?, '2026-01-01', 'system', 'claim', 11, 100, ?, 0, "
+            "'System', 'Legacy cashier', ?)",
+            [(501, "Unterstützung", "recorded support snapshot"),
+             (502, "Reinigung", "recorded original cleaning snapshot")],
+        )
+        connection.execute(
+            "INSERT INTO assignment_audit "
+            "(id, changed_at, actor_tier, action, affected_person_id, role, slot, "
+            "actor_name, affected_person_name, block_id, block_snapshot) "
+            "VALUES (503, '2026-01-01', 'system', 'claim', 14, 'Kuchenlieferung', 3, "
+            "'System', 'Legacy cake helper', 201, 'recorded cake snapshot')"
+        )
+        connection.execute(
+            "INSERT INTO auth_tokens (id, nonce, code, purpose, person_id, issued_at, expires_at) "
+            "VALUES (601, 'synthetic-token', '123456', 'login', 11, '2026-01-01', '2026-01-01 00:15')"
+        )
     return engine

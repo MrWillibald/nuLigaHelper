@@ -83,7 +83,7 @@ def test_schema_inspection_recognizes_known_and_unknown_revisions():
 def test_alembic_configuration_has_one_head_and_no_database_url():
     config = schema_migrations.alembic_config()
     assert not config.get_main_option("sqlalchemy.url")
-    assert schema_migrations.head_revisions() == ("0005_cake_delivery_blocks",)
+    assert schema_migrations.head_revisions() == (schema_migrations.HEAD_REVISION,)
 
 
 def test_explicit_initialization_creates_stamps_seeds_and_then_refuses_reuse():
@@ -371,7 +371,7 @@ def test_day_block_revision_seeds_dates_renames_current_role_and_preserves_audit
             ).fetchall() == [("cake_delivery",), ("cleanup",), ("preparation",)]
             assert connection.execute(
                 "SELECT role FROM assignments WHERE id=20"
-            ).fetchone() == ("Unterstützung",)
+            ).fetchone() == ("Kasse",)
             assert connection.execute(
                 "SELECT role, game_snapshot, block_snapshot FROM assignment_audit "
                 "WHERE id=30"

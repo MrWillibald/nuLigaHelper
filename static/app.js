@@ -145,7 +145,7 @@ function populateCandidateCard(card, payload) {
   const allowedBySlot = new Map();
   plans.forEach(({ select, key, selectedId, allowed, options }) => {
     allowedBySlot.set(key, allowed);
-    // Rebuild candidates after sibling sale changes; retain a private/inactive
+    // Rebuild candidates after sibling changes; retain a private/inactive
     // current occupant which the response intentionally does not list.
     Array.from(select.options).forEach((option) => {
       if (option.value && (Number(option.value) !== selectedId || people.has(selectedId))) {
@@ -162,7 +162,7 @@ function populateCandidateCard(card, payload) {
     select.disabled = Boolean(card._mutationPending);
   });
   card._candidateSlots = allowedBySlot;
-  if (payload.staffing) updateEligibility(card, payload.staffing.deficiencies);
+  if (payload.staffing) updateGameStaffing(card, payload.staffing);
 }
 
 function candidateStatus(card, message, retry = false, login = false) {
@@ -237,14 +237,22 @@ function setCoverage(coverage, filled, total) {
   track.setAttribute("aria-valuemax", String(total));
 }
 
-function updateCoverage(card, previousId, newId, role = null) {
+function updateCoverage(card, previousId, newId) {
   const coverage = card && card.querySelector(".coverage");
-  if (!coverage || (coverage.dataset.progressKind === "game" && role === "Unterstützung")) return;
+  if (!coverage || coverage.dataset.progressKind === "game") return;
   const change = Number(newId !== null) - Number(previousId !== null);
   if (change === 0) return;
   const total = Number(coverage.dataset.progressTotal);
   const filled = Math.max(0, Math.min(total, Number(coverage.dataset.progressFilled) + change));
   setCoverage(coverage, filled, total);
+}
+
+function updateGameStaffing(card, staffing) {
+  const coverage = card?.querySelector(".coverage");
+  if (coverage && coverage.dataset.progressKind === "game") {
+    setCoverage(coverage, staffing.required_filled, staffing.required_total);
+  }
+  updateEligibility(card, staffing.deficiencies);
 }
 
 function updateEligibility(card, deficiencies = []) {
@@ -263,7 +271,7 @@ function updateEligibility(card, deficiencies = []) {
 globalThis.nuLigaOptionTools = {
   comparePersonOptions, insertOptionSorted, addPersonOption, removePersonOption,
 };
-globalThis.nuLigaProgressTools = { updateCoverage, setCoverage };
+globalThis.nuLigaProgressTools = { updateCoverage, setCoverage, updateGameStaffing };
 
 const prevOptions = new WeakMap();
 document.querySelectorAll("select[data-role]").forEach((select) => {
@@ -281,59 +289,66 @@ document.querySelectorAll("select[data-role]").forEach((select) => {
     };
     let savedId = previousId;
     const label = select.closest?.("[data-occupant-id]");
-    card.querySelectorAll("select[data-role]").forEach((control) => { control.disabled = true; });
-    let result = { ok: true };
-    if (previousId !== null) {
-      result = await postJSON("/api/assignment/release", requestBody);
-      if (result.ok) {
-        savedId = null;
-        select.value = "";
-        if (label) label.dataset.occupantId = "";
-        updateCoverage(card, previousId, null, select.dataset.role);
-        if (result.staffing) updateEligibility(card, result.staffing.deficiencies);
-      }
-    }
-    if (result.ok && newId !== null) {
-      result = await postJSON("/api/assignment/claim", {
-        ...requestBody, expected_person_id: null, person_id: newId,
-      });
-    }
-    if (!result.ok) {
-      select.value = savedId === null ? "" : String(savedId);
-      prevOptions.set(select, select.selectedOptions[0]);
-      showToast(result.error || "Fehler beim Speichern", false);
-      if (result.loginRequired) setTimeout(() => { window.location.href = "/login"; }, 1200);
-      if (result.conflict) {
-        setTimeout(() => { window.location.reload(); }, 500);
-      } else {
-        await loadCandidateCard(card, true);
-      }
+    if (card._mutationPending) {
+      select.value = label?.dataset.occupantId || (previousId === null ? "" : String(previousId));
       return;
     }
-    select.value = newId === null ? "" : String(newId);
-    if (label) label.dataset.occupantId = newId || "";
-    updateCoverage(card, savedId, newId, select.dataset.role);
-    flashCard(select.dataset.game);
-    // the newly assigned person must not be offered for other tasks
-    if (newId) removePersonOption(card, select, newId);
-    // a freed person may be offered again for other tasks
-    if (previousId !== null && previousId !== newId) {
-      addPersonOption(card, select, previous);
+    setCardMutationPending(card, true);
+    try {
+      let result = { ok: true };
+      if (previousId !== null) {
+        result = await postJSON("/api/assignment/release", requestBody);
+        if (result.ok) {
+          savedId = null;
+          select.value = "";
+          if (label) label.dataset.occupantId = "";
+          if (result.staffing) updateGameStaffing(card, result.staffing);
+        }
+      }
+      if (result.ok && newId !== null) {
+        result = await postJSON("/api/assignment/claim", {
+          ...requestBody, expected_person_id: null, person_id: newId,
+        });
+      }
+      if (!result.ok) {
+        select.value = savedId === null ? "" : String(savedId);
+        prevOptions.set(select, select.selectedOptions[0]);
+        showToast(result.error || "Fehler beim Speichern", false);
+        if (result.loginRequired) setTimeout(() => { window.location.href = "/login"; }, 1200);
+        if (result.conflict) {
+          setTimeout(() => { window.location.reload(); }, 500);
+        } else {
+          await loadCandidateCard(card, true, true);
+        }
+        return;
+      }
+      select.value = newId === null ? "" : String(newId);
+      if (label) label.dataset.occupantId = newId || "";
+      flashCard(select.dataset.game);
+      // the newly assigned person must not be offered for other tasks
+      if (newId) removePersonOption(card, select, newId);
+      // a freed person may be offered again for other tasks
+      if (previousId !== null && previousId !== newId) {
+        addPersonOption(card, select, previous);
+      }
+      if (result.staffing) updateGameStaffing(card, result.staffing);
+      if (select.dataset.releaseOnly === "true" && newId === null) label?.remove();
+      const option = select.selectedOptions[0];
+      if (option && option.classList.contains("option-playing")) {
+        showToast("Achtung: Person spielt selbst in diesem Spiel", false);
+        select.classList.add("select-warn");
+      } else if (option && option.classList.contains("foreign-option")) {
+        showToast("Hinweis: Person gehört nicht zum zugewiesenen Team", false);
+        select.classList.add("select-warn");
+      } else {
+        showToast("Dienst gespeichert", true);
+        select.classList.remove("select-warn");
+      }
+      await loadCandidateCard(card, true, true);
+      prevOptions.set(select, select.selectedOptions[0]);
+    } finally {
+      setCardMutationPending(card, false);
     }
-    if (result.staffing) updateEligibility(card, result.staffing.deficiencies);
-    const option = select.selectedOptions[0];
-    if (option && option.classList.contains("option-playing")) {
-      showToast("Achtung: Person spielt selbst in diesem Spiel", false);
-      select.classList.add("select-warn");
-    } else if (option && option.classList.contains("foreign-option")) {
-      showToast("Hinweis: Person gehört nicht zum zugewiesenen Team", false);
-      select.classList.add("select-warn");
-    } else {
-      showToast("Dienst gespeichert", true);
-      select.classList.remove("select-warn");
-    }
-    await loadCandidateCard(card, true);
-    prevOptions.set(select, select.selectedOptions[0]);
   });
 });
 
@@ -357,7 +372,7 @@ function bindBlockSelect(select) {
       select.value = label?.dataset.occupantId || (previousId === null ? "" : String(previousId));
       return;
     }
-    setBlockMutationPending(card, true);
+    setCardMutationPending(card, true);
     try {
       let savedId = previousId;
       let result = { ok: true };
@@ -402,7 +417,7 @@ function bindBlockSelect(select) {
       await loadCandidateCard(card, true, true);
       prevOptions.set(select, select.selectedOptions[0]);
     } finally {
-      setBlockMutationPending(card, false);
+      setCardMutationPending(card, false);
     }
   });
 }
@@ -415,13 +430,13 @@ function invalidateCandidateCard(card) {
   card._candidateLoading = false;
 }
 
-function setBlockMutationPending(card, pending) {
+function setCardMutationPending(card, pending) {
   if (pending) invalidateCandidateCard(card);
   card._mutationPending = pending;
   card.querySelector("[data-cake-config]")?.querySelectorAll("input, button").forEach((control) => {
     control.disabled = pending;
   });
-  card.querySelectorAll("select[data-block-assignment]").forEach((control) => {
+  card.querySelectorAll("select[data-role], select[data-block-assignment]").forEach((control) => {
     control.disabled = pending || !card._candidateLoaded || card._candidateLoading;
   });
 }
@@ -503,7 +518,7 @@ document.querySelectorAll("[data-cake-config]").forEach((form) => {
       message.hidden = false;
       return;
     }
-    setBlockMutationPending(card, true);
+    setCardMutationPending(card, true);
     try {
       const result = await postJSON(form.dataset.settingsUrl, {
         delivery_time: form.querySelector('[name="delivery_time"]').value,
@@ -524,7 +539,7 @@ document.querySelectorAll("[data-cake-config]").forEach((form) => {
       if (result.ok) flashBlock(card.dataset.blockCard);
       if (result.loginRequired) setTimeout(() => { window.location.href = "/login"; }, 1200);
     } finally {
-      setBlockMutationPending(card, false);
+      setCardMutationPending(card, false);
     }
   });
 });

@@ -121,24 +121,24 @@ def test_successful_sync_removes_vanished_blocks_logs_each_and_invalid_sync_does
         assert all(call.args[-1] == 0 for call in removals)
 
 
-def test_optional_support_role_is_assignable_but_not_missing():
+def test_retained_cash_duty_is_preserved_but_not_required_on_youth():
     engine = h.make_engine()
     with h.Session(engine) as session:
         db.sync_games(session, [_one_game()], h.SEASON)
         game = session.query(db.Game).one()
         people = []
-        for index, (role, count) in enumerate(db.REQUIRED_ROLE_SLOT_COUNT.items()):
-            for slot in range(count):
-                person = db.Person(name=f"Helfer {index}-{slot}", birth_date=h.ADULT_BIRTH_DATE)
-                session.add(person)
-                session.flush()
-                db.claim_slot(session, game, role, slot, None, person)
-                people.append(person)
+        for index, (role, slot) in enumerate(db.required_positions(game)):
+            person = db.Person(name=f"Helfer {index}-{slot}", birth_date=h.ADULT_BIRTH_DATE)
+            session.add(person)
+            session.flush()
+            db.claim_slot(session, game, role, slot, None, person)
+            people.append(person)
         assert db.missing_slots(game) == {}
         optional = db.Person(name="Optional")
         session.add(optional)
         session.flush()
-        db.claim_slot(session, game, db.ROLE_SUPPORT, 0, None, optional)
+        session.add(db.Assignment(game=game, role=db.ROLE_CASH, slot=0, person=optional))
+        session.flush()
         assert game.assignment_by_role(db.ROLE_SUPPORT).person is optional
 
 

@@ -8,7 +8,7 @@
 # A person may only hold one task per game, so every slot has its own person:
 #   Zeitnehmer=Alice(mail)  Sekretär=Bob(sms)
 #   Verkauf=Caro(mail)      Verkauf=Dora(sms)
-#   Ordnungsdienst=Ed(mail) Unterstützung=Frida(sms, only when fully assigned)
+#   Ordnungsdienst=Ed(mail) Kasse=Frida(sms, only when fully assigned)
 #   Frank is MV of "BL mD" and receives the MV notification by SMS
 #   as long as tasks of the game are still open.
 #
@@ -64,14 +64,18 @@ def _setup(fully_assigned: bool = False):
     db.set_team_mv(session, team, frank)
 
     # an open task means: nobody assigned at all
-    support_helper = frida if fully_assigned else None
+    cash_helper = frida if fully_assigned else None
     for role, person in [
         (db.ROLE_TIMEKEEPER, alice), (db.ROLE_SECRETARY, bob),
         (db.ROLE_SALE, caro), (db.ROLE_SALE, dora),
-        (db.ROLE_SECURITY, ed), (db.ROLE_SUPPORT, support_helper),
+        (db.ROLE_SECURITY, ed), (db.ROLE_CASH, cash_helper),
     ]:
         if person is not None:
-            db.assign_person(session, game, person, role)
+            if role == db.ROLE_CASH:
+                # Synthetic migrated legacy assignment, now release-only on youth.
+                session.add(db.Assignment(game=game, person=person, role=role, slot=0))
+            else:
+                db.assign_person(session, game, person, role)
     blocks = db.get_day_blocks(session, h.SEASON, GAME_DATE)
     preparation = next(b for b in blocks if b.phase == db.BLOCK_PREPARATION)
     cleanup = next(b for b in blocks if b.phase == db.BLOCK_CLEANUP)
@@ -89,7 +93,7 @@ def _setup(fully_assigned: bool = False):
 
 def test_notify_game_day_prefers_mail_then_sms_and_skips_missing_contacts():
     session, game, n, rec = _setup()
-    # Five occupied game tasks; optional Unterstützung does not trigger an MV.
+    # Youth's five occupied game tasks are complete without a Kasse.
     assert n.notify_game_day(GAME_DATE) == 5
 
 
@@ -161,8 +165,113 @@ def test_shift_notifications_reach_all_assigned_helpers_except_missing_contacts(
     shifts = [db.ShiftEvent(game_id=game.id, game_nr="1001",
                             old_date="04.09.2026", old_time="15:00",
                             new_date="06.09.2026", new_time="18:00")]
-    # helper roles only (no MV): 5 valid contacts, Caro has none
+    # Helper roles only (no MV): all five baseline helpers have a valid contact.
     assert n.notify_shifts(shifts) == 5
+
+
+def _add_cleaning_helpers(session, game):
+    helpers = [
+        db.Person(
+            name="Cleanup First", email="cleanup-first@example.test",
+            birth_date=h.ADULT_BIRTH_DATE,
+        ),
+        db.Person(
+            name="Cleanup Second", phone="+491700000005",
+            birth_date=h.ADULT_BIRTH_DATE,
+        ),
+    ]
+    session.add_all(helpers)
+    session.flush()
+    for slot, person in enumerate(helpers):
+        if (db.ROLE_CLEANING, slot) in db.offered_positions(game):
+            db.claim_slot(session, game, db.ROLE_CLEANING, slot, None, person)
+        else:
+            # Preserve fixtures for duties retained after an adult -> youth change.
+            session.add(db.Assignment(game=game, person=person, role=db.ROLE_CLEANING, slot=slot))
+    session.commit()
+    return helpers
+
+
+def test_retained_removed_youth_duties_receive_one_reminder_each_with_shared_role_names():
+    session, game, sender, _ = _setup(fully_assigned=True)
+    _add_cleaning_helpers(session, game)
+    assert db.staffing_status(game)["complete"], "retained removed duties must not alter completeness"
+    shifts = [db.ShiftEvent(
+        game_id=game.id, game_nr=game.game_nr, old_date=GAME_DATE,
+        old_time="15:00", new_date="06.09.2026", new_time="18:00",
+    )]
+    for notify in (
+        lambda: sender.notify_game_day(GAME_DATE),
+        lambda: sender.notify_pre(GAME_DATE),
+        lambda: sender.notify_shifts(shifts),
+    ):
+        recorder = TextRecorder()
+        sender.send_Mail, sender.send_SMS = recorder.mail, recorder.sms
+        assert notify() == 8, "every saved duty, including retained Kasse/Reinigung, needs one message"
+        assert len(recorder.mails) == 4 and len(recorder.smss) == 4, \
+            "the two occupants of repeated roles must not drop or duplicate recipients"
+        recipients = [recipient for recipient, _, _ in recorder.mails]
+        for name in ("Alice", "Caro", "Ed", "Cleanup First"):
+            assert sum(name in recipient for recipient in recipients) == 1, \
+                f"{name} must receive exactly one reminder"
+        phones = [phone for phone, _ in recorder.smss]
+        for phone in ("+491700000001", "+491700000003", "+491700000004", "+491700000005"):
+            assert phones.count(phone) == 1, "each SMS occupant must receive exactly one reminder"
+        for recipient, subject, body in recorder.mails:
+            if "Caro" in recipient:
+                assert "Verkauf" in subject and "Verkauf" in body
+            if "Cleanup First" in recipient:
+                assert "Reinigung" in subject and "Reinigung" in body
+        for phone, body in recorder.smss:
+            if phone == "+491700000003":
+                assert "Verkauf" in body
+            if phone == "+491700000004":
+                assert "Kasse" in body
+            if phone == "+491700000005":
+                assert "Reinigung" in body
+        for text in (recorder.all_text(), " ".join(subject for _, subject, _ in recorder.mails)):
+            for numbered_role in ("Verkauf 1", "Verkauf 2", "Reinigung 1", "Reinigung 2"):
+                assert numbered_role not in text, "reminders must use the shared semantic role"
+
+
+def test_sparse_second_cleaning_position_and_repeated_role_input_notify_saved_person_once():
+    session, game, sender, recorder = _setup()
+    game.ak = "BL M"
+    session.commit()
+    helper = db.Person(
+        name="Only Second", email="second-only@example.test",
+        birth_date=h.ADULT_BIRTH_DATE,
+    )
+    session.add(helper)
+    session.flush()
+    db.claim_slot(session, game, db.ROLE_CLEANING, 1, None, helper)
+    session.commit()
+
+    assert sender._notify_game_helpers(
+        game, GAME_DATE, sender.mailTask, sender.textTask,
+        [db.ROLE_CLEANING, db.ROLE_CLEANING],
+    ) == 1, "role requests select actual saved assignments once, including a sparse second position"
+    assert len(recorder.mails) == 1 and "Only Second" in recorder.mails[0][0]
+    assert "Reinigung" in recorder.mails[0][2]
+
+
+def test_mv_reminder_tracks_adult_added_duties_and_stops_when_all_eight_are_filled():
+    session, game, sender, recorder = _setup()
+    game.ak = "BL M"
+    session.commit()
+    assert sender.notify_game_day(GAME_DATE) == 6, \
+        "adult Kasse and Reinigung gaps need one MV follow-up alongside five helpers"
+    assert sum(phone == "+491700000002" for phone, _ in recorder.smss) == 1
+
+    cash = session.query(db.Person).filter_by(name="Frida").one()
+    db.claim_slot(session, game, db.ROLE_CASH, 0, None, cash)
+    _add_cleaning_helpers(session, game)
+    assert db.staffing_status(game)["complete"], "all eight adult positions must complete staffing"
+    recorder = TextRecorder()
+    sender.send_Mail, sender.send_SMS = recorder.mail, recorder.sms
+    assert sender.notify_game_day(GAME_DATE) == 8
+    assert all(phone != "+491700000002" for phone, _ in recorder.smss), \
+        "complete adult staffing must stop the MV reminder"
 
 
 def test_referee_alert_targets_support_mail_and_sms():

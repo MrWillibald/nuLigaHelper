@@ -335,7 +335,7 @@ def test_candidate_schema_probe_uses_its_own_runtime_without_secrets():
         db.initialize_db(db.make_engine(str(database)))
         result = deploy.schema_probe(Path(h.PROJECT_DIR), database)
         assert result['gate'] == 'ready'
-        assert result['revision'] == '0005_cake_delivery_blocks'
+        assert result['revision'] == '0006_game_duty_staffing'
 
 
 def test_local_web_verification_checks_release_listener_schema_and_health():

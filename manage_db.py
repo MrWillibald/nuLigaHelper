@@ -332,7 +332,10 @@ def cmd_list_games(args):
     games = query.all()
     games.sort(key=db.game_sort_key)
     for g in games:
-        assignments = ", ".join(f"{a.role}: {a.person.name}" for a in g.assignments) or "-"
+        assignments = ", ".join(
+            f"{db.position_label(a.role, a.slot)}: {a.person.name}"
+            for role in db.ROLE_SLOT_COUNT for a in g.assignments_by_role(role)
+        ) or "-"
         print(
             f"ID {g.id:<5} Nr.{g.game_nr:<7} {g.date or '?'} {g.time or '?':<8} {g.ak or '?':<5} "
             f"{db.game_display_name(g)}\n"
@@ -345,12 +348,13 @@ def cmd_assign(args):
     game = _resolve_game(session, args.game_id)
     person = _resolve_person(session, args.person_id)
     try:
-        db.assign_person(session, game, person, args.role, actor_tier="cli")
+        assignment = db.assign_person(session, game, person, args.role, actor_tier="cli")
     except ValueError as exc:
         session.rollback()
         raise SystemExit(str(exc))
     session.commit()
-    print(f"{person.name} assigned to game ID {game.id} (Nr.{game.game_nr}) as {args.role}")
+    print(f"{person.name} assigned to game ID {game.id} (Nr.{game.game_nr}) as "
+          f"{db.position_label(assignment.role, assignment.slot)}")
 
 
 def cmd_unassign(args):
@@ -494,19 +498,13 @@ def build_parser():
 
     p = sub.add_parser("assign", help="Assign a person to a game role")
     p.add_argument("game_id", type=int)
-    p.add_argument("role", choices=[
-        db.ROLE_TIMEKEEPER, db.ROLE_SECRETARY,
-        db.ROLE_SALE, db.ROLE_SECURITY, db.ROLE_CLEANING,
-    ])
+    p.add_argument("role", choices=list(db.ROLE_SLOT_COUNT))
     p.add_argument("person_id", type=int)
     p.set_defaults(func=cmd_assign)
 
     p = sub.add_parser("unassign", help="Remove an assignment")
     p.add_argument("game_id", type=int)
-    p.add_argument("role", choices=[
-        db.ROLE_TIMEKEEPER, db.ROLE_SECRETARY,
-        db.ROLE_SALE, db.ROLE_SECURITY, db.ROLE_CLEANING,
-    ])
+    p.add_argument("role", choices=list(db.ROLE_SLOT_COUNT))
     p.add_argument("person_id", type=int)
     p.set_defaults(func=cmd_unassign)
 

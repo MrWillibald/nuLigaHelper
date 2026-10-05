@@ -124,7 +124,7 @@ def test_01_admin_sign_in_exposes_controls_without_contacts_on_schedule():
     assert game.xpath('./summary//*[@role="progressbar"]')
     assert game.xpath('./summary//div[@class="game-responsible"]/strong/text()') == ["– offen –"]
     assert game.xpath('./div//select[@class="team-select"]')
-    assert game.xpath('./div//select[@data-role="Unterstützung"]')
+    assert not game.xpath('./div//select[@data-role="Kasse"]'), "youth games must not offer Kasse"
 
 
 def test_02_responsible_team_and_claim_release_flow():
@@ -199,23 +199,23 @@ def test_03_taken_people_are_hidden_except_in_their_current_slots():
     page = html.fromstring(client.get("/").get_data(as_text=True))
     card = page.get_element_by_id(f"game-{GAME_ID}")
     selects = {
-        select.get("data-role"): select
+        (select.get("data-role"), int(select.get("data-slot"))): select
         for select in card.xpath('.//select[@data-role]')
         if select.get("data-role") != db.ROLE_SALE
     }
 
-    def option_ids(role):
+    def option_ids(role, slot=0):
         return {
             int(option.get("value"))
-            for option in selects[role].xpath('./option[@value!=""]')
+            for option in selects[(role, slot)].xpath('./option[@value!=""]')
         }
 
     assert ALICE_ID in option_ids(db.ROLE_TIMEKEEPER)
-    assert selects[db.ROLE_TIMEKEEPER].xpath(
+    assert selects[(db.ROLE_TIMEKEEPER, 0)].xpath(
         f'./option[@value="{ALICE_ID}" and @selected]'
     )
     assert OUTSIDER_ID in option_ids(db.ROLE_SECURITY)
-    assert selects[db.ROLE_SECURITY].xpath(
+    assert selects[(db.ROLE_SECURITY, 0)].xpath(
         f'./option[@value="{OUTSIDER_ID}" and @selected]'
     )
     assert ALICE_ID not in option_ids(db.ROLE_SECRETARY)
