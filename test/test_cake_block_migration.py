@@ -80,7 +80,7 @@ def test_cake_revision_seeds_unique_unconfigured_valid_dates_and_preserves_every
         columns, before = schema_migrations._retained_data(path)
         result = schema_migrations.migrate_to_head(path, engine)
         assert result.previous_state.revision == "0004_person_birth_dates"
-        assert result.revision == "0005_cake_delivery_blocks"
+        assert result.revision == schema_migrations.HEAD_REVISION
         assert result.backup_path is not None
         assert schema_migrations.inspect_schema(result.backup_path).revision == "0004_person_birth_dates"
         _, after = schema_migrations._retained_data(path, columns)

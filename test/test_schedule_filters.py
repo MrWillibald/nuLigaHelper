@@ -48,7 +48,8 @@ with h.Session(ENGINE) as session:
     db.assign_person(session, first_game, first, db.ROLE_TIMEKEEPER)
     db.assign_person(session, first_game, clerk, db.ROLE_SECRETARY)
     db.assign_person(session, first_game, seller, db.ROLE_SALE)
-    db.assign_person(session, first_game, optional, db.ROLE_SUPPORT)
+    # Historical support migrated to a now-removed youth Kasse duty.
+    session.add(db.Assignment(game=first_game, person=optional, role=db.ROLE_CASH, slot=0))
     db.assign_person(session, later_game, second, db.ROLE_TIMEKEEPER)
     db.assign_person(session, later_game, first, db.ROLE_SECRETARY)
     db.assign_person(session, later_game, clerk, db.ROLE_SALE)

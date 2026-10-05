@@ -19,6 +19,14 @@ import backup
 
 
 BASELINE_REVISION = "0001_current_schema_baseline"
+HEAD_REVISION = "0006_game_duty_staffing"
+
+# Only historical source revisions may translate the former per-game cleaning
+# role. Reinigung is a distinct, assignable role starting at the current head.
+PRE_DAY_BLOCK_REVISIONS = {BASELINE_REVISION, "0002_multi_team_membership"}
+PRE_GAME_DUTY_REVISIONS = PRE_DAY_BLOCK_REVISIONS | {
+    "0003_game_day_task_blocks", "0004_person_birth_dates", "0005_cake_delivery_blocks",
+}
 
 BASELINE_COLUMNS = {
     "assignment_audit": (
@@ -241,6 +249,16 @@ def _retained_data(path: Path, columns: dict | None = None) -> tuple[dict, dict]
     """Fingerprint preserved values without exposing contacts or birth dates."""
     with sqlite3.connect(_readonly_uri(path), uri=True) as connection:
         tables = _table_names(connection) - {"alembic_version"}
+        versioned = connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='alembic_version'"
+        ).fetchone()
+        revision = (connection.execute("SELECT version_num FROM alembic_version").fetchone()[0]
+                    if versioned else BASELINE_REVISION)
+        role_renames = {}
+        if revision in PRE_DAY_BLOCK_REVISIONS:
+            role_renames["Reinigung"] = "Kasse"
+        if revision in PRE_GAME_DUTY_REVISIONS:
+            role_renames["Unterstützung"] = "Kasse"
         if columns is None:
             columns = {
                 table: tuple(row[1] for row in connection.execute(
@@ -254,11 +272,7 @@ def _retained_data(path: Path, columns: dict | None = None) -> tuple[dict, dict]
                 continue
             if table not in tables:
                 raise SchemaMigrationError(f"Retained table is missing: {table}")
-            selected = ", ".join(
-                "CASE WHEN role='Reinigung' THEN 'Unterstützung' ELSE role END"
-                if table == "assignments" and column == "role" else f'"{column}"'
-                for column in selected_columns
-            )
+            selected = ", ".join(f'"{column}"' for column in selected_columns)
             # This reviewed revision adds rows to an existing table. Compare
             # every original block, while checking the newly seeded cake rows
             # separately inside its revision. Never ignore old block values.
@@ -268,6 +282,10 @@ def _retained_data(path: Path, columns: dict | None = None) -> tuple[dict, dict]
             rows = [tuple(row) for row in connection.execute(
                 f'SELECT {selected} FROM "{table}"{clause}'
             )]
+            if table == "assignments" and "role" in selected_columns and role_renames:
+                role_index = selected_columns.index("role")
+                rows = [tuple(role_renames.get(value, value) if index == role_index else value
+                              for index, value in enumerate(row)) for row in rows]
             fingerprints[table] = hashlib.sha256(
                 repr(sorted(rows, key=repr)).encode("utf-8")
             ).hexdigest()
@@ -440,6 +458,15 @@ def migrate_to_head(database_path: str | Path, engine) -> MigrationResult:
     inherited_defaults = _historical_defaults(engine)
     if state.revision in {"0003_game_day_task_blocks", "0004_person_birth_dates"}:
         _verify_pre_cake_schema(engine, state.revision, inherited_defaults)
+    elif state.revision == "0005_cake_delivery_blocks":
+        # This data-only revision has the same storage shape as its predecessor.
+        # The version label must not authorize unreviewed columns or CHECKs.
+        try:
+            verify_head_schema(engine, inherited_defaults=inherited_defaults)
+        except SchemaMigrationError as exc:
+            raise SchemaMigrationError(
+                f"The game-duty source schema does not match its reviewed revision: {exc}"
+            ) from exc
 
     backup_path = _create_backup(path)
     try:

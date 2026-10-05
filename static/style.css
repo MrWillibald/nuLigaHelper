@@ -85,6 +85,8 @@ h3{color:var(--navy)}
 .game-assign{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:11px}
 .assign-field{display:flex;flex-direction:column;gap:4px}
 .assign-field>span{font-size:.74rem;font-weight:800;color:var(--navy);text-transform:uppercase;letter-spacing:.05em}
+.retained-duty{display:block;color:var(--muted);font-size:.7rem;font-weight:600;text-transform:none;letter-spacing:normal}
+.classification-status{color:#8a3b00;font-size:.85rem}
 .assign-field select,.assign-field input,.form-field input{width:100%;border:1px solid var(--line);
   border-radius:11px;padding:9px 10px;font-size:.94rem;font-family:inherit;color:var(--text);background:#fbfcfe}
 .assign-field select:focus,.assign-field input:focus{outline:2px solid var(--navy);outline-offset:1px}

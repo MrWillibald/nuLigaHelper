@@ -129,10 +129,7 @@ def test_full_invalid_roster_reports_truthful_occupancy_without_private_data(_to
         game = session.get(db.Game, ids["game"])
         # Legacy occupied duties must survive reevaluation even when no claim
         # would be accepted for the same roster now.
-        for index, (role, slot) in enumerate(
-            (role, slot) for role, count in db.REQUIRED_ROLE_SLOT_COUNT.items()
-            for slot in range(count)
-        ):
+        for index, (role, slot) in enumerate(db.required_positions(game)):
             person = db.Person(name=f"Legacy helper {index}", birth_date=None)
             session.add(person)
             session.flush()
@@ -140,7 +137,7 @@ def test_full_invalid_roster_reports_truthful_occupancy_without_private_data(_to
         session.commit()
     guest_text = app.test_client().get("/").get_data(as_text=True)
     tree = html.fromstring(guest_text)
-    assert "5 von 5 Pflichtdiensten besetzt" in guest_text, "eligibility fabricated a vacancy"
+    assert "8 von 8 Pflichtdiensten besetzt" in guest_text, "eligibility fabricated a vacancy"
     assert tree.xpath('//div[@data-eligibility-status and not(@hidden)]'), "full invalid staffing looked complete"
     assert "Legacy helper 0" in guest_text
     assert "birth_date" not in guest_text and "1992-01-01" not in guest_text

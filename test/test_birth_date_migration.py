@@ -72,7 +72,7 @@ def _values(path):
 
 
 def test_birth_date_revision_extends_single_head_and_fresh_database_has_no_drift():
-    assert schema_migrations.head_revisions() == ("0005_cake_delivery_blocks",)
+    assert schema_migrations.head_revisions() == (schema_migrations.HEAD_REVISION,)
     engine = h.make_engine()
     assert schema_migrations.metadata_drift(engine, db.Base.metadata) == []
     with h.Session(engine) as session:
@@ -127,7 +127,7 @@ def test_unversioned_baseline_upgrade_keeps_unknown_dates_and_legacy_membership_
             )
         engine = db.make_engine(str(path))
         result = schema_migrations.migrate_to_head(path, engine)
-        assert result.revision == "0005_cake_delivery_blocks"
+        assert result.revision == schema_migrations.HEAD_REVISION
         with h.Session(engine) as session:
             person = session.get(db.Person, 1)
             assert person.birth_date is None
@@ -201,7 +201,8 @@ def test_manually_stamped_head_without_birth_date_is_refused_at_startup_and_noop
         path = Path(directory) / "forged-head.db"
         engine = _older_head(path)
         with sqlite3.connect(path) as connection:
-            connection.execute("UPDATE alembic_version SET version_num='0005_cake_delivery_blocks'")
+            connection.execute("UPDATE alembic_version SET version_num=?",
+                               (schema_migrations.HEAD_REVISION,))
         assert schema_migrations.inspect_schema(path).kind == "head"
         before = path.read_bytes()
         for call, error_type in (

@@ -149,8 +149,14 @@ test/run_tests.sh                          # whole suite, must stay green
   Deactivation keeps past assignments, releases and audits future assignments,
   clears MV records and does not restore freed slots on reactivation. Deletion is
   reserved for erroneous records and must preserve readable audit entries.
-- Roles: `Zeitnehmer`, `Sekretär`, `Verkauf` (**2 slots**), `Ordnungsdienst`,
-  `Reinigung` — see `db.ROLE_SLOT_COUNT`. Any aggregation over roles must iterate
+- Roles: `Zeitnehmer`, `Sekretär`, `Verkauf` (**2 slots**), `Ordnungsdienst`
+  (**1 slot**), `Kasse`, `Reinigung` (**2 slots**) — see `db.ROLE_SLOT_COUNT`.
+  Adults offer all eight positions; youth/SPF and unknown classes offer the
+  baseline five without Kasse/Reinigung. All offered positions are required; use
+  `db.offered_positions()` / `db.required_positions()` for per-game calculations.
+  Retained assignments outside that set stay visible and releasable under
+  existing rights, count in personal statistics/reminders and prevent a second
+  duty, but cannot accept replacement claims or affect required progress. Any aggregation over roles must iterate
   roles once (e.g. `ROLE_SLOT_COUNT.items()`), not `SLOT_LABELS` in `webapp.py`
   (which repeats Verkauf for the two UI dropdowns).
 - **Team MV**: each team can have exactly one Mannschaftsverantwortlicher

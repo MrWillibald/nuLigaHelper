@@ -129,7 +129,7 @@ def test_timing_minimums_are_evaluated_on_game_date_without_admin_or_system_over
         game.ak = "GE"
         assert db.claim_eligibility(game, db.ROLE_TIMEKEEPER, person)["code"] == "unresolved_category"
         assert db.claim_eligibility(game, db.ROLE_SECURITY, unknown) is None
-        assert db.claim_eligibility(game, db.ROLE_SUPPORT, unknown) is None
+        assert db.claim_eligibility(game, db.ROLE_CASH, unknown)["code"] == "duty_not_offered"
 
 
 def test_future_game_allows_upcoming_birthday_and_past_admin_correction_uses_past_date():
@@ -226,7 +226,8 @@ def test_staffing_rechecks_changed_dates_and_category_without_altering_rows_or_a
         people[3].birth_date = None
         session.commit()
         status = db.staffing_status(game)
-        assert status["vacancies"] == {}, "full but invalid staffing must keep truthful occupancy"
+        assert status["vacancies"] == {db.ROLE_CASH: 1, db.ROLE_CLEANING: 2}, \
+            "changing youth to adult must expose only the three newly required duties"
         assert {reason["code"] for reason in status["deficiencies"]} == {"underage", "missing_adult_seller"}
         assert not status["complete"]
         assert [(entry.id, entry.person_id) for entry in game.assignments] == assignment_before
@@ -236,7 +237,8 @@ def test_staffing_rechecks_changed_dates_and_category_without_altering_rows_or_a
         assert "birth_date" not in payload and '"age"' not in payload
         db.release_slot(session, game, db.ROLE_TIMEKEEPER, 0, people[0].id)
         session.commit()
-        assert db.staffing_status(game)["vacancies"] == {db.ROLE_TIMEKEEPER: 1}
+        assert db.staffing_status(game)["vacancies"] == {
+            db.ROLE_TIMEKEEPER: 1, db.ROLE_CASH: 1, db.ROLE_CLEANING: 2}
 
 
 def test_loaded_person_game_and_seller_dates_are_refreshed_before_claim():

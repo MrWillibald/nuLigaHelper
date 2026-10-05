@@ -181,7 +181,7 @@ class Notifier:
         )
 
     # ---------------------------------------------------------------------------
-    # Game-day notifications (judges, shop, security, support + MV)
+    # Game-day notifications (all occupied game duties + MV)
     # ---------------------------------------------------------------------------
 
     def notify_game_day(self, date: str) -> int:
@@ -354,7 +354,7 @@ class Notifier:
     # ---------------------------------------------------------------------------
 
     def notify_pre(self, date: str) -> int:
-        """Send pre-notifications to game judges one week ahead."""
+        """Send pre-notifications to all assigned game helpers one week ahead."""
         cnt = 0
         games = db.get_games_on_date(self.session, date)
 
@@ -366,20 +366,20 @@ class Notifier:
 
         return cnt
 
+    @staticmethod
+    def _game_helper_assignments(game: db.Game, roles: list[str] | None = None):
+        """Visit each saved position once, including retained removed duties."""
+        for role in dict.fromkeys(db.GAME_DAY_ROLES if roles is None else roles):
+            for assignment in game.assignments_by_role(role):
+                yield role, assignment
+
     def _notify_game_helpers(
         self, game: db.Game, date: str, mail_text: str, sms_text: str,
         roles: list[str] | None = None,
     ) -> int:
         """Send task notifications to all helpers of a single game."""
         cnt = 0
-        occurrences: dict[str, int] = {}
-        for role in roles or db.GAME_DAY_ROLES:
-            index = occurrences.get(role, 0)
-            occurrences[role] = index + 1
-            assignments = game.assignments_by_role(role)
-            assignment = assignments[index] if index < len(assignments) else None
-            if assignment is None:
-                continue
+        for role, assignment in self._game_helper_assignments(game, roles):
             receiver = self._person_receiver(assignment.person, role)
             if db.is_spielfest(game):
                 timing = "morgen" if mail_text == self.mailTask else "nächste Woche"
@@ -418,14 +418,7 @@ class Notifier:
                 f"Old date: {shift.old_date} {shift.old_time} — "
                 f"New date: {shift.new_date} {shift.new_time}"
             )
-            occurrences: dict[str, int] = {}
-            for role in db.GAME_DAY_ROLES:
-                index = occurrences.get(role, 0)
-                occurrences[role] = index + 1
-                assignments = game.assignments_by_role(role)
-                assignment = assignments[index] if index < len(assignments) else None
-                if assignment is None:
-                    continue
+            for role, assignment in self._game_helper_assignments(game):
                 receiver = self._person_receiver(assignment.person, role)
                 if db.is_spielfest(game):
                     mail_body = sms_body = (

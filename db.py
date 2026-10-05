@@ -37,20 +37,11 @@ ROLE_TIMEKEEPER = "Zeitnehmer"
 ROLE_SECRETARY = "Sekretär"
 ROLE_SALE = "Verkauf"
 ROLE_SECURITY = "Ordnungsdienst"
-ROLE_SUPPORT = "Unterstützung"
-# Compatibility alias for callers which import the old constant name. Stored and
-# displayed current assignments always use ROLE_SUPPORT.
-ROLE_CLEANING = ROLE_SUPPORT
-
-# Standard receiver order for game-day notifications
-GAME_DAY_ROLES = [
-    ROLE_TIMEKEEPER,
-    ROLE_SECRETARY,
-    ROLE_SALE,
-    ROLE_SALE,
-    ROLE_SECURITY,
-    ROLE_SUPPORT,
-]
+ROLE_CASH = "Kasse"
+ROLE_CLEANING = "Reinigung"
+# Import compatibility for the renamed support duty. Legacy stored role text is
+# migrated explicitly; new cleaning duties always use their distinct role.
+ROLE_SUPPORT = ROLE_CASH
 
 # Slot count per role; keys define the display order for open-task lists
 ROLE_SLOT_COUNT = {
@@ -58,13 +49,34 @@ ROLE_SLOT_COUNT = {
     ROLE_SECRETARY: 1,
     ROLE_SALE: 2,
     ROLE_SECURITY: 1,
-    ROLE_SUPPORT: 1,
+    ROLE_CASH: 1,
+    ROLE_CLEANING: 2,
 }
 
-# Optional duties stay assignable and notifiable but do not make a game incomplete.
-REQUIRED_ROLE_SLOT_COUNT = {
-    role: slots for role, slots in ROLE_SLOT_COUNT.items() if role != ROLE_SUPPORT
-}
+# Semantic roles occur once; repeated positions are resolved from assignments.
+GAME_DAY_ROLES = list(ROLE_SLOT_COUNT)
+BASELINE_REQUIRED_POSITIONS = (
+    (ROLE_TIMEKEEPER, 0), (ROLE_SECRETARY, 0),
+    (ROLE_SALE, 0), (ROLE_SALE, 1), (ROLE_SECURITY, 0),
+)
+
+
+def offered_positions(game: Game) -> tuple[tuple[str, int], ...]:
+    """Adult games offer eight duties; youth/unknown classes keep five."""
+    if age_eligibility.classify_game_category(game.ak) == age_eligibility.ADULT:
+        return tuple((role, slot) for role, count in ROLE_SLOT_COUNT.items()
+                     for slot in range(count))
+    return BASELINE_REQUIRED_POSITIONS
+
+
+def required_positions(game: Game) -> tuple[tuple[str, int], ...]:
+    """Every offered game position is required; retained removed duties are not."""
+    return offered_positions(game)
+
+
+def position_label(role: str, slot: int) -> str:
+    """Number positions only when the semantic role has multiple places."""
+    return f"{role} {slot + 1}" if ROLE_SLOT_COUNT.get(role, 0) > 1 else role
 
 BLOCK_PREPARATION = "preparation"
 BLOCK_CAKE_DELIVERY = "cake_delivery"
@@ -496,9 +508,9 @@ class Game(Base):
             return self.team.name
         return self.jteam
 
-    def assignment_by_role(self, role: str) -> "Assignment | None":
+    def assignment_by_role(self, role: str, slot: int = 0) -> "Assignment | None":
         for a in self.assignments:
-            if a.role == role:
+            if a.role == role and a.slot == slot:
                 return a
         return None
 
@@ -508,12 +520,10 @@ class Game(Base):
         )
 
     def receivers_for_roles(self, roles: list[str]) -> list[Person]:
-        """Return persons for the given role sequence (duplicates included)."""
+        """Return each actual occupant once in role and position order."""
         result = []
-        for role in roles:
-            a = self.assignment_by_role(role)
-            if a is not None:
-                result.append(a.person)
+        for role in dict.fromkeys(roles):
+            result.extend(a.person for a in self.assignments_by_role(role))
         return result
 
     def __repr__(self):
@@ -1286,6 +1296,8 @@ def claim_slot(
             stored_person = session.get(Person, person_id, populate_existing=True)
             if stored_game is None or stored_person is None:
                 raise ValueError("Spiel oder Person wurde nicht gefunden.")
+            if (role, slot) not in offered_positions(stored_game):
+                raise ValueError("Diese Aufgabe wird für dieses Spiel nicht angeboten.")
             if stored_person.account_status != ACCOUNT_ACTIVE:
                 raise ValueError("Diese Person kann nicht eingeteilt werden.")
             other = session.scalars(
@@ -1850,15 +1862,18 @@ def set_team_mv(session: Session, team: Team, person: Person | None) -> None:
 def missing_slots(game: Game) -> dict[str, int]:
     """Open task slots of a game as {role: missing_count}, in display order."""
     result = {}
-    for role, slots in REQUIRED_ROLE_SLOT_COUNT.items():
-        missing = max(0, slots - len(game.assignments_by_role(role)))
-        if missing:
-            result[role] = missing
+    occupied = {(assignment.role, assignment.slot) for assignment in game.assignments}
+    for role, slot in required_positions(game):
+        if (role, slot) not in occupied:
+            result[role] = result.get(role, 0) + 1
     return result
 
 
 def claim_eligibility(game: Game, role: str, person: Person, slot: int = 0) -> dict | None:
     """Eligibility of a hypothetical claim; authorization and CAS stay separate."""
+    if (role, slot) not in offered_positions(game):
+        return {"role": role, "slot": slot, "code": "duty_not_offered",
+                "message": "Diese Aufgabe wird für dieses Spiel nicht angeboten."}
     reason = age_eligibility.timing_eligibility(game, role, person, slot)
     if reason is not None or role != ROLE_SALE:
         return reason
@@ -1892,7 +1907,14 @@ def staffing_status(game: Game) -> dict:
     )
     if sale_reason is not None:
         deficiencies.append(sale_reason)
+    required = required_positions(game)
+    occupied = {(assignment.role, assignment.slot) for assignment in game.assignments}
+    category = classify_game_category(game.ak)
     return {"vacancies": vacancies, "deficiencies": deficiencies,
+            "category": category,
+            "classification_unresolved": category == age_eligibility.UNKNOWN,
+            "required_filled": sum(position in occupied for position in required),
+            "required_total": len(required),
             "complete": not vacancies and not deficiencies}
 
 

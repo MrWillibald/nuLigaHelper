@@ -25,6 +25,7 @@
         <span>{% if g.spielfest %}Spielfest {{ g.ak }}{% else %}{{ g.home }} &ndash; {{ g.guest }}{% endif %}</span>
       </div>
       <div class="game-meta">{{ g.ak }} &middot; Halle {{ g.hall }} &middot; Nr. {{ g.nr }}</div>
+      {% if g.classification_unresolved %}<div class="classification-status">Altersklasse prüfen · 5 Pflichtpositionen</div>{% endif %}
       <div class="game-responsible">Verantwortlich: <strong>{{ responsible_team_name }}</strong></div>
     </div>
     <div class="game-summary-side">
@@ -50,11 +51,13 @@
       {% else %}<strong>{{ responsible_team_name }}</strong>{% endif %}
     </label>
     {% for s in g.slots %}
-    <label class="assign-field"{% if viewer %} data-occupant-id="{{ s.person_id or '' }}"{% endif %}>
-      <span>{{ s.label }}</span>
+    <label class="assign-field" data-required="{{ 'true' if s.required else 'false' }}"{% if viewer %} data-occupant-id="{{ s.person_id or '' }}"{% endif %}>
+      <span>{{ s.label }}{% if s.retained %} <small class="retained-duty">Bestehende Einteilung – nur Freigabe</small>{% endif %}</span>
       {% if s.editable %}<select data-game="{{ g.id }}" data-role="{{ s.role }}" data-slot="{{ s.slot }}"
+              data-required="{{ 'true' if s.required else 'false' }}"
+              {% if s.retained %}data-release-only="true"{% endif %}
               disabled {% if s.status in ("playing", "outside") %}class="select-warn"{% endif %}>
-        <option value="">&ndash; offen &ndash;</option>
+        <option value="">{% if s.retained %}&ndash; freigeben &ndash;{% else %}&ndash; offen &ndash;{% endif %}</option>
         {% if s.person_id %}<option value="{{ s.person_id }}" selected>{{ s.person_name }} · {{ s.person_team_label }}</option>{% endif %}
       </select>
       {% else %}<strong>{{ s.person_name or '– offen –' }}{% if s.person_name %} · {{ s.person_team_label }}{% endif %}</strong>{% endif %}
