@@ -34,30 +34,8 @@
             "trusted_hops":0,
             "proxy_error":"fallback"
         },
-        "texts":{
-            "mailErrorSubject":"Benachrichtigung Fehler",
-            "mailError":"Hallo Admin,\n\nbeim Update des Heimspielplans wurden neue Spiele entdeckt, die noch nicht in der Datenbank bekannt sind. Bitte prüfe die Spiele und trage gegebenenfalls die Dienste nach.\n\nViele Grüße Max",
-            "mailNewspaperSubject":"Veranstaltungshinweis für Heimatstadtanzeiger",
-            "mailNewspaper":"Hallo Frau Mustermann,\n\nhier der Veranstaltungshinweis zu unserem Spieltag für den Heimatstadtanzeiger am {}:\n\nHandball: nächster Heimspieltag\nAm {} den {} finden folgende Begegnungen in der Sporthalle Heimatstadt statt:\n{}\nFür das leibliche Wohl ist wie immer bestens gesorgt. Die Handballer des TuS Heimatstadt freuen sich auf euren Besuch!\n\nMit freundlichen Grüßen\nMax Mustermann",
-            "mailMVSubject":"Benachrichtigung Verantwortlich",
-            "mailTask":"Hallo {},\n\ndu bist morgen ({}) für den Dienst {} beim Spiel der {} {} gegen {} eingeteilt. Das Spiel beginnt um {} in der Halle Heimatstadt. Bitte sei 1 Stunde vor Anpfiff in der Halle.\n\nViele Grüße Max",
-            "textTask":"Hallo {},\ndu bist morgen ({}) für den Dienst {} beim Spiel der {} eingeteilt. Das Spiel beginnt um {} in der Heimatstadt-Halle. Bitte sei 1 Stunde vor Anpfiff in der Halle.\nVG Max",
-            "mailMV":"Hallo {},\n\naus deiner Mannschaft {} übernehmen morgen ({}) {} und {} die Verantwortung beim Spiel der {} {} gegen {}. Das Spiel beginnt um {} in der Halle Heimatstadt. Die Spieler erhalten ebenfalls eine Benachrichtigung.\n\nViele Grüße Max",
-            "textMV":"Hallo {},\naus deiner Mannschaft {} übernehmen morgen ({}) {} und {} die Verantwortung beim Spiel der {}. Das Spiel beginnt um {} in der Heimatstadt-Halle.\nVG Max",
-            "mailPreTask":"Hallo {},\n\nnächste Woche ({}) bist du für den Dienst {} beim Spiel der {} {} gegen {} eingeteilt. Das Spiel beginnt um {} in der Halle Heimatstadt. Bitte sei rechtzeitig da.\n\nViele Grüße Max",
-            "textPreTask":"Hallo {},\nnächste Woche ({}) bist du für den Dienst {} beim Spiel der {} eingeteilt. Das Spiel beginnt um {} in der Heimatstadt-Halle.\nVG Max",
-            "mailEarlyTask":"Hallo {},\n\nnächste Woche ({}) seid ihr zu zweit für den Dienst {} beim Spiel der {} {} gegen {} eingeteilt. Du arbeitest mit {} zusammen. Das Spiel beginnt um {}. Bitte stimmt euch ab und kommt eine Stunde vorher, um alles vorzubereiten.\n\nViele Grüße Max",
-            "textEarlyTask":"Hallo {},\nnächste Woche ({}) seid ihr zu zweit für den Dienst {} beim Spiel der {} im Einsatz. Du arbeitest mit {} zusammen, das Spiel beginnt um {}. Stimmt euch bitte ab.\nVG Max",
-            "mailPreparationTask":"Hallo {},\n\nam nächsten Heimspieltag ({}) übernimmst du {}. Du arbeitest mit {} zusammen. Treffpunkt ist um {}.\n\nViele Grüße Max",
-            "textPreparationTask":"Hallo {}, am nächsten Heimspieltag ({}) übernimmst du {} mit {}. Treffpunkt: {}. VG Max",
-            "mailBlockPreTask":"Hallo {},\n\nnächste Woche ({}) übernimmst du {} um {}.\n\nViele Grüße Max",
-            "textBlockPreTask":"Hallo {}, nächste Woche ({}) übernimmst du {} um {}. VG Max",
-            "mailBlockTask":"Hallo {},\n\nmorgen ({}) übernimmst du {} um {}.\n\nViele Grüße Max",
-            "textBlockTask":"Hallo {}, morgen ({}) übernimmst du {} um {}. VG Max",
-            "mailShifted":"Hallo {},\n\ndein Dienst {} hat sich verschoben! Das Spiel der {} {} gegen {} findet nicht mehr am {} um {} statt, sondern wurde auf den {} um {} verlegt.\n\nViele Grüße Max",
-            "textShifted":"Hallo {},\ndein Dienst {} wurde verschoben: nicht mehr am {} um {}, sondern am {} um {}.\nVG Max",
-            "mailRefCoordSubject":"Benachrichtigung fehlende Schiedsrichter",
-            "mailRefCoordTargets":[
+        "notifications":{
+            "referee_targets":[
                 {
                     "Name":"Schiedsrichterwart",
                     "Address":"+4912345678910"
@@ -66,8 +44,7 @@
                     "Name":"Abteilungsleiter",
                     "Address":"info@musterserver.com"
                 }
-            ],
-            "mailRefCoord":"Hallo {},\nfür morgen ({}) wurden bei folgenden Heimspielen keine Schiedsricher bestimmt:\n{}Folgende Personen werden benachrichtigt: {}\nVG Max"
+            ]
         }
     }
 }

@@ -2,7 +2,7 @@
 
 Automated tests for the nuLigaHelper database, notification and web layers.
 All tests run offline against throwaway SQLite databases (sample game plan from
-`helpers.py`, sample texts from `config_template.json`) – no real mails/SMS are
+`helpers.py`, settings from `config_template.json`, wording from `messages.py`) – no real mails/SMS are
 sent and neither `config.json` nor `nuliga_helper.db` are touched.
 
 ## Run
@@ -35,6 +35,8 @@ test/run_tests.sh
 | `test_cake_block_migration.py` | Cake seeding, exact schema fingerprints, retained data and snapshot recovery |
 | `test_cake_reminders.py` | Weekly/day-before one-cake messages, contact preference and debug suppression |
 | `test_notifier.py` | Mail/SMS dispatch counts and texts (recorded, never sent)                |
+| `test_messages.py` | Named contracts, channel variants, literal values and safe rendering failures |
+| `test_message_config.py` | Non-mutating legacy preflight, safe warnings and recipient precedence |
 | `test_webapp.py`   | Schedule rendering, inline assignment API, persons CRUD, statistics      |
 | `test_sqlite_runtime.py` | SQLite WAL, foreign-key, timeout and startup invariants             |
 | `test_production_runtime.py` | Production config and proxy/host/cookie/body/header behavior |

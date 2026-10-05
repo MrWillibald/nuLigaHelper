@@ -99,11 +99,20 @@ root-owned compatibility file in the retained legacy release and verify that
 unit can start it. Installing the new unit against an unmodified legacy release
 would stop the web service.
 
-Site-specific Caddy configuration, `/etc/nuligahelper/web.env`, club texts,
+Site-specific Caddy configuration, `/etc/nuligahelper/web.env`, club settings,
 contacts, credentials, the SQLite database in `/var/lib/nuligahelper`, snapshots, and operator approval
 records are **not** release assets. Keep them outside Git and outside every
 release directory. The `.example` files contain placeholders only; never
 install them without supplying the private, approved site values.
+
+Notification wording ships in the reviewed `messages.py` catalog. Before
+activating that transition, run the candidate release's
+`./venv/bin/python -m message_config --config /path/to/private/config.json`.
+Reconcile customized legacy wording privately into the catalog, move referee
+recipients to `club.notifications.referee_targets`, then remove `club.texts`.
+The preflight sends nothing, opens no database/providers and prints only keys
+and migration status. Keep the previous application and private configuration
+snapshot together for rollback; provider settings retain their existing contract.
 
 The daily and cleanup timers are persistent. Starting either after a missed
 09:00 Europe/Berlin firing can immediately run its service, including real

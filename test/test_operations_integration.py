@@ -1,16 +1,20 @@
 """Operation outcomes, redaction, launch binding and operator-only alert tests."""
 import copy
+from dataclasses import replace
+from datetime import datetime, timezone
 import io
 import json
 import logging
 import os
 from pathlib import Path
 import tempfile
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import helpers as h
 import backup
 import main
+import messages
+import notifier
 import operations
 import production as p
 from production_logging import JournalFormatter
@@ -53,19 +57,51 @@ def test_daily_markers_separate_backup_and_application_failures():
 
 def test_alert_has_only_operator_recipient_and_fixed_diagnostics():
     sent = []
+    connections, authentications = [], []
     class SMTP:
-        def __init__(self,*args,**kwargs): pass
+        def __init__(self,*args,**kwargs): connections.append((args, kwargs))
         def __enter__(self): return self
         def __exit__(self,*args): pass
-        def login(self,*args): pass
+        def login(self,*args): authentications.append(args)
         def send_message(self,message): sent.append(message)
-    with patch('common.load_config',return_value={'club':{'email':{'smtpserver':'smtp.test','mail_ID':'synthetic','mail_password':'secret-canary'}}}):
-        operations.send_alert(settings(),['test'],smtp=SMTP)
+    source = messages.CATALOG['operations.alert']
+    template = replace(source, subject='Synthetic operator source', email='SOURCE\n' + source.email)
+    occurred_at = datetime(2026, 9, 17, 15, 41, 2, tzinfo=timezone.utc)
+    with patch('common.load_config',return_value={'club':{'email':{'smtpserver':'smtp.test','mail_ID':'synthetic','mail_password':'secret-canary'}}}), \
+            patch.dict(messages.CATALOG, {'operations.alert': template}), \
+            patch('operations.datetime') as clock, \
+            patch.object(notifier.Notifier, 'send_account_message', side_effect=AssertionError('no member dispatch')):
+        clock.now.return_value = occurred_at
+        operations.send_alert(settings(),['test', 'database', 'backup'],smtp=SMTP)
+        clock.now.assert_called_once_with(timezone.utc)
     assert len(sent) == 1
     assert sent[0]['To'] == settings()['alert_to']
     assert sent[0]['From'] == settings()['alert_from']
+    assert sent[0]['Subject'] == 'Synthetic operator source', 'operator copy must use the shared source'
     assert 'secret-canary' not in sent[0].as_string()
-    assert 'deploy/OPERATIONS.md' in sent[0].get_content()
+    body = sent[0].get_content()
+    assert body.startswith('SOURCE\n')
+    assert 'Komponenten: backup, database, test' in body
+    assert 'Zeit: 2026-09-17T15:41:02+00:00' in body
+    assert 'Anleitung: deploy/OPERATIONS.md (Störungen)' in body
+    assert connections[0][0] == ('smtp.test',)
+    assert connections[0][1]['timeout'] == 15
+    assert connections[0][1]['context'].check_hostname
+    assert authentications == [('synthetic', 'secret-canary')]
+
+
+def test_operator_rendering_failure_never_connects_or_discloses_context():
+    invalid = replace(messages.CATALOG['operations.alert'], subject='private-canary\nInvalid header')
+    smtp = Mock(side_effect=AssertionError('no SMTP connection'))
+    with patch('common.load_config',return_value={'club':{'email':{'smtpserver':'smtp.test','mail_ID':'synthetic','mail_password':'secret-canary'}}}), \
+            patch.dict(messages.CATALOG, {'operations.alert': invalid}):
+        try:
+            operations.send_alert(settings(), ['database'], smtp=smtp)
+        except messages.MessageRenderError as error:
+            assert 'private-canary' not in str(error) and 'secret-canary' not in str(error)
+        else:
+            raise AssertionError('an invalid operator subject must be refused before delivery')
+    smtp.assert_not_called()
 
 
 def test_launch_gate_requires_officer_decision_and_core_checks():

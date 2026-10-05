@@ -13,7 +13,9 @@ from email.message import EmailMessage
 from twilio.rest import Client
 
 from common import DEBUG_FLAG
+import common
 import db
+import messages
 
 
 class Notifier:
@@ -32,39 +34,12 @@ class Notifier:
         self.mail_salePassword = email_cfg.get("mail_salePassword", self.mail_password)
         self.mail_error_recipient = email_cfg.get("mailAddrAdmin", self.mail_ID)
 
-        self.__dict__.update(config["twilio"])
-        self.__dict__.update(config["texts"])
-        self.mailPreparationTask = getattr(
-            self,
-            "mailPreparationTask",
-            "Hallo {},\n\nam {} übernimmst du {}. Du arbeitest mit {} zusammen. "
-            "Treffpunkt ist um {}.\n\nViele Grüße",
-        )
-        self.textPreparationTask = getattr(
-            self,
-            "textPreparationTask",
-            "Hallo {}, am {} übernimmst du {} mit {}. Treffpunkt: {}.",
-        )
-        self.mailBlockPreTask = getattr(
-            self,
-            "mailBlockPreTask",
-            "Hallo {},\n\nnächste Woche ({}) übernimmst du {} um {}.\n\nViele Grüße",
-        )
-        self.textBlockPreTask = getattr(
-            self,
-            "textBlockPreTask",
-            "Hallo {}, nächste Woche ({}) übernimmst du {} um {}.",
-        )
-        self.mailBlockTask = getattr(
-            self,
-            "mailBlockTask",
-            "Hallo {},\n\nmorgen ({}) übernimmst du {} um {}.\n\nViele Grüße",
-        )
-        self.textBlockTask = getattr(
-            self,
-            "textBlockTask",
-            "Hallo {}, morgen ({}) übernimmst du {} um {}.",
-        )
+        twilio_cfg = config["twilio"]
+        self.twilio_sid = twilio_cfg["twilio_sid"]
+        self.twilio_token = twilio_cfg["twilio_token"]
+        self.twilio_service_ID = twilio_cfg["twilio_service_ID"]
+        common.warn_legacy_message_settings(config)
+        self._referee_targets = common.referee_targets(config)
 
         self.session = session
 
@@ -96,7 +71,7 @@ class Notifier:
         receiver: dict,
         subject: str,
         mail_body: str,
-        sms_body: str,
+        sms_body: str | None,
         game_nr: str,
         mail_id: str | None = None,
         mail_password: str | None = None,
@@ -120,7 +95,7 @@ class Notifier:
             logging.info("notification channel=email outcome=sent")
             return 1
 
-        if isinstance(contact_phone, str) and "+" in contact_phone:
+        if isinstance(contact_phone, str) and "+" in contact_phone and sms_body is not None:
             self.send_SMS(contact_phone, sms_body)
             logging.info("notification channel=sms outcome=sent")
             return 1
@@ -133,17 +108,14 @@ class Notifier:
         """Build a receiver dict from a Person instance."""
         return {"name": person.name, "email": person.email, "phone": person.phone, "task": task}
 
-    @staticmethod
-    def _spielfest_task_text(
-        name: str, date: str, role: str, game: db.Game, timing: str,
-        partner: str | None = None,
-    ) -> str:
-        partner_text = f" Du arbeitest mit {partner} zusammen." if partner else ""
-        return (
-            f"Hallo {name},\n\ndu bist {timing} ({date}) für den Dienst {role} "
-            f"beim Spielfest {game.ak or ''} eingeteilt. Das Spielfest beginnt um "
-            f"{game.time or ''}.{partner_text} Bitte sei rechtzeitig in der Halle.\n\n"
-            "Viele Grüße Max"
+    def _dispatch_message(
+        self, receiver: dict, message: messages.RenderedMessage, game_nr: str,
+        mail_id: str | None = None, mail_password: str | None = None,
+    ) -> int:
+        return self._dispatch(
+            receiver, subject=message.subject, mail_body=message.email,
+            sms_body=message.sms, game_nr=game_nr,
+            mail_id=mail_id, mail_password=mail_password,
         )
 
     def send_account_message(
@@ -190,7 +162,7 @@ class Notifier:
         games = db.get_games_on_date(self.session, date)
 
         for game in games:
-            cnt += self._notify_game_helpers(game, date, self.mailTask, self.textTask)
+            cnt += self._notify_game_helpers(game, date, "game.day_before")
 
             # Physical vacancies and unresolved eligibility both need follow-up.
             mv = game.team.mv_person if game.team is not None else None
@@ -199,42 +171,37 @@ class Notifier:
                     or staffing["complete"]):
                 continue
             judge_names = [
-                a.person.name if a is not None else ""
+                a.person.name if a is not None else messages.render_fragment("staffing.position_unassigned")
                 for a in (
                     game.assignment_by_role(db.ROLE_TIMEKEEPER),
                     game.assignment_by_role(db.ROLE_SECRETARY),
                 )
             ]
+            context = {
+                "recipient_name": mv.name,
+                "responsible_team_name": game.judge_team_name or "",
+                "game_date": date,
+                "timekeeper_name": judge_names[0],
+                "secretary_name": judge_names[1],
+                "timekeeper_task_label": db.ROLE_TIMEKEEPER,
+                "secretary_task_label": db.ROLE_SECRETARY,
+                "age_class": game.ak or "",
+                "game_start_time": game.time or "",
+                "age_eligibility_feedback": (
+                    messages.render_fragment(
+                        "staffing.deficiencies",
+                        age_eligibility_reasons=" ".join(item["message"] for item in staffing["deficiencies"]),
+                    ) if staffing["deficiencies"] else ""
+                ),
+            }
             if db.is_spielfest(game):
-                body = (
-                    f"Hallo {mv.name},\n\naus deiner Mannschaft "
-                    f"{game.judge_team_name or ''} übernehmen morgen ({date}) "
-                    f"{judge_names[0]} und {judge_names[1]} die Verantwortung beim "
-                    f"Spielfest {game.ak or ''}. Das Spielfest beginnt um "
-                    f"{game.time or ''}.\n\nViele Grüße Max"
-                )
-                mail_body = sms_body = body
+                key = "mv.spielfest.day_before"
             else:
-                mail_body = self.mailMV.format(
-                    mv.name, game.judge_team_name or "", date, *judge_names,
-                    game.ak, game.home, game.guest, game.time,
-                )
-                sms_body = self.textMV.format(
-                    mv.name, game.judge_team_name or "", date, *judge_names,
-                    game.ak, game.time,
-                )
-            if staffing["deficiencies"]:
-                feedback = "\n\nAltersanforderungen offen: " + " ".join(
-                    deficiency["message"] for deficiency in staffing["deficiencies"]
-                )
-                mail_body += feedback
-                sms_body += feedback
-            cnt += self._dispatch(
+                key = "mv.game.day_before"
+                context.update(home_team_name=game.home or "", away_team_name=game.guest or "")
+            cnt += self._dispatch_message(
                 self._person_receiver(mv, "MV Verantwortlich"),
-                subject=self.mailMVSubject,
-                mail_body=mail_body,
-                sms_body=sms_body,
-                game_nr=game.game_nr,
+                messages.render(key, **context), game.game_nr,
             )
 
         return cnt
@@ -242,14 +209,17 @@ class Notifier:
     def _block_time_text(self, block: db.DayBlock) -> str:
         calculated = db.calculated_block_time(block)
         if calculated is None:
-            return "noch offen"
+            return messages.render_fragment("block.time_unset")
         text = calculated.strftime("%H:%M")
         try:
             home_date = datetime.strptime(block.date, "%d.%m.%Y").date()
         except ValueError:
             home_date = None
         if home_date is not None and calculated.date() != home_date:
-            text += f" am {calculated.strftime('%d.%m.%Y')}"
+            text = messages.render_fragment(
+                "block.time_cross_date", block_meeting_time=text,
+                block_meeting_date=calculated.strftime("%d.%m.%Y"),
+            )
         return text
 
     def _blocks_for_date(self, date: str) -> list[db.DayBlock]:
@@ -258,7 +228,7 @@ class Notifier:
     @staticmethod
     def _block_reminder_task(block: db.DayBlock) -> str:
         if block.phase == db.BLOCK_CAKE_DELIVERY:
-            return f"{block.label} (ein Kuchen)"
+            return messages.render_fragment("task.cake", task_label=block.label)
         return block.label
 
     def notify_blocks_day_before(self, date: str) -> int:
@@ -269,17 +239,11 @@ class Notifier:
             for assignment in sorted(block.assignments, key=lambda item: item.slot):
                 task = self._block_reminder_task(block)
                 receiver = self._person_receiver(assignment.person, task)
-                count += self._dispatch(
-                    receiver,
-                    subject=f"Benachrichtigung Dienst {task}",
-                    mail_body=self.mailBlockTask.format(
-                        receiver["name"], date, task, time_text
-                    ),
-                    sms_body=self.textBlockTask.format(
-                        receiver["name"], date, task, time_text
-                    ),
-                    game_nr=f"block:{block.id}",
+                message = messages.render(
+                    "block.day_before", recipient_name=receiver["name"],
+                    block_date=date, task_label=task, block_meeting_time=time_text,
                 )
+                count += self._dispatch_message(receiver, message, f"block:{block.id}")
         return count
 
     # ---------------------------------------------------------------------------
@@ -301,21 +265,17 @@ class Notifier:
         for assignment in assignments:
             partner_names = ", ".join(
                 other.person.name for other in assignments if other.id != assignment.id
-            ) or "niemandem"
+            ) or messages.render_fragment("preparation.partner_none")
             task = block.label
             receiver = self._person_receiver(assignment.person, task)
-            count += self._dispatch(
-                receiver,
-                subject=f"Vorbereitung Dienst {task}",
-                mail_body=self.mailPreparationTask.format(
-                    receiver["name"], date, task, partner_names, time_text
-                ),
-                sms_body=self.textPreparationTask.format(
-                    receiver["name"], date, task, partner_names, time_text
-                ),
-                game_nr=f"block:{block.id}",
-                mail_id=self.mail_saleID,
-                mail_password=self.mail_salePassword,
+            message = messages.render(
+                "block.preparation.weekly", recipient_name=receiver["name"],
+                block_date=date, task_label=task, partner_names=partner_names,
+                block_meeting_time=time_text,
+            )
+            count += self._dispatch_message(
+                receiver, message, f"block:{block.id}",
+                mail_id=self.mail_saleID, mail_password=self.mail_salePassword,
             )
         return count
 
@@ -336,17 +296,11 @@ class Notifier:
             for assignment in sorted(block.assignments, key=lambda item: item.slot):
                 task = self._block_reminder_task(block)
                 receiver = self._person_receiver(assignment.person, task)
-                count += self._dispatch(
-                    receiver,
-                    subject=f"Benachrichtigung Dienst {task}",
-                    mail_body=self.mailBlockPreTask.format(
-                        receiver["name"], date, task, time_text
-                    ),
-                    sms_body=self.textBlockPreTask.format(
-                        receiver["name"], date, task, time_text
-                    ),
-                    game_nr=f"block:{block.id}",
+                message = messages.render(
+                    "block.weekly", recipient_name=receiver["name"],
+                    block_date=date, task_label=task, block_meeting_time=time_text,
                 )
+                count += self._dispatch_message(receiver, message, f"block:{block.id}")
         return count
 
     # ---------------------------------------------------------------------------
@@ -360,7 +314,7 @@ class Notifier:
 
         for game in games:
             cnt += self._notify_game_helpers(
-                game, date, self.mailPreTask, self.textPreTask,
+                game, date, "game.weekly",
                 list(db.GAME_DAY_ROLES),
             )
 
@@ -374,32 +328,30 @@ class Notifier:
                 yield role, assignment
 
     def _notify_game_helpers(
-        self, game: db.Game, date: str, mail_text: str, sms_text: str,
+        self, game: db.Game, date: str, reminder_key: str,
         roles: list[str] | None = None,
     ) -> int:
-        """Send task notifications to all helpers of a single game."""
+        """Send task reminders using explicit day-before or weekly variants."""
+        spielfest_keys = {
+            "game.day_before": "spielfest.day_before",
+            "game.weekly": "spielfest.weekly",
+        }
+        if reminder_key not in spielfest_keys:
+            raise messages.MessageRenderError("Unknown game reminder key")
         cnt = 0
         for role, assignment in self._game_helper_assignments(game, roles):
             receiver = self._person_receiver(assignment.person, role)
+            context = {
+                "recipient_name": receiver["name"], "game_date": date,
+                "task_label": role, "age_class": game.ak or "",
+                "game_start_time": game.time or "",
+            }
             if db.is_spielfest(game):
-                timing = "morgen" if mail_text == self.mailTask else "nächste Woche"
-                mail_body = sms_body = self._spielfest_task_text(
-                    receiver["name"], date, role, game, timing
-                )
+                key = spielfest_keys[reminder_key]
             else:
-                mail_body = mail_text.format(
-                    receiver["name"], date, role, game.ak, game.home, game.guest, game.time
-                )
-                sms_body = sms_text.format(
-                    receiver["name"], date, role, game.ak, game.time
-                )
-            cnt += self._dispatch(
-                receiver,
-                subject=f"Benachrichtigung Dienst {role}",
-                mail_body=mail_body,
-                sms_body=sms_body,
-                game_nr=game.game_nr,
-            )
+                key = reminder_key
+                context.update(home_team_name=game.home or "", away_team_name=game.guest or "")
+            cnt += self._dispatch_message(receiver, messages.render(key, **context), game.game_nr)
         return cnt
 
     # ---------------------------------------------------------------------------
@@ -420,29 +372,18 @@ class Notifier:
             )
             for role, assignment in self._game_helper_assignments(game):
                 receiver = self._person_receiver(assignment.person, role)
+                context = {
+                    "recipient_name": receiver["name"], "task_label": role,
+                    "age_class": game.ak or "", "old_game_date": shift.old_date or "",
+                    "old_game_start_time": shift.old_time or "", "new_game_date": shift.new_date or "",
+                    "new_game_start_time": shift.new_time or "",
+                }
                 if db.is_spielfest(game):
-                    mail_body = sms_body = (
-                        f"Hallo {receiver['name']},\n\ndein Dienst {role} beim "
-                        f"Spielfest {game.ak or ''} wurde verschoben: nicht mehr am "
-                        f"{shift.old_date} um {shift.old_time}, sondern am "
-                        f"{shift.new_date} um {shift.new_time}.\n\nViele Grüße Max"
-                    )
+                    key = "spielfest.shifted"
                 else:
-                    mail_body = self.mailShifted.format(
-                        receiver["name"], role, game.ak, game.home, game.guest,
-                        shift.old_date, shift.old_time, shift.new_date, shift.new_time,
-                    )
-                    sms_body = self.textShifted.format(
-                        receiver["name"], role,
-                        shift.old_date, shift.old_time, shift.new_date, shift.new_time,
-                    )
-                cnt += self._dispatch(
-                    receiver,
-                    subject=f"Benachrichtigung Verschiebung Dienst {role}",
-                    mail_body=mail_body,
-                    sms_body=sms_body,
-                    game_nr=game.game_nr,
-                )
+                    key = "game.shifted"
+                    context.update(home_team_name=game.home or "", away_team_name=game.guest or "")
+                cnt += self._dispatch_message(receiver, messages.render(key, **context), game.game_nr)
         return cnt
 
     # ---------------------------------------------------------------------------
@@ -466,7 +407,7 @@ class Notifier:
 
     def _notify_missing_referee(self, game: db.Game, date: str, time: str) -> int:
         cnt = 0
-        targets = list(self.mailRefCoordTargets)
+        targets = list(self._referee_targets)
         mv = game.team.mv_person if game.team is not None else None
         if mv is not None and mv.email:
             targets.append({"Name": mv.name, "Address": mv.email})
@@ -480,14 +421,11 @@ class Notifier:
                 "email": address if "@" in address else None,
                 "phone": address if "+" in address else None,
             }
-            text = self.mailRefCoord.format(target["Name"], game.ak, date, time, all_names)
-            cnt += self._dispatch(
-                receiver,
-                subject=self.mailRefCoordSubject,
-                mail_body=text,
-                sms_body=text,
-                game_nr=game.game_nr,
+            message = messages.render(
+                "referee.missing", recipient_name=target["Name"], age_class=game.ak or "",
+                game_date=date or "", game_start_time=time or "", notified_person_names=all_names,
             )
+            cnt += self._dispatch_message(receiver, message, game.game_nr)
         return cnt
 
     # ---------------------------------------------------------------------------
@@ -501,11 +439,12 @@ class Notifier:
         logging.warning(
             "Spielnummer not contained in home schedule, please correct manually!"
         )
+        message = messages.render("game.new")
         msg = EmailMessage()
         msg["From"] = formataddr((self.mail_name, self.mail_ID))
-        msg["Subject"] = self.mailErrorSubject
+        msg["Subject"] = message.subject
         msg["To"] = formataddr(("Admin", self.mail_error_recipient))
-        msg.set_content(self.mailError)
+        msg.set_content(message.email)
         self.send_Mail(msg, self.mail_ID, self.mail_password)
         return 1
 
@@ -521,27 +460,38 @@ class Notifier:
 
         schedule = ""
         for game in db.get_games_on_date(self.session, date):
-            team = {"F": "Damen", "M": "Herren"}.get(game.ak, game.ak)
+            team = {
+                "F": messages.render_fragment("newspaper.women"),
+                "M": messages.render_fragment("newspaper.men"),
+            }.get(game.ak, game.ak)
             time_str = (game.time or "").strip(" v").strip(" t")
 
             if team == "MI" and not tournament_mi:
-                schedule += f"Ab {time_str} Spielfest der Minis\n"
+                schedule += messages.render_fragment("newspaper.minis_row", game_start_time=time_str)
                 tournament_mi = True
                 cnt += 1
             elif team == "GE" and not tournament_ge:
-                schedule += f"Ab {time_str} Turnier der gemischten E-Jugend\n"
+                schedule += messages.render_fragment("newspaper.e_youth_row", game_start_time=time_str)
                 tournament_ge = True
                 cnt += 1
             elif team not in ("GE", "MI"):
-                schedule += f"{time_str} {team} {game.home} - {game.guest}\n"
+                schedule += messages.render_fragment(
+                    "newspaper.game_row", game_start_time=time_str,
+                    age_class_display_label=team or "", home_team_name=game.home or "",
+                    away_team_name=game.guest or "",
+                )
                 cnt += 1
 
         logging.info("notification operation=article outcome=started")
         msg = EmailMessage()
         msg["From"] = formataddr((self.mail_name, self.mail_ID))
         msg["To"] = self.mailAddrNewspaper
-        msg["Subject"] = self.mailNewspaperSubject
-        msg.set_content(self.mailNewspaper.format(article_date, day, date, schedule))
+        message = messages.render(
+            "newspaper.article", article_date=article_date, game_weekday=day,
+            game_date=date, schedule_text=schedule,
+        )
+        msg["Subject"] = message.subject
+        msg.set_content(message.email)
         self.send_Mail(msg, self.mail_ID, self.mail_password)
 
         logging.info(f"Newspaper article for {cnt} games at {date} sent")

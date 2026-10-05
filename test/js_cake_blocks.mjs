@@ -32,20 +32,61 @@ class Element {
     if (this.tag === "select") this.children.forEach((option) => { option.selected = option.value === value; });
   }
   addEventListener(name, callback) { this.listeners[name] = callback; }
+  get parentElement() { return this.parent; }
+  get tagName() { return this.tag.toUpperCase(); }
+  get isConnected() { return this === document.body || Boolean(this.parent?.isConnected); }
+  getBoundingClientRect() {
+    return { top: 100, bottom: 120, left: 100, right: 120,
+      width: this.tag === "p" ? 300 : 20, height: this.tag === "p" ? 120 : 20 };
+  }
+  contains(element) { return this === element || this.children.some((child) => child.contains(element)); }
+  showPopover() { this.popoverOpen = true; }
+  hidePopover() { this.popoverOpen = false; }
+  focus() {
+    document.activeElement?.listeners.blur?.();
+    document.activeElement = this;
+    this.listeners.focus?.();
+  }
+  blur() {
+    if (document.activeElement !== this) return;
+    document.activeElement = null;
+    this.listeners.blur?.();
+  }
   setAttribute(name, value) { this.attrs[name] = value; }
+  getAttribute(name) { return this.attrs[name] ?? null; }
   hasAttribute(name) { return name in this.attrs; }
   removeAttribute(name) { delete this.attrs[name]; if (name === "selected") this.selected = false; }
   appendChild(child) {
-    if (child.tag === "fragment") child.children.forEach((item) => this.appendChild(item));
-    else { child.parent = this; this.children.push(child); }
+    if (child.tag === "fragment") [...child.children].forEach((item) => this.appendChild(item));
+    else {
+      if (child.parent) child.remove();
+      child.parent = this;
+      this.children.push(child);
+    }
   }
-  replaceChildren() { this.children = []; }
-  remove() { this.parent.children = this.parent.children.filter((child) => child !== this); }
+  replaceChildren(...children) {
+    this.children.forEach((child) => { child.parent = null; });
+    this.children = [];
+    children.forEach((child) => this.appendChild(child));
+  }
+  remove() {
+    if (this.parent) this.parent.children = this.parent.children.filter((child) => child !== this);
+    this.parent = null;
+  }
   insertBefore(child, before) {
+    if (child === before) return;
+    if (child.parent) child.remove();
     child.parent = this;
     this.children.splice(before ? this.children.indexOf(before) : this.children.length, 0, child);
   }
-  closest() { return this.tag === "form" ? card : this.parent; }
+  closest(selector) {
+    let current = this;
+    while (current) {
+      if (current.tag === selector) return current;
+      current = current.parent;
+    }
+    return null;
+  }
   cloneNode() {
     const child = new Element(this.tag);
     child.value = this.value;
@@ -56,7 +97,14 @@ class Element {
   querySelector(selector) {
     const expected = selector.match(/option\[value="([^"]+)"\]/)?.[1];
     if (expected) return this.children.find((child) => child.value === expected) || null;
-    return this.elements?.[selector] || null;
+    if (this.elements?.[selector]) return this.elements[selector];
+    const attribute = selector.match(/^\[([^\]]+)\]$/)?.[1];
+    for (const child of this.children) {
+      if (attribute ? child.hasAttribute(attribute) : child.tag === selector) return child;
+      const descendant = child.querySelector(selector);
+      if (descendant) return descendant;
+    }
+    return null;
   }
   querySelectorAll() { return []; }
 }
@@ -84,6 +132,8 @@ candidateStatus.elements = { "[data-candidate-message]": candidateMessage,
   "[data-candidate-retry]": retry, "[data-candidate-login]": login };
 const card = new Element("details");
 card.open = false;
+card.appendChild(form);
+card.appendChild(positions);
 card.dataset = { blockCard: "1", candidateUrl: "/api/blocks/1/candidates" };
 card.elements = {
   "[data-cake-time]": new Element(), "[data-cake-quantity]": new Element(),
@@ -99,6 +149,10 @@ card.querySelector = (selector) => ["select[data-role], select[data-block-assign
   ? card.querySelectorAll(selector)[0] || null : originalQuery(selector);
 const toast = new Element();
 globalThis.document = {
+  activeElement: null,
+  listeners: {},
+  documentElement: { clientWidth: 360, clientHeight: 640 },
+  addEventListener(name, callback) { this.listeners[name] = callback; },
   querySelectorAll: (selector) => selector === "details[data-candidate-url]" ? [card]
     : selector === "[data-cake-config]" ? [form] : [],
   querySelector: () => ({ content: "synthetic-csrf" }),
@@ -106,15 +160,20 @@ globalThis.document = {
   createElement: (tag) => new Element(tag),
   createDocumentFragment: () => new Element("fragment"),
 };
-globalThis.window = { location: { reload() {} } };
+document.body = new Element("body");
+document.body.appendChild(card);
+globalThis.window = { location: { reload() {} }, innerWidth: 360, innerHeight: 640,
+  addEventListener() {} };
 globalThis.setTimeout = () => 0;
 globalThis.clearTimeout = () => {};
 await import("../static/app.js");
 const person = { id: 7, name: "Cake Helper", team_label: "Supporter", sort_group: 0,
   sort_name: "cake helper", hint: "" };
+const cakeDescription = 'Zur angezeigten Zeit einen Kuchen bringen. <script>plain text</script> & Kuchen';
 function savedBlock(count, occupant = null) {
   return {
     id: 1, phase: "cake_delivery", configured: count !== null,
+    description: cakeDescription,
     cake_quantity: count, delivery_time: count === null ? null : "10:00",
     progress: { filled: occupant ? 1 : 0, total: count || 0 },
     slots: Array.from({ length: count || 0 }, (_, slot) => ({
@@ -124,6 +183,27 @@ function savedBlock(count, occupant = null) {
       person_team_label: slot === 0 && occupant ? person.team_label : "",
     })),
   };
+}
+function checkTaskHelpForSlots(count) {
+  const descriptionIds = new Set();
+  check(positions.children.length === count, "saved cake help lost assignment positions");
+  for (const [slot, field] of positions.children.entries()) {
+    const label = field.querySelector("label");
+    const select = field.children.find((child) => child.tag === "select");
+    const help = field.querySelector("[data-task-help]");
+    const description = field.querySelector("[data-task-description]");
+    check(label.textContent === `Kuchenlieferung ${slot + 1}` && label.getAttribute("for") === select.id,
+      "dynamic cake task label lost its select association");
+    check(help.type === "button" && help.getAttribute("aria-label") === `Informationen zu ${label.textContent}`,
+      "dynamic cake help is not a task-named non-submit control");
+    check(help.getAttribute("aria-controls") === description.id
+      && help.getAttribute("aria-describedby") === description.id && description.hidden,
+      "dynamic cake help lost its description association or starts expanded");
+    check(description.textContent === cakeDescription && !description.children.length,
+      "dynamic cake descriptions diverged or interpreted description text as HTML");
+    check(!descriptionIds.has(description.id), "dynamic cake controls reuse description identifiers");
+    descriptionIds.add(description.id);
+  }
 }
 let current = savedBlock(null);
 const requests = [];
@@ -157,6 +237,7 @@ time.value = "10:00";
 quantity.value = "4";
 await form.listeners.submit({ preventDefault() {} });
 check(!card.open && positions.children.length === 4, "saved setup expanded card or lost positions");
+checkTaskHelpForSlots(4);
 check(requests.join() === form.dataset.settingsUrl, "collapsed setup loaded candidates");
 check(coverage.dataset.progressTotal === "4" && coverage.dataset.progressFilled === "0", "saved quantity did not refresh progress");
 check(card.querySelectorAll("").every((select) => select.disabled), "new positions enabled without candidates");
@@ -164,6 +245,41 @@ card.open = true;
 await globalThis.nuLigaCandidateTools.loadCandidateCard(card, true);
 let select = card.querySelectorAll("")[0];
 check(!select.disabled && select.options.some((option) => option.value === "7"), "expanded cake did not load candidates");
+
+// A candidate response may arrive while a helper reads the information control.
+// Keep the same field/button when saved slot metadata has not changed, so focus
+// and persistent help are not destroyed by the asynchronous roster refresh.
+const focusedField = positions.children[0];
+// Server-rendered fields have no private reconciliation signature yet.
+delete focusedField._cakeSlotSignature;
+const focusedHelp = focusedField.querySelector("[data-task-help]");
+const focusedDescription = focusedField.querySelector("[data-task-description]");
+focusedHelp.focus();
+focusedHelp.listeners.click({ preventDefault() {}, stopPropagation() {} });
+const ordinaryCandidateFetch = globalThis.fetch;
+let finishHelpCandidates;
+globalThis.fetch = async (url) => {
+  requests.push(url);
+  return { ok: true, status: 200, json: () => new Promise((resolve) => { finishHelpCandidates = resolve; }) };
+};
+const pendingHelpCandidates = globalThis.nuLigaCandidateTools.loadCandidateCard(card, true);
+await Promise.resolve();
+check(document.activeElement === focusedHelp && !focusedDescription.hidden,
+  "starting a candidate read removed focused cake guidance");
+finishHelpCandidates({ block: current, people: [person], slots: Object.fromEntries(current.slots.map((slot) => [
+  String(slot.slot), { occupant_id: slot.person_id, candidate_ids: [7] },
+])) });
+await pendingHelpCandidates;
+check(positions.children[0] === focusedField
+  && positions.children[0].querySelector("[data-task-help]") === focusedHelp,
+  "unchanged candidate response replaced the focused cake information control");
+check(document.activeElement === focusedHelp && !focusedDescription.hidden
+  && focusedHelp.getAttribute("aria-expanded") === "true",
+  "candidate response lost keyboard position or persistent task guidance");
+focusedField.listeners.keydown({ key: "Escape", preventDefault() {}, stopPropagation() {} });
+focusedHelp.blur();
+globalThis.fetch = ordinaryCandidateFetch;
+select = card.querySelectorAll("")[0];
 select.value = "7";
 await select.listeners.change();
 check(coverage.dataset.progressFilled === "1" && positions.children[0].dataset.occupantId === "7", "cake claim did not show saved progress and occupant");
@@ -179,6 +295,7 @@ current = savedBlock(5, 7);
 configurationReply = { status: 409, json: async () => ({ ok: false, error: "Veraltet", block: current }) };
 await form.listeners.submit({ preventDefault() {} });
 check(quantity.value === "5" && positions.children.length === 5 && coverage.dataset.progressFilled === "1", "stale config did not show current saved values");
+checkTaskHelpForSlots(5);
 check(card.open, "saved configuration changed expansion state");
 
 // Candidate reads and assignment responses must preserve an unsaved draft and
@@ -290,7 +407,23 @@ candidateFailure = true;
 await globalThis.nuLigaCandidateTools.loadCandidateCard(card, true);
 check(card.querySelectorAll("").every((control) => control.disabled), "candidate failure enabled incomplete cake controls");
 check(!retry.hidden, "cake candidate failure omitted retry");
+const removedHelp = positions.children[3].querySelector("[data-task-help]");
+const removedDescription = positions.children[3].querySelector("[data-task-description]");
+removedHelp.listeners.click({ preventDefault() {}, stopPropagation() {}, pointerType: "touch" });
+check(!removedDescription.hidden && removedDescription.popoverOpen,
+  "dynamic cake help did not open as a floating popover");
+card.open = false;
+globalThis.nuLigaTaskHelpTools.refreshTaskHelp();
+check(removedDescription.hidden && !removedDescription.popoverOpen
+  && removedHelp.getAttribute("aria-expanded") === "false",
+  "closing a cake card left task guidance visible over other page content");
+card.open = true;
+removedHelp.listeners.click({ preventDefault() {}, stopPropagation() {}, pointerType: "touch" });
 globalThis.nuLigaCakeTools.renderCakeBlock(card, savedBlock(0));
+globalThis.nuLigaTaskHelpTools.refreshTaskHelp();
+check(removedDescription.hidden && !removedDescription.popoverOpen
+  && removedHelp.getAttribute("aria-expanded") === "false",
+  "removing a configured cake position left its floating task guidance visible");
 check(positions.children.length === 0 && coverage.hidden, "zero cakes left positions or a visible percentage");
 check(card.elements["[data-cake-status]"].textContent === "Keine Kuchen angefragt", "zero cake status confused with setup");
 check(!coverage.elements["[data-progress-percent]"].textContent.includes("NaN"), "zero cake progress divided by zero");

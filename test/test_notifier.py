@@ -16,9 +16,13 @@
 # Or via pytest:   pytest test/test_notifier.py
 # ---------------------------------------------------------------
 
+from dataclasses import replace
+from unittest.mock import patch
+
 import helpers as h
 import db
 import notifier
+import messages
 import scraper
 
 GAME_DATE = "05.09.2026"
@@ -248,7 +252,7 @@ def test_sparse_second_cleaning_position_and_repeated_role_input_notify_saved_pe
     session.commit()
 
     assert sender._notify_game_helpers(
-        game, GAME_DATE, sender.mailTask, sender.textTask,
+        game, GAME_DATE, "game.day_before",
         [db.ROLE_CLEANING, db.ROLE_CLEANING],
     ) == 1, "role requests select actual saved assignments once, including a sparse second position"
     assert len(recorder.mails) == 1 and "Only Second" in recorder.mails[0][0]
@@ -361,6 +365,191 @@ def test_spielfest_notifications_describe_the_aggregate_event():
     assert "Spielfest SPF Mini" in recorder.all_text()
     assert "gegen Team" not in recorder.all_text()
     assert n.notify_referees_for_date(GAME_DATE) == 0
+
+
+def test_catalog_copy_controls_sends_and_legacy_texts_cannot_override_it():
+    session, game, _, recorder = _setup()
+    config = h.load_club_config()
+    config["texts"] = {
+        "mailTask": "PRIVATE_LEGACY_OVERRIDE",
+        "textTask": "PRIVATE_LEGACY_SMS_OVERRIDE",
+        "send_Mail": "attempted_attribute_override",
+    }
+    sender = notifier.Notifier(config, session, h.SEASON)
+    sender.send_Mail, sender.send_SMS = recorder.mail, recorder.sms
+    original = messages.CATALOG["game.day_before"]
+    with patch.dict(messages.CATALOG, {"game.day_before": replace(
+        original, email=original.email + " EMAIL_CATALOG_MARKER",
+        sms=original.sms + " SMS_CATALOG_MARKER",
+    )}):
+        assert sender.notify_game_day(GAME_DATE) == 5
+    assert all("EMAIL_CATALOG_MARKER" in body for _, _, body in recorder.mails)
+    assert all("SMS_CATALOG_MARKER" in body for _, body in recorder.smss)
+    assert "PRIVATE_LEGACY" not in recorder.all_text()
+    assert callable(sender.send_Mail), "legacy text fields cannot overwrite notifier methods"
+
+
+def test_missing_contact_skips_exactly_one_helper_and_mail_still_wins_with_both():
+    session, game, sender, recorder = _setup()
+    alice = session.query(db.Person).filter_by(name="Alice").one()
+    alice.phone = "+491701234567"
+    ed = session.query(db.Person).filter_by(name="Ed").one()
+    ed.email = ed.phone = None
+    session.commit()
+    assert sender.notify_game_day(GAME_DATE) == 4, "missing contacts must count as skipped"
+    assert sum("Alice" in recipient for recipient, _, _ in recorder.mails) == 1
+    assert all(phone != alice.phone for phone, _ in recorder.smss), "ordinary reminders must prefer email"
+    assert "Hallo Ed" not in recorder.all_text()
+
+
+def test_referee_recorder_receives_correct_named_facts_in_both_channels():
+    session, game, sender, recorder = _setup()
+    sender._referee_targets = [
+        {"Name": "Coordinator Mail", "Address": "referee@example.test"},
+        {"Name": "Coordinator SMS", "Address": "+491700009999"},
+    ]
+    game.ak = "Distinct Age Class"
+    event = db.RefereeEvent(game_id=game.id, game_nr=game.game_nr,
+                            date="31.12.2042", time="23:17")
+    assert sender.notify_referee_alert(event) == 2
+    for body in [recorder.mails[0][2], recorder.smss[0][1]]:
+        assert "Heimspiel der Distinct Age Class am 31.12.2042 um 23:17" in body
+        assert "Coordinator Mail, Coordinator SMS" in body
+
+
+def test_nullable_legacy_event_times_remain_notifiable():
+    session, game, sender, recorder = _setup()
+    game.time = None
+    game.score = "§77"
+    session.commit()
+    assert sender.notify_referees_for_date(GAME_DATE) == 2, "missing saved time must not abort referee alerts"
+    shifts = [db.ShiftEvent(game_id=game.id, game_nr=game.game_nr,
+                            old_date=None, old_time=None,
+                            new_date="06.09.2026", new_time="18:00")]
+    assert sender.notify_shifts(shifts) == 5, "rescheduling from an unknown old time remains supported"
+
+
+def test_preparation_uses_existing_sender_partner_names_and_meeting_time():
+    session, game, sender, recorder = _setup()
+    sent_credentials = []
+    def record_mail(message, sender_id, password):
+        sent_credentials.append((sender_id, password))
+        recorder.mail(message, sender_id, password)
+    sender.send_Mail = record_mail
+    assert sender.notify_service_early(GAME_DATE) == 2
+    assert sent_credentials == [(sender.mail_saleID, sender.mail_salePassword)]
+    email_body = recorder.mails[0][2]
+    assert "Dora" in email_body and "Treffpunkt: 13:30" in email_body
+    assert "Caro" in recorder.smss[0][1] and "Treffpunkt: 13:30" in recorder.smss[0][1]
+
+
+def test_spielfest_selects_day_before_weekly_mv_and_shift_keys_explicitly():
+    session, game, sender, recorder = _setup()
+    game.ak = "SPF Mini"
+    game.home = game.guest = ""
+    security = game.assignment_by_role(db.ROLE_SECURITY)
+    db.release_slot(session, game, db.ROLE_SECURITY, 0, security.person_id)
+    session.commit()
+    assert sender.notify_game_day(GAME_DATE) == 5, "four helpers and incomplete-staffing MV need a reminder"
+    assert "morgen" in recorder.all_text() and "Spielfest SPF Mini" in recorder.all_text()
+    assert "gegen" not in recorder.all_text()
+    recorder = TextRecorder()
+    sender.send_Mail, sender.send_SMS = recorder.mail, recorder.sms
+    assert sender.notify_pre(GAME_DATE) == 4
+    assert "nächste Woche" in recorder.all_text() and "morgen" not in recorder.all_text()
+    shifts = [db.ShiftEvent(game_id=game.id, game_nr=game.game_nr,
+                            old_date=GAME_DATE, old_time="15:00",
+                            new_date="06.09.2026", new_time="18:00")]
+    assert sender.notify_shifts(shifts) == 4
+    assert "Spielfest SPF Mini wurde verschoben" in recorder.all_text()
+    assert "gegen" not in recorder.all_text()
+
+
+def test_mv_zero_and_one_timing_occupant_have_readable_labels_and_vacancy_status():
+    for age_class in ("BL mD", "SPF Mini"):
+        for release_roles in ((db.ROLE_TIMEKEEPER,), (db.ROLE_TIMEKEEPER, db.ROLE_SECRETARY)):
+            session, game, sender, recorder = _setup()
+            game.ak = age_class
+            if db.is_spielfest(game):
+                game.home = game.guest = ""
+            for role in release_roles:
+                assignment = game.assignment_by_role(role)
+                db.release_slot(session, game, role, 0, assignment.person_id)
+            session.commit()
+            assert sender.notify_game_day(GAME_DATE) == 6 - len(release_roles)
+            mv_body = next(body for phone, body in recorder.smss if phone == "+491700000002")
+            assert "Zeitnehmer: noch offen" in mv_body
+            secretary_status = "noch offen" if db.ROLE_SECRETARY in release_roles else "Bob"
+            assert f"Sekretär: {secretary_status}" in mv_body
+            assert "BL mD" in mv_body and GAME_DATE in mv_body and "15:00" in mv_body
+            assert "Bitte prüfe die offenen Dienste" in mv_body
+            assert " und  die Verantwortung" not in mv_body
+            if db.is_spielfest(game):
+                assert "Spielfest SPF Mini" in mv_body and "gegen" not in mv_body
+
+
+def test_mv_full_but_age_deficient_staffing_keeps_named_occupants_and_follow_up():
+    session, game, sender, recorder = _setup()
+    alice = session.query(db.Person).filter_by(name="Alice").one()
+    alice.birth_date = None  # Synthetic retained legacy data; no new claim is made.
+    session.commit()
+    assert not db.missing_slots(game), "this scenario has no physical vacancies"
+    assert sender.notify_game_day(GAME_DATE) == 6, "five helpers and age-deficiency MV follow-up expected"
+    mv_body = next(body for phone, body in recorder.smss if phone == "+491700000002")
+    assert "Zeitnehmer: Alice" in mv_body and "Sekretär: Bob" in mv_body
+    assert "Altersanforderungen offen" in mv_body and "noch offen" not in mv_body.split("Altersanforderungen")[0]
+    assert "birth_date" not in mv_body and "1990-01-01" not in mv_body
+
+
+def test_block_time_fallback_and_cross_date_time_come_from_catalog_fragments():
+    session, game, sender, recorder = _setup()
+    preparation = next(block for block in sender._blocks_for_date(GAME_DATE)
+                       if block.phase == db.BLOCK_PREPARATION)
+    dora = session.query(db.Person).filter_by(name="Dora").one()
+    db.release_block_slot(session, preparation, 1, dora.id)
+    game.time = "00:30"
+    session.commit()
+    assert sender.notify_service_early(GAME_DATE) == 1
+    assert "niemandem" in recorder.all_text() and "23:00 am 04.09.2026" in recorder.all_text()
+    recorder = TextRecorder()
+    sender.send_Mail, sender.send_SMS = recorder.mail, recorder.sms
+    game.time = None
+    session.commit()
+    assert sender.notify_service_early(GAME_DATE) == 1
+    assert "Treffpunkt: noch offen" in recorder.all_text(), "unknown time must stay explicit"
+
+
+def test_new_game_alert_preserves_its_trigger_and_dedicated_admin_recipient():
+    session, game, sender, recorder = _setup()
+    assert sender.notify_new_games([]) == 0 and not recorder.mails
+    assert sender.notify_new_games([db.GameEvent(game_id=game.id, game_nr=game.game_nr, ak=game.ak)]) == 1
+    assert len(recorder.mails) == 1 and "admin@test.invalid" in recorder.mails[0][0]
+    message = messages.render("game.new")
+    assert recorder.mails[0][1] == message.subject and message.email in recorder.mails[0][2]
+    assert not recorder.smss
+
+
+def test_retained_newspaper_callable_uses_catalog_article_and_schedule_fragments():
+    session, game, sender, recorder = _setup()
+    assert sender.send_article(GAME_DATE, "Samstag", "04.09.2026") == 1
+    assert len(recorder.mails) == 1 and "paper@test.invalid" in recorder.mails[0][0]
+    body = recorder.mails[0][2]
+    assert "am 04.09.2026" in body and "Am Samstag, den 05.09.2026" in body
+    assert "15:00 BL mD TuS Raubling - SBC Traunstein" in body
+    assert not recorder.smss, "newspaper path remains email-only"
+
+
+def test_invalid_catalog_subject_is_refused_before_a_helper_send():
+    session, game, sender, recorder = _setup()
+    original = messages.CATALOG["game.day_before"]
+    with patch.dict(messages.CATALOG, {"game.day_before": replace(original, subject="Invalid\nHeader")}):
+        try:
+            sender.notify_game_day(GAME_DATE)
+        except messages.MessageRenderError:
+            pass
+        else:
+            raise AssertionError("an invalid template produced a notification")
+    assert not recorder.mails and not recorder.smss, "render failure must precede provider dispatch"
 
 
 if __name__ == "__main__":

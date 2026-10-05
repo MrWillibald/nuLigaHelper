@@ -22,6 +22,7 @@ import production as production_data
 import auth_abuse
 import contact_validation as contacts
 import db
+import messages
 import notifier
 from flask import (
     Flask,
@@ -808,34 +809,37 @@ def create_app() -> Flask:
         return get_session().get(db.Person, person_id)
 
     def _safe_account_message(
-        person: db.Person, subject: str, mail_body: str, sms_body: str
+        person: db.Person, message_key: str, **context
     ) -> bool:
         try:
+            rendered = messages.render(message_key, **context)
             return bool(
                 _account_notifier().send_account_message(
-                    person, subject, mail_body, sms_body
+                    person, rendered.subject, rendered.email, rendered.sms
                 )
             )
         except Exception as exc:
             auth_abuse.LOGGER.error(
-                "auth_delivery_failed action=account_message channel=preferred reason=%s",
-                type(exc).__name__,
+                "auth_delivery_failed action=account_message channel=preferred message_key=%s reason=%s",
+                message_key, type(exc).__name__,
             )
             return False
 
     def _safe_account_message_via(
-        person: db.Person, channel: str, subject: str, body: str
+        person: db.Person, channel: str, message_key: str, **context
     ) -> bool:
         try:
+            rendered = messages.render(message_key, **context)
+            body = rendered.email if channel == "email" else rendered.sms
             return bool(
                 _account_notifier().send_account_message_via(
-                    person, channel, subject, body
+                    person, channel, rendered.subject, body
                 )
             )
         except Exception as exc:
             auth_abuse.LOGGER.error(
-                "auth_delivery_failed action=account_message channel=%s reason=%s",
-                channel, type(exc).__name__,
+                "auth_delivery_failed action=account_message channel=%s message_key=%s reason=%s",
+                channel, message_key, type(exc).__name__,
             )
             return False
 
@@ -848,14 +852,11 @@ def create_app() -> Flask:
         signed_challenge, code = _issue_challenge(
             person, purpose, channel, destination
         )
-        action = "Registrierung" if purpose == "verify" else "Anmeldung"
-        body = (
-            f"Hallo {person.name},\n\n"
-            f"{code} ist dein Code für die {action} bei nuLigaHelper des TuS Raubling Handball. "
-            "Er gilt 15 Minuten."
+        message_key = (
+            "auth.registration_code" if purpose == "verify" else "auth.login_code"
         )
         _safe_account_message_via(
-            person, channel, f"{action} nuLigaHelper", body
+            person, channel, message_key, recipient_name=person.name, auth_code=code
         )
         return signed_challenge
 
@@ -1135,11 +1136,7 @@ def create_app() -> Flask:
                 _safe_account_message_via(
                     selected_person,
                     channel,
-                    "Registrierung nuLigaHelper",
-                    (
-                        "Für diesen Kontakt besteht bereits ein Konto. "
-                        "Bitte nutze die Anmeldung."
-                    ),
+                    "auth.existing_account",
                 )
         if challenge is None:
             challenge = _dummy_challenge("verify", channel, destination)
@@ -1183,36 +1180,17 @@ def create_app() -> Flask:
         for approver in approvers:
             _safe_account_message(
                 approver,
-                "Neue Registrierung",
-                (
-                    f"Hallo {approver.name},\n\n"
-                    f"{person.name} hat den Kontakt bestätigt und wartet auf "
-                    f"Freigabe für: {team_label}.\n\n"
-                    "Bitte prüfe die Registrierung unter \"Helfer verwalten\"."
-                ),
-                (
-                    f"Hallo {approver.name}, neue Registrierung von {person.name} "
-                    f"für {team_label}. Bitte unter \"Helfer verwalten\" prüfen."
-                ),
+                "account.approval_request",
+                recipient_name=approver.name,
+                registrant_name=person.name,
+                selected_team_names=team_label,
             )
 
     def _notify_registration_approved(person: db.Person) -> None:
-        greeting = (
-            "herzlich willkommen beim nuLigaHelper des TuS Raubling Handball!"
-        )
         _safe_account_message(
             person,
-            "Registrierung freigegeben",
-            (
-                f"Hallo {person.name},\n\n{greeting}\n\n"
-                "Deine Registrierung wurde freigegeben. Du kannst dich jetzt "
-                "anmelden und offene Dienste im Heimspielplan übernehmen."
-            ),
-            (
-                f"Hallo {person.name}, {greeting} Deine Registrierung wurde "
-                "freigegeben. Melde dich an und übernimm offene Dienste im "
-                "Heimspielplan."
-            ),
+            "account.welcome",
+            recipient_name=person.name,
         )
 
     @app.route("/registrierung/status")
@@ -1441,6 +1419,7 @@ def create_app() -> Flask:
             occupant = assignment.person if assignment else None
             slots.append({
                 "label": db.block_slot_label(block, slot),
+                "description": db.TASK_DESCRIPTIONS[block.phase],
                 "slot": slot,
                 "person_id": occupant.id if occupant else None,
                 "person_name": occupant.name if occupant else "",
@@ -1449,6 +1428,7 @@ def create_app() -> Flask:
             })
         return {
             "id": block.id, "phase": block.phase, "label": block.label,
+            "description": db.TASK_DESCRIPTIONS[block.phase],
             "time": calculated.strftime("%H:%M") if calculated else "",
             "time_date": adjacent_date,
             "delivery_time": block.delivery_time,
@@ -1528,6 +1508,7 @@ def create_app() -> Flask:
                 scope, _ = game_slot_scope(game, occupant)
                 slots.append({
                     "label": label,
+                    "description": db.TASK_DESCRIPTIONS[role],
                     "role": role,
                     "slot": slot,
                     "required": (role, slot) in required,

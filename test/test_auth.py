@@ -554,7 +554,7 @@ def test_approval_welcome_is_post_commit_preferred_best_effort_and_once_only():
         assert welcome["channel"] == "email"
         assert welcome["subject"] == "Registrierung freigegeben"
         assert (
-            "herzlich willkommen beim nuLigaHelper des TuS Raubling Handball!"
+            "herzlich Willkommen beim nuLigaHelper des TuS Raubling Handball!"
             in welcome["body"]
         )
         assert "Registrierung wurde freigegeben" in welcome["body"]

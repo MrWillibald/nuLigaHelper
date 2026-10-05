@@ -18,6 +18,7 @@ import subprocess
 
 import common
 import db
+import messages
 import production as p
 
 
@@ -175,11 +176,16 @@ def send_alert(config, components, *, smtp=smtplib.SMTP_SSL):
         'certificate', 'database', 'test'} | {a + '_' + b for a in ('app', 'config', 'state', 'journal') for b in ('disk', 'inodes')}
     p.require(bool(components) and set(components) <= allowed, 'alert.components')
     email = common.load_config(config['config_file'])['club']['email']
+    rendered = messages.render(
+        'operations.alert',
+        affected_component_names=', '.join(sorted(components)),
+        occurred_at=datetime.now(timezone.utc).isoformat(),
+        runbook_reference='deploy/OPERATIONS.md (Störungen)',
+    )
     msg = EmailMessage()
     msg['From'], msg['To'] = config['alert_from'], config['alert_to']
-    msg['Subject'] = 'nuLigaHelper: Betriebsmeldung'
-    msg.set_content('Komponenten: ' + ', '.join(sorted(components)) + '\nZeit: ' +
-        datetime.now(timezone.utc).isoformat() + '\nAnleitung: deploy/OPERATIONS.md (Störungen)\n')
+    msg['Subject'] = rendered.subject
+    msg.set_content(rendered.email)
     with smtp(email['smtpserver'], timeout=15, context=ssl.create_default_context()) as server:
         server.login(email['mail_ID'], email['mail_password'])
         server.send_message(msg)

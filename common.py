@@ -8,6 +8,8 @@ import datetime
 import json
 import os
 
+from message_config import referee_targets, warn_legacy_message_settings
+
 
 PROVIDER_ENV = {
     "email": {
@@ -41,6 +43,7 @@ def load_config(filename: str | None = None) -> dict:
     with open(path, encoding="utf-8") as f:
         config = json.load(f)
     club = config["club"]
+    warn_legacy_message_settings(club)
     production_mode = os.environ.get("NULIGAHELPER_ENV") == "production"
     if production_mode and any(section in club for section in PROVIDER_ENV):
         raise ValueError("NULIGAHELPER_CONFIG")

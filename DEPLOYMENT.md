@@ -55,6 +55,16 @@ runbook. Verify service syntax and compatibility with the retained prior
 release before activation. Application releases do not automatically replace
 host files.
 
+When deploying the message-catalog transition, run the candidate release's
+`./venv/bin/python -m message_config --config /path/to/private/config.json`
+before activation. This read-only command reports legacy keys/customization
+status without private text or recipient values. Privately reconcile customized
+wording in `messages.py`, move referee recipients to
+`club.notifications.referee_targets`, and remove `club.texts`. Keep the previous
+configuration with its compatible application release for rollback. See the
+[message migration guide](README.MD#notification-wording-and-migration); this
+step uses no providers/database and creates no notification trigger.
+
 ## 2. Activate in a maintenance window
 
 Keep a second SSH session open for recovery. Verify that the host preflight and
