@@ -30,6 +30,14 @@
                {% if errors.get('name') %}aria-invalid="true"{% endif %} required>
         {{ field_error('name', errors) }}
       </div>
+      <div class="auth-field">
+        <label for="birth-date">Geburtsdatum</label>
+        <p class="auth-help" id="birth-date-help">Damit prüfen wir die Altersvoraussetzungen am Spieltag. Das Datum bleibt privat.</p>
+        <input id="birth-date" name="birth_date" type="date" max="{{ birth_date_max }}"
+               value="{{ values.birth_date }}" aria-describedby="birth-date-help{% if errors.get('birth_date') %} birth_date-error{% endif %}"
+               {% if errors.get('birth_date') %}aria-invalid="true"{% endif %} required>
+        {{ field_error('birth_date', errors) }}
+      </div>
       <fieldset class="auth-field auth-team-field" aria-describedby="team-help{% if errors.get('team_ids') %} team_ids-error{% endif %}">
         <legend>Mannschaften</legend>
         <p class="auth-help" id="team-help">Wähle alle Mannschaften, denen du angehörst.</p>
@@ -52,7 +60,7 @@
                  {% if errors.get('consent') %}aria-invalid="true"{% endif %} required>
           <span>Ich stimme der Veröffentlichung meines Namens im öffentlichen Heimspielplan zu.</span>
         </label>
-        <p class="auth-help" id="consent-help">Kontaktdaten werden dort nicht veröffentlicht.</p>
+        <p class="auth-help" id="consent-help">Kontaktdaten und Geburtsdatum werden dort nicht veröffentlicht.</p>
         {{ field_error('consent', errors) }}
       </div>
 

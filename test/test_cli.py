@@ -57,15 +57,15 @@ def test_duplicate_names_are_discovered_and_selected_by_id():
     db.init_db(engine)
     with h.Session(engine) as session:
         team = db.get_support_team(session)
-        first = db.Person(name="Same Name", teams=[team])
-        second = db.Person(name="Same Name", teams=[team])
+        first = db.Person(birth_date=h.ADULT_BIRTH_DATE, name="Same Name", teams=[team])
+        second = db.Person(birth_date=h.ADULT_BIRTH_DATE, name="Same Name", teams=[team])
         first_game = db.Game(
             season_year=h.SEASON, game_nr="1234",
-            date="30.12.2099", time="10:00", ak="GE", home="Home", guest="Team A",
+            date="30.12.2099", time="10:00", ak="BL M", home="Home", guest="Team A",
         )
         second_game = db.Game(
             season_year=h.SEASON, game_nr="1235",
-            date="31.12.2099", time="11:00", ak="GE", home="Home", guest="Team B",
+            date="31.12.2099", time="11:00", ak="BL M", home="Home", guest="Team B",
         )
         session.add_all([first, second, first_game, second_game])
         session.commit()
@@ -101,7 +101,7 @@ def test_grant_admin_changes_the_derived_account_fact():
     engine = db.make_engine(path)
     db.init_db(engine)
     with h.Session(engine) as session:
-        person = db.Person(name="Bootstrap", email="admin@example.test")
+        person = db.Person(birth_date=h.ADULT_BIRTH_DATE, name="Bootstrap", email="admin@example.test")
         session.add(person)
         session.commit()
         person_id = person.id
@@ -125,9 +125,9 @@ def test_contact_preflight_reports_issues_without_writing():
     db.init_db(engine)
     with h.Session(engine) as session:
         session.add_all([
-            db.Person(name="Changed", email=" HELPER@Example.Test "),
-            db.Person(name="Collision", email="helper@example.test"),
-            db.Person(name="Invalid", phone="not-a-number"),
+            db.Person(birth_date=h.ADULT_BIRTH_DATE, name="Changed", email=" HELPER@Example.Test "),
+            db.Person(birth_date=h.ADULT_BIRTH_DATE, name="Collision", email="helper@example.test"),
+            db.Person(birth_date=h.ADULT_BIRTH_DATE, name="Invalid", phone="not-a-number"),
         ])
         session.commit()
         before = [
@@ -155,8 +155,8 @@ def test_membership_commands_use_person_ids_replace_sets_and_clear_mv():
     with h.Session(engine) as session:
         first_team = db.Team(name="First Team")
         second_team = db.Team(name="Second Team")
-        target = db.Person(name="Duplicate", teams=[first_team])
-        untouched = db.Person(name="Duplicate", teams=[second_team])
+        target = db.Person(birth_date=h.ADULT_BIRTH_DATE, name="Duplicate", teams=[first_team])
+        untouched = db.Person(birth_date=h.ADULT_BIRTH_DATE, name="Duplicate", teams=[second_team])
         session.add_all([first_team, second_team, target, untouched])
         session.flush()
         first_team.mv_person_id = target.id

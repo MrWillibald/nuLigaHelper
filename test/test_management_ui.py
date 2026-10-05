@@ -111,6 +111,7 @@ def test_01_member_filters_only_the_visible_roster_without_contact_leaks():
     assert 'id="mv-assignment-card"' not in page
     assert client.get("/audit").status_code == 403
     assert client.post("/personen/add", data=h.csrf_data({
+        "birth_date": "1990-01-01",
         "name": "Forbidden", "team_id": IDS["own_team"],
     }, token)).status_code == 403
     assert client.post(
@@ -155,10 +156,12 @@ def test_02_mv_can_create_contactless_people_for_every_managed_team_only():
 
     for name, team_key in (("Created Own", "own_team"), ("Created Second", "second_team")):
         response = client.post("/personen/add", data=h.csrf_data({
+            "birth_date": "1990-01-01",
             "name": name, "team_id": IDS[team_key], "email": "", "phone": "",
         }, token))
         assert response.status_code == 302
     refused = client.post("/personen/add", data=h.csrf_data({
+        "birth_date": "1990-01-01",
         "name": "Forged Other", "team_id": IDS["other_team"],
     }, token))
     assert refused.status_code == 403
@@ -290,6 +293,7 @@ def test_04_admin_has_all_management_cards_and_status_filtering():
     active_roster = _roster_html(active)
     assert "Other Active" in active_roster and "Hidden Inactive" not in active_roster
     created = client.post("/personen/add", data=h.csrf_data({
+        "birth_date": "1990-01-01",
         "name": "Admin Other", "team_ids": [IDS["other_team"], IDS["support"]],
     }, token))
     assert created.status_code == 302

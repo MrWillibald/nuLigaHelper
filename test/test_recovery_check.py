@@ -70,7 +70,7 @@ def test_schema_gate_accepts_head_pauses_old_and_refuses_unknown_or_missing():
         engine.dispose()
         ready = recovery.schema_gate(database)
         assert ready['gate'] == 'ready'
-        assert ready['revision'] == '0003_game_day_task_blocks'
+        assert ready['revision'] == schema_migrations.head_revisions()[0]
         with sqlite3.connect(database) as connection:
             connection.execute("UPDATE alembic_version SET version_num='0002_multi_team_membership'")
         assert recovery.schema_gate(database)['gate'] == 'migration_required'

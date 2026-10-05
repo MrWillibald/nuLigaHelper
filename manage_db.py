@@ -6,7 +6,8 @@
 #
 # Examples:
 #   python manage_db.py init
-#   python manage_db.py add-person "Max Mustermann" --email max@example.com --phone +4917012345678
+#   python manage_db.py add-person "Max Mustermann" --birth-date 1990-01-01 --email max@example.com
+#   python manage_db.py set-birth-date 7 1990-01-01
 #   python manage_db.py list-games
 #   python manage_db.py search-person "Max"
 #   python manage_db.py list-games --number 12034
@@ -19,6 +20,8 @@
 import argparse
 import json
 import os
+
+from sqlalchemy.exc import IntegrityError
 
 import backup
 import common
@@ -192,28 +195,54 @@ def _resolve_game(session, game_id: int) -> db.Game:
 
 
 def cmd_add_person(args):
-    session, _ = open_session(args)
-    team = _resolve_team(session, args.team) if args.team else None
     try:
+        birth_date = db.validate_birth_date(args.birth_date)
         email = contacts.normalize_email(args.email)
         phone = contacts.normalize_phone(args.phone)
-    except contacts.ContactValidationError as exc:
-        raise SystemExit(exc.message) from exc
-    person = db.Person(name=args.name.strip(), email=email, phone=phone)
-    session.add(person)
-    session.flush()
-    if team is not None:
-        db.replace_person_teams(session, person, [team.id])
-    else:
-        support = db.get_support_team(session)
-        if support is not None:
-            db.replace_person_teams(session, person, [support.id])
-    session.commit()
-    team_name = db.membership_label(person, "-")
-    print(
-        f"Person created: ID {person.id} {person.name} "
-        f"(team={team_name}, email={person.email}, phone={person.phone})"
-    )
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from None
+    name = args.name.strip()
+    if not name:
+        raise SystemExit("Bitte einen Namen angeben.")
+    session, _ = open_session(args)
+    with session:
+        team = _resolve_team(session, args.team) if args.team else None
+        person = db.Person(name=name, email=email, phone=phone, birth_date=birth_date)
+        try:
+            session.add(person)
+            session.flush()
+            if team is not None:
+                db.replace_person_teams(session, person, [team.id])
+            else:
+                support = db.get_support_team(session)
+                if support is not None:
+                    db.replace_person_teams(session, person, [support.id])
+            session.commit()
+        except (IntegrityError, ValueError) as exc:
+            session.rollback()
+            raise SystemExit(
+                str(exc) if isinstance(exc, ValueError) else
+                "E-Mail-Adresse oder Telefonnummer wird bereits verwendet."
+            ) from None
+        team_name = db.membership_label(person, "-")
+        print(
+            f"Person created: ID {person.id} {person.name} "
+            f"(team={team_name}, email={person.email}, phone={person.phone})"
+        )
+
+
+def cmd_set_birth_date(args):
+    """Complete or correct one person's date by stable identity, without logging it."""
+    try:
+        birth_date = db.validate_birth_date(args.birth_date)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from None
+    session, _ = open_session(args)
+    with session:
+        person = _resolve_person(session, args.person_id)
+        person.birth_date = birth_date
+        session.commit()
+        print(f"Birth date updated: ID {person.id} ({person.name})")
 
 
 def cmd_list_teams(args):
@@ -418,10 +447,18 @@ def build_parser():
 
     p = sub.add_parser("add-person", help="Create a person")
     p.add_argument("name")
+    p.add_argument("--birth-date", required=True, help="Birth date (YYYY-MM-DD)")
     p.add_argument("--team", help="Existing team name (default: support team)")
     p.add_argument("--email")
     p.add_argument("--phone")
     p.set_defaults(func=cmd_add_person)
+
+    p = sub.add_parser(
+        "set-birth-date", help="Complete or correct a birth date for a person ID"
+    )
+    p.add_argument("person_id", type=int)
+    p.add_argument("birth_date", help="Birth date (YYYY-MM-DD)")
+    p.set_defaults(func=cmd_set_birth_date)
 
     p = sub.add_parser(
         "show-memberships", help="Show all team memberships for a person ID"

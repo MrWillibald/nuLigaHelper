@@ -86,3 +86,32 @@ def create_legacy_database(path: str | Path) -> None:
         )
         connection.execute("PRAGMA user_version=2")
         connection.commit()
+
+
+def create_versioned_database(path: str | Path, revision: str):
+    """Build an actual historical revision, independent of the current ORM."""
+    from alembic import command
+    import db
+    import schema_migrations
+
+    # Match the historical ORM rather than the separately accepted manual
+    # baseline (whose server defaults are intentionally retained).
+    schema = LEGACY_SCHEMA.replace(" DEFAULT 0", "").replace(" DEFAULT 'active'", "")
+    schema = schema.replace("nonce VARCHAR(120) NOT NULL UNIQUE", "nonce VARCHAR(120) NOT NULL")
+    schema = schema.replace("expires_at DATETIME NOT NULL, used_at DATETIME\n);",
+                            "expires_at DATETIME NOT NULL, used_at DATETIME,\n    UNIQUE (nonce)\n);")
+    schema = schema.replace("UNIQUE (\n        action, dimension, subject_digest, channel, window_started_at\n    )",
+                            "UNIQUE (action, dimension, subject_digest, channel, window_started_at)")
+    with sqlite3.connect(path) as connection:
+        connection.executescript(schema)
+        connection.execute("INSERT INTO teams (id, name, is_support) VALUES (1, 'Supporter', 1)")
+    engine = db.make_engine(str(path))
+    with engine.connect() as connection:
+        connection.commit()
+        connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
+        schema_migrations._run_alembic(connection, command.stamp, schema_migrations.BASELINE_REVISION)
+        connection.commit()
+        schema_migrations._run_alembic(connection, command.upgrade, revision)
+        connection.commit()
+        connection.exec_driver_sql("PRAGMA foreign_keys=ON")
+    return engine

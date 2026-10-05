@@ -23,7 +23,7 @@ def _new_database():
         game = setup.query(db.Game).filter_by(
             game_nr=games[0]["game_nr"]
         ).one()
-        people = [db.Person(name=name) for name in ("First", "Second", "Third")]
+        people = [db.Person(birth_date=h.ADULT_BIRTH_DATE, name=name) for name in ("First", "Second", "Third")]
         setup.add_all(people)
         setup.commit()
         ids = (game.id, *(person.id for person in people))
@@ -91,7 +91,7 @@ def test_wal_reader_can_overlap_an_independent_writer():
             reader.connection().exec_driver_sql("BEGIN")
             before = reader.query(db.Person).count()
             with h.Session(writer_engine) as writer:
-                writer.add(db.Person(name="Committed Writer"))
+                writer.add(db.Person(birth_date=h.ADULT_BIRTH_DATE, name="Committed Writer"))
                 writer.commit()
             assert reader.query(db.Person).count() == before
             reader.rollback()
@@ -401,7 +401,7 @@ def test_assignment_endpoints_keep_409_and_map_exhaustion_to_503_with_rollback()
     original_claim = db.claim_slot
 
     def unavailable_claim(session, *_args, **_kwargs):
-        session.add(db.Person(name="Rolled Back Claim"))
+        session.add(db.Person(birth_date=h.ADULT_BIRTH_DATE, name="Rolled Back Claim"))
         raise db.AssignmentTemporarilyUnavailableError()
 
     db.claim_slot = unavailable_claim
@@ -436,7 +436,7 @@ def test_assignment_endpoints_keep_409_and_map_exhaustion_to_503_with_rollback()
     original_release = db.release_slot
 
     def unavailable_release(session, *_args, **_kwargs):
-        session.add(db.Person(name="Rolled Back Release"))
+        session.add(db.Person(birth_date=h.ADULT_BIRTH_DATE, name="Rolled Back Release"))
         raise db.AssignmentTemporarilyUnavailableError()
 
     db.release_slot = unavailable_release

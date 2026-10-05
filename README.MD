@@ -11,6 +11,7 @@ Host-specific deployment configuration and operator records are maintained priva
 - The database is backed up to a dropbox account after every run
 - Game tasks (Zeitnehmer, Sekretär, Verkauf, Ordnungsdienst, optional Unterstützung) can be assigned to persons including notification addresses
 - Every home-game date has three-slot Vorbereitung and Aufräumen blocks, timed 90 minutes before the first and 60 minutes after the last game start; slot numbers are display positions while statistics, reminders and audits use the shared task name, just like Verkauf
+- Every home-game date also has a Kuchenlieferung block; admins set its delivery time and requested quantity, with one volunteer position per cake
 - nuLigaHelper keeps track of all game shifts
 - Notifications are sent to all game judges one day prior to the game (if the script is run daily)
 - Notification articles can be sent to newspapers one week before the game
@@ -34,12 +35,30 @@ It is then reachable in the local network at `http://<device-ip>:8080`.
 Public hosting requires a separately maintained production deployment with TLS,
 restricted secrets, monitoring and a reviewed launch procedure.
 
-- **Heimspielplan**: public, read-only schedule with assigned helper names. Use **Datum** to show one game day or all days, together with **Spielende Mannschaft**, **Verantwortliche Mannschaft** and **Eingeteilte Person**. A person search keeps only games and day-task blocks where that person is assigned; selecting a responsible team hides day-task blocks because they have no responsible team. **Filter löschen** restores the full plan. Every game and day-task block starts compact with a staffing bar; compact game cards also show the responsible team or **– offen –**. Expand a card to see its assignments and, for games, the editable responsible-team field when permitted. Assignment candidates load when an editable card opens; a loading error leaves its dropdowns disabled and offers a retry. Unopened cards carry no candidate lists, so registrations do not multiply the initial page size. Game progress counts the five required task slots; optional **Unterstützung** remains assignable but does not affect the bar. Each preparation and cleanup bar counts three slots. Past game days appear muted under **Vergangene Spieltage anzeigen**; selecting a past date opens that section. Signed-in members can claim and release their own future tasks. MVs can additionally staff their own team on games for which that team is responsible; admins can correct every slot and set the responsible team. Concurrent stale changes are rejected rather than overwriting another person's work.
-- **Helfer verwalten**: members see names and complete team memberships but only their own contact data. Admins create, edit, deactivate/reactivate or delete erroneous entries, replace membership sets, approve user registrations and appoint team MVs. MVs can add or remove active people only in rosters they manage; they do not see or decide pending registrations.
-- **Statistik**: games covered per team, jobs per person (incl. role breakdown) and a list of upcoming games with missing assignments.
+- **Heimspielplan**: public, read-only schedule with assigned helper names. Use **Datum** to show one game day or all days, together with **Spielende Mannschaft**, **Verantwortliche Mannschaft** and **Eingeteilte Person**. A person search keeps only games and day-task blocks where that person is assigned; selecting a responsible team hides day-task blocks because they have no responsible team. **Filter löschen** restores the full plan. Every game and day-task block starts compact; cake cards awaiting setup or requesting zero cakes show their status, while configured duties show a staffing bar; compact game cards also show the responsible team or **– offen –**. Expand a card to see its assignments and, for games, the editable responsible-team field when permitted. Assignment candidates load when an editable card opens; a loading error leaves its dropdowns disabled and offers a retry. Unopened cards carry no candidate lists, so registrations do not multiply the initial page size. Game progress counts the five required task slots; optional **Unterstützung** remains assignable but does not affect the bar. Each preparation and cleanup bar counts three slots. Past game days appear muted under **Vergangene Spieltage anzeigen**; selecting a past date opens that section. Signed-in members can claim and release their own future tasks. MVs can additionally staff their own team on games for which that team is responsible; admins can correct every slot and set the responsible team. Concurrent stale changes are rejected rather than overwriting another person's work.
+- **Helfer verwalten**: members see names and complete team memberships but only their own contact data and birth date. Admins create, edit, deactivate/reactivate or delete erroneous entries, replace membership sets, complete missing birth dates, approve user registrations and appoint team MVs. MVs can create people with a birth date and add or remove active people only in rosters they manage; they do not see another existing person's birth date or decide pending registrations.
+- **Statistik**: games covered per team, jobs per person (incl. role breakdown) and upcoming games and day blocks with missing assignments, unresolved age eligibility or cake setup still needed.
 - **Änderungsprotokoll**: admin-only, append-only history of assignment claims and releases with actor, tier, person, game, role, slot and timestamp.
 
-Registration and login each use one two-step form: request a six-digit code, then enter it on the same page. During registration, E-Mail and SMS are individually optional, but at least one valid contact is required and both may be supplied. The selected route alone receives the verification code, while all supplied contacts are stored; after approval, either stored route can be selected independently for login. Registration additionally requires a name, one or more selected teams and consent to publish the name when assigned. Successful contact verification queues the person and all selected teams as one user-level approval and notifies every active administrator; it does not itself approve the account. When an administrator approves the registration, the new active user receives a welcome notification inviting them to sign in and take open Heimspielplan duties. Both automatic notifications prefer E-Mail and use SMS only when no usable e-mail address is stored. Team membership itself has no separate confirmation. E-mail addresses are syntax-checked and stored in a canonical lowercase form. Phone input combines the selected country calling code with the national number and is stored as E.164 (for example `+491701234567`). Codes are single-use and valid for 15 minutes; sessions expire after one hour of inactivity. Active accounts land on the Heimspielplan after login, while verified registrations awaiting approval see only their status.
+Registration and login each use one two-step form: request a six-digit code, then enter it on the same page. During registration, E-Mail and SMS are individually optional, but at least one valid contact is required and both may be supplied. The selected route alone receives the verification code, while all supplied contacts are stored; after approval, either stored route can be selected independently for login. Registration additionally requires a name, valid birth date, one or more selected teams and consent to publish the name when assigned. The birth date is validated before requesting a code and preserved through verification. Successful contact verification queues the person and all selected teams as one user-level approval and notifies every active administrator; it does not itself approve the account. When an administrator approves the registration, the new active user receives a welcome notification inviting them to sign in and take open Heimspielplan duties. Both automatic notifications prefer E-Mail and use SMS only when no usable e-mail address is stored. Team membership itself has no separate confirmation. E-mail addresses are syntax-checked and stored in a canonical lowercase form. Phone input combines the selected country calling code with the national number and is stored as E.164 (for example `+491701234567`). Codes are single-use and valid for 15 minutes; sessions expire after one hour of inactivity. Active accounts land on the Heimspielplan after login, while verified registrations awaiting approval see only their status.
+
+New people need a real calendar birth date that is not after `common.effective_today()`, including contactless admin/MV creation and CLI creation. A member can complete or correct their own date; an admin can do so for any person. A known date cannot be cleared. Existing people with an unknown date can still receive unrelated profile repairs. Dates are self-reported; the application does not verify identity documents. Full dates are limited to own/admin person maintenance and are absent from schedules, candidates, statistics, ordinary notifications, diagnostic logs and assignment audits. See the [data inventory](DATA-INVENTORY.md).
+
+## Age eligibility for game duties
+
+Age means completed calendar years on the scheduled game date, including future games. A minimum is met on the birthday: a person turning 14 on 5 September can perform a youth timing duty on 5 September, but not on 4 September. A 29 February birthday advances on 1 March in a non-leap year.
+
+| Duty | Youth games | Adult games |
+| --- | --- | --- |
+| Zeitnehmer | 14 or older | 18 or older |
+| Sekretär | 14 or older | 16 or older |
+| Verkauf | At least one assigned seller is 18 or older | At least one assigned seller is 18 or older |
+
+Adult M/F and youth mA–mE/wA–wE classes are recognized even with league prefixes; SPF is youth. GE, missing and unsupported classes leave timing eligibility unresolved, so new timing claims are refused. An invalid game date also prevents a new age-restricted claim; today's date is never substituted. This change adds no age limit for Ordnungsdienst, optional Unterstützung, or day blocks, including cake delivery.
+
+Verkauf is a group rule. A younger helper or a legacy helper with an unknown birth date may take the first sale slot. Filling the last free slot requires at least one explicitly assigned seller who reaches 18 by the game date; the other seller has no individual minimum. An adult in the responsible team or candidate list does not provide coverage without an assignment. Every claim, including admin and CLI claims or past-game corrections, is checked against saved data. There is no admin age override. Sale candidates refresh after claims and releases, and stale selections can be refused without overwriting saved occupants.
+
+Authorized releases remain possible, including removal of an ineligible occupant or the sole adult seller. Removing that adult leaves coverage outstanding and limits the final free sale slot to helpers who restore it. Existing assignments remain visible after a birth-date correction or game date/class change. The occupancy bar continues to count physical slots; a separate eligibility indication marks invalid or unresolved staffing. To resolve it, self/admin maintenance can complete or correct the stored date, or an authorized caller can release and replace an ineligible helper with an eligible one. A full bar alone does not mean the game's staffing is complete. Statistics and the existing responsible-team MV follow-up include these deficiencies; no new fallback recipient is introduced when there is no active responsible MV.
 
 Access is derived from database facts on every request:
 
@@ -150,15 +169,35 @@ To upgrade an existing database:
 4. The command accepts only the reviewed exact unversioned baseline or a known Alembic
    revision. It creates and validates a dated SQLite-API snapshot before stamping or
    upgrading, applies revisions in order, and runs revision, integrity and foreign-key
-   postflight checks. Unknown and near-miss schemas are refused without adoption.
+   postflight checks, including retained person and assignment data. Unknown and
+   near-miss schemas are refused without adoption. The birth-date revision adds a
+   nullable date-only column: all existing people retain unknown dates, with no
+   inference from team, name or duties. Person IDs, contacts, membership sets,
+   account states, MV appointments, assignments and audit snapshots are retained.
+   The following cake-delivery revision extends day blocks and seeds exactly one
+   unconfigured cake block per existing valid season/home-game date. It preserves
+   preparation/cleanup block IDs, positions, assignments and audit snapshots, plus
+   all birth dates and person relationships. No cake time, quantity or volunteer
+   is inferred. Revision `0005_cake_delivery_blocks` is the single current head;
+   it must be reached through this stopped-service migration before startup.
+   Verification rejects unreviewed schema differences, even if a database already
+   carries the current revision label. Previously recognized historical defaults
+   remain unchanged, and SQLite uniqueness checks confirm reflected constraints.
 5. Retain the printed `Backup:` path. Start one application process and verify startup,
    several multi-team roster entries, MV appointments, assignments, audit history and the
    schedule before deliberately re-enabling normal traffic and the daily/cleanup timers.
+   Review the admin roster's missing-date indication, complete legacy dates through
+   authorized person maintenance or `set-birth-date`, and review current/future
+   eligibility warnings. Existing assignments with unknown dates remain stored;
+   the warnings identify staffing that still needs verification or repair.
+   Expand each **Kuchenlieferung** card as an admin and set its delivery time and
+   quantity; newly seeded cards show setup needed and cannot accept claims.
 
 If migration or verification fails, keep services stopped. Restore the printed snapshot
 with `restore-snapshot ... --confirm-stopped`, redeploy the previous application version,
-and inspect the retained failed database separately. Membership revisions are not rolled
-back in place.
+and inspect the retained failed database separately. Membership, birth-date and cake revisions
+are not rolled back in place. Do not run migration or backfill against production data
+as a release smoke test.
 
 `NULIGAHELPER_SECRET` is mandatory for both the webapp and daily job. Set it in the environment or keep the raw value in the gitignored `.nuligahelper_secret` file used by both launch scripts. Keep it stable: changing it invalidates every session. `NULIGAHELPER_DB` is an optional SQLite-path override locally; production requires `NULIGAHELPER_ENV=production`, an absolute `NULIGAHELPER_DB`, and exact `NULIGAHELPER_TRUSTED_HOSTS` entries.
 
@@ -178,15 +217,54 @@ or individually via `python3 test/test_db.py` etc., or with pytest (`pytest test
   numbers are decimal text, while SPF matches on one date for one full age group collapse
   into a pseudo number such as `SPF:2026-11-28:spf mini`
 - `teams`: derived automatically from the scraped age classes plus one support team; each team optionally references its MV (Mannschaftsverantwortlicher)
-- `persons`: stable internal identity, mutable/non-unique name, contacts, account state and admin flag
+- `persons`: stable internal identity, mutable/non-unique name, contacts, date-only `birth_date` (nullable for unknown legacy dates), account state and admin flag
 - `person_teams`: deduplicated many-to-many membership set; pending registrations use the same rows, while account status gates roster use
 - `assignments`: one stable role/slot link between a game and person
+- `day_blocks`: one preparation, cake-delivery and cleanup block per season/home-game date; nullable cake quantity and delivery time belong only to cake blocks
+- `block_assignments`: one volunteer per numbered block position, with at most one position per person in each block
 - `auth_tokens`: expiring, single-use registration/login nonces and six-digit e-mail/SMS codes
 - `assignment_audit`: append-only assignment-change snapshots that remain readable after deletion
 
-The MV of a game's responsible team receives an MV notification as long as required tasks of that game are still unassigned. The optional `Unterstützung` task never makes a game incomplete. Day blocks have no responsible team and therefore never create an MV reminder.
+The active MV of a game's responsible team receives an MV notification as long as required tasks of that game are still unassigned or have unresolved/invalid age eligibility. The optional `Unterstützung` task never makes a game incomplete. Day blocks have no responsible team and therefore never create an MV reminder.
 
-Preparation and cleanup are date-level duties rather than duties of an individual game. Active members and MVs may claim or release only their own block slot; admins may manage any active person, including corrections on past dates. A person may hold one task in each block independently of any game assignment on the same date. Preparation helpers receive the special one-week reminder, cleanup helpers an ordinary one-week reminder, and all occupied block slots a day-before reminder. Game-level `Verkauf` helpers always use the normal game reminder flow.
+Preparation, cake delivery and cleanup are date-level duties rather than duties of an individual game. Active members and MVs may claim or release only their own block slot; admins may manage any active person, including corrections on past dates. A person may hold one task in each block independently of any game assignment on the same date. Preparation helpers receive the special one-week reminder, cleanup and cake helpers an ordinary one-week reminder, and all occupied block slots a day-before reminder. Cake reminders include the saved delivery time and ask each volunteer for one cake. Empty positions send no helper reminder; ordinary reminders prefer e-mail, fall back to SMS and skip contactless helpers. Game-level `Verkauf` helpers always use the normal game reminder flow.
+
+## Cake delivery
+
+The **Kuchenlieferung** card appears after preparation and before the games. It starts
+collapsed and shows the saved delivery time, requested quantity and staffing progress.
+Expand it with the mouse or keyboard to see **Kuchenlieferung 1**, **Kuchenlieferung 2**,
+and so on. Each position is one cake contribution. Guests see assigned names; signed-in
+viewers get candidates only when an editable card opens. Members and MVs can manage
+only their own cake duty, independently of their preparation, game or cleanup duties.
+
+New and migrated cake blocks have neither time nor quantity. They show administrator
+setup is needed and offer no claimable positions. An admin expands the card, enters a
+delivery time in `HH:MM` (24-hour format, for example `14:30`) and a nonnegative whole-number quantity, then saves the
+settings. For example, `10:00` and `4` provide four positions. Quantity `0` explicitly
+means no cakes are requested and exposes no positions; it differs from unknown quantity.
+The saved delivery time stays attached to the home-game date when game start times change.
+
+Increasing quantity from two to four keeps positions 1 and 2 and adds two empty
+positions. A decrease cannot remove an occupied position: to reduce four to two when
+position 4 is occupied, explicitly release position 4 first, then save the reduction.
+An occupant of position 2 keeps that position; positions are never compacted or silently
+released. Every successful claim or release remains in the assignment audit, including
+after quantity changes or removal of a date's last game. Stale settings edits and stale
+claims are refused without replacing another saved change; reload the saved state before
+retrying.
+
+Cake cards use the same date and assigned-person filters as the other blocks. A person
+search matching only a cake volunteer retains that card and date without unrelated
+games. A playing-team filter retains the cake card when the date has a matching game;
+a responsible-team filter hides it. Clearing filters restores the usual upcoming and
+past groups. Cake blocks have no responsible team and never generate MV gap reminders.
+
+Each occupied cake position adds one **Kuchenlieferung** duty to the person's season
+statistics. A configured four-position block with two volunteers reports two missing
+cake duties. Unconfigured blocks are reported separately as needing setup, without an
+invented missing-cake count or a complete staffing indicator. Configured zero has no
+missing cake duties.
 
 # Getting started
 
@@ -196,8 +274,9 @@ Initialize the database and manage persons, games and assignments via the manage
 
 ```
 python3 manage_db.py init
-python3 manage_db.py add-person "Max Mustermann" --team "Supporter" --email max@example.com
+python3 manage_db.py add-person "Max Mustermann" --birth-date 1990-01-01 --team "Supporter" --email max@example.com
 python3 manage_db.py list-persons
+python3 manage_db.py set-birth-date 1 1990-01-02
 python3 manage_db.py show-memberships 1
 python3 manage_db.py set-memberships 1 "BL mD" "BL mC"
 python3 manage_db.py contact-preflight
@@ -209,7 +288,7 @@ python3 manage_db.py assign 42 Zeitnehmer 1
 python3 manage_db.py set-jteam 42 "Damen 1"
 ```
 
-Run `contact-preflight` before deploying contact normalization to an existing database; it reports invalid values, canonical changes and collisions without writing anything. Person IDs are shown by `list-persons` and `search-person`; names are display data and may repeat. Existing-person commands (`show-memberships`, `set-memberships`, `assign`, `unassign`, `set-mv`, `grant-admin`) therefore take the person ID. `set-memberships` atomically replaces the complete set and accepts no team names to clear it; CLI creation keeps the convenient single `--team` option. Canonical game numbers are unique within a season: `list-games` shows the internal game ID together with its schedule context, and `assign`, `unassign` and `set-jteam` take that game ID. `--number` accepts either an ordinary decimal number or an SPF pseudo number and only filters the list.
+Run `contact-preflight` before deploying contact normalization to an existing database; it reports invalid values, canonical changes and collisions without writing anything. Person IDs are shown by `list-persons` and `search-person`; names are display data and may repeat. Existing-person commands (`set-birth-date`, `show-memberships`, `set-memberships`, `assign`, `unassign`, `set-mv`, `grant-admin`) therefore take the person ID. `add-person --birth-date` and `set-birth-date PERSON_ID DATE` use ISO `YYYY-MM-DD` dates and shared calendar/future-date validation. Invalid creation data never inserts a partial person. Correction retains the same identity and all assignments; it reevaluates eligibility rather than deleting appointments. `set-memberships` atomically replaces the complete set and accepts no team names to clear it; CLI creation keeps the convenient single `--team` option. Canonical game numbers are unique within a season: `list-games` shows the internal game ID together with its schedule context, and `assign`, `unassign` and `set-jteam` take that game ID. `--number` accepts either an ordinary decimal number or an SPF pseudo number and only filters the list.
 
 Games are inserted automatically on the first run after scraping. Run the daily job via `./run.sh` (or export `NULIGAHELPER_SECRET` before `python3 main.py`). nuLigaHelper will scrape all available data from the nuLiga Hallenspielplan, sync it into the SQLite database and send all due notifications. A backup of the database is uploaded to Dropbox after every run.
 All actions are logged in the file `helper.log`.

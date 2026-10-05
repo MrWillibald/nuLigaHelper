@@ -192,10 +192,11 @@ class Notifier:
         for game in games:
             cnt += self._notify_game_helpers(game, date, self.mailTask, self.textTask)
 
-            # The MV of the responsible team is reminded as long as tasks
-            # of the game are still unassigned.
+            # Physical vacancies and unresolved eligibility both need follow-up.
             mv = game.team.mv_person if game.team is not None else None
-            if mv is None or not db.missing_slots(game):
+            staffing = db.staffing_status(game)
+            if (mv is None or mv.account_status != db.ACCOUNT_ACTIVE
+                    or staffing["complete"]):
                 continue
             judge_names = [
                 a.person.name if a is not None else ""
@@ -222,6 +223,12 @@ class Notifier:
                     mv.name, game.judge_team_name or "", date, *judge_names,
                     game.ak, game.time,
                 )
+            if staffing["deficiencies"]:
+                feedback = "\n\nAltersanforderungen offen: " + " ".join(
+                    deficiency["message"] for deficiency in staffing["deficiencies"]
+                )
+                mail_body += feedback
+                sms_body += feedback
             cnt += self._dispatch(
                 self._person_receiver(mv, "MV Verantwortlich"),
                 subject=self.mailMVSubject,
@@ -248,13 +255,19 @@ class Notifier:
     def _blocks_for_date(self, date: str) -> list[db.DayBlock]:
         return db.get_day_blocks(self.session, self._season_year, date)
 
+    @staticmethod
+    def _block_reminder_task(block: db.DayBlock) -> str:
+        if block.phase == db.BLOCK_CAKE_DELIVERY:
+            return f"{block.label} (ein Kuchen)"
+        return block.label
+
     def notify_blocks_day_before(self, date: str) -> int:
-        """Notify every occupied preparation and cleanup slot one day ahead."""
+        """Notify every occupied day-block slot one day ahead."""
         count = 0
         for block in self._blocks_for_date(date):
             time_text = self._block_time_text(block)
             for assignment in sorted(block.assignments, key=lambda item: item.slot):
-                task = block.label
+                task = self._block_reminder_task(block)
                 receiver = self._person_receiver(assignment.person, task)
                 count += self._dispatch(
                     receiver,
@@ -308,13 +321,20 @@ class Notifier:
 
     def notify_cleanup_early(self, date: str) -> int:
         """Send an ordinary one-week reminder to occupied cleanup slots."""
+        return self._notify_blocks_early(date, db.BLOCK_CLEANUP)
+
+    def notify_cakes_early(self, date: str) -> int:
+        """Remind each cake volunteer to deliver one cake one week ahead."""
+        return self._notify_blocks_early(date, db.BLOCK_CAKE_DELIVERY)
+
+    def _notify_blocks_early(self, date: str, phase: str) -> int:
         count = 0
         for block in self._blocks_for_date(date):
-            if block.phase != db.BLOCK_CLEANUP:
+            if block.phase != phase:
                 continue
             time_text = self._block_time_text(block)
             for assignment in sorted(block.assignments, key=lambda item: item.slot):
-                task = block.label
+                task = self._block_reminder_task(block)
                 receiver = self._person_receiver(assignment.person, task)
                 count += self._dispatch(
                     receiver,

@@ -95,6 +95,13 @@ newer, divergent, or damaged schema is a refusal: keep services stopped and
 investigate it through the private recovery runbook. Never initialize a
 replacement database to make a release start.
 
+For the birth-date revision, postflight must retain person identities, contacts,
+memberships, status, MV appointments, assignments and audit snapshots. Existing
+dates remain unknown. After application verification, use authorized self/admin
+maintenance or `set-birth-date PERSON_ID YYYY-MM-DD` to complete the roster;
+review current/future eligibility warnings without deleting existing appointments.
+The [data inventory](DATA-INVENTORY.md) records visibility and backup scope.
+
 ## 3. Decide when scheduled work resumes
 
 After `public_ready`, record a `hold` decision first. This computes and returns

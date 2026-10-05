@@ -29,6 +29,9 @@
       <div class="form-grid">
         <div class="form-field full"><label for="new-name">Name *</label>
           <input id="new-name" name="name" required maxlength="120"></div>
+        <div class="form-field full"><label for="new-birth-date">Geburtsdatum *</label>
+          <input id="new-birth-date" name="birth_date" type="date" max="{{ birth_date_max }}" required>
+          <small>Für die Altersprüfung am Spieltag. Sichtbar nur für die Person selbst und Admins.</small></div>
         <div class="form-field full"><label for="new-team">Mannschaft{% if viewer_tier == 'admin' %}en{% endif %} *</label>
           {% if viewer_tier == 'admin' %}
           <div class="new-user-team-picker">
@@ -148,6 +151,9 @@
     </div>
     <span class="roster-count">{{ persons | length }} angezeigt</span>
   </div>
+  {% if viewer_tier == 'admin' and missing_birth_dates %}
+  <p class="hint"><a href="{{ url_for('persons', birth_date='missing') }}">{{ missing_birth_dates }} Personen ohne Geburtsdatum</a> – bitte vorhandene Datensätze ergänzen.</p>
+  {% endif %}
 
   <form class="roster-filter-card" method="get" action="{{ url_for('persons') }}">
     <div class="filter-field filter-name">
@@ -167,6 +173,13 @@
       </select>
     </div>
     {% if viewer_tier == 'admin' %}
+    <div class="filter-field">
+      <label for="person-birth-date-filter">Geburtsdatum</label>
+      <select id="person-birth-date-filter" name="birth_date">
+        <option value="">Alle Angaben</option>
+        <option value="missing" {% if birth_date_filter == 'missing' %}selected{% endif %}>Fehlt</option>
+      </select>
+    </div>
     <div class="filter-field">
       <label for="person-status-filter">Status</label>
       <select id="person-status-filter" name="status">
@@ -192,6 +205,8 @@
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <label>Name
             <input type="text" name="name" value="{{ p.name }}" required maxlength="120"></label>
+          <label>Geburtsdatum{% if not p.birth_date %} – noch nicht hinterlegt{% endif %}
+            <input type="date" name="birth_date" value="{{ p.birth_date }}" max="{{ birth_date_max }}"{% if p.birth_date %} required{% endif %}></label>
           <label>E-Mail
             <input type="email" name="email" value="{{ p.email }}" maxlength="200"></label>
           <label>Telefon
@@ -278,12 +293,12 @@
         {% endif %}
         {% if viewer_tier == 'admin' %}
         <span class="status-badge status-{{ p.status }}">
-          {{ 'Inaktiv' if p.status == 'inactive' else 'Aktiv' }}
+          {{ {'inactive': 'Inaktiv', 'active': 'Aktiv', 'registered': 'Kontaktprüfung offen', 'verified': 'Freigabe offen', 'rejected': 'Abgelehnt'}.get(p.status, p.status) }}
         </span>
         <div class="person-admin-actions">
           {% if p.status == 'inactive' %}
           <form method="post" action="{{ url_for('reactivate_person', person_id=p.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-primary" type="submit">Reaktivieren</button></form>
-          {% else %}
+          {% elif p.status == 'active' %}
           <form method="post" action="{{ url_for('deactivate_person', person_id=p.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn" type="submit">Deaktivieren</button></form>
           {% endif %}
           <button class="btn btn-danger" type="button" data-delete-person="{{ p.id }}"

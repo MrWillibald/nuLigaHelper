@@ -495,6 +495,7 @@ def create_app() -> Flask:
         country_code = (request.form.get("country_code") or "+49").strip()
         return {
             "channel": (request.form.get("channel") or "").strip(),
+            "birth_date": (request.form.get("birth_date") or "").strip(),
             "email": (request.form.get("email") or "").strip(),
             "phone": (request.form.get("phone") or "").strip(),
             "country_code": country_code,
@@ -892,6 +893,7 @@ def create_app() -> Flask:
         payload = _decode_challenge(challenge, "verify")
         initial = {
             "name": "",
+            "birth_date": "",
             "team_ids": [],
             "consent": "",
             "channel": "email",
@@ -911,6 +913,7 @@ def create_app() -> Flask:
             ),
             request_message=message,
             country_codes=COUNTRY_CODES,
+            birth_date_max=common.effective_today().isoformat(),
         )
 
     def _establish_session(person: db.Person):
@@ -1060,6 +1063,11 @@ def create_app() -> Flask:
         errors: dict[str, str] = {}
         if not values["name"]:
             errors["name"] = "Bitte gib deinen Namen ein."
+        birth_date = None
+        try:
+            birth_date = db.validate_birth_date(values["birth_date"])
+        except ValueError as exc:
+            errors["birth_date"] = str(exc)
         if values["consent"] != "yes":
             errors["consent"] = (
                 "Die Zustimmung zur Veröffentlichung des Namens ist erforderlich."
@@ -1102,7 +1110,8 @@ def create_app() -> Flask:
         if not conflicting_people and decision.allowed:
             try:
                 person = db.register_person(
-                    get_session(), values["name"], selected_teams, email, phone
+                    get_session(), values["name"], selected_teams, email, phone,
+                    birth_date=birth_date,
                 )
                 get_session().commit()
             except IntegrityError:
@@ -1229,7 +1238,7 @@ def create_app() -> Flask:
             _notify_registration_approved(person)
         return redirect(url_for("persons"))
 
-    def person_options(session) -> list[dict]:
+    def person_options(session, records=None) -> list[dict]:
         return [
             {
                 "id": p.id,
@@ -1237,7 +1246,7 @@ def create_app() -> Flask:
                 "team_ids": db.membership_team_ids(p),
                 "team_label": db.membership_label(p),
             }
-            for p in db.get_all_persons(session)
+            for p in (db.get_all_persons(session) if records is None else records)
         ]
 
     def team_options(session) -> list[dict]:
@@ -1297,8 +1306,8 @@ def create_app() -> Flask:
             ]
         return [p for p in persons if p["id"] == g.viewer.id]
 
-    def candidate_response(people: list[dict], slots: dict):
-        response = jsonify(people=people, slots=slots)
+    def candidate_response(people: list[dict], slots: dict, **extra):
+        response = jsonify(people=people, slots=slots, **extra)
         response.headers["Cache-Control"] = "private, no-store"
         return response
 
@@ -1320,11 +1329,21 @@ def create_app() -> Flask:
         if not slot_scopes:
             return candidate_response([], {})
 
-        persons = person_options(session_db)
+        # Load eligibility inputs once; never serialize private birth dates.
+        person_records = {p.id: p for p in db.get_all_persons(session_db)}
+        persons = person_options(session_db, person_records.values())
+        assigned_ids = {a.person_id for a in game.assignments}
         allowed = {}
         used_ids = set()
         for key, (scope, team_id, occupant_id) in slot_scopes.items():
-            ids = [p["id"] for p in candidates_for_scope(persons, scope, team_id)]
+            role, raw_slot = key.rsplit(":", 1)
+            ids = [
+                p["id"] for p in candidates_for_scope(persons, scope, team_id)
+                if p["id"] == occupant_id or (
+                    p["id"] not in assigned_ids
+                    and db.claim_eligibility(game, role, person_records[p["id"]], int(raw_slot)) is None
+                )
+            ]
             used_ids.update(ids)
             allowed[key] = {"candidate_ids": ids, "occupant_id": occupant_id}
         support = db.get_support_team(session_db)
@@ -1348,7 +1367,7 @@ def create_app() -> Flask:
                 "sort_group": person["sort_group"], "sort_name": person["sort_name"],
                 "hint": "playing" if is_playing else "outside" if is_outside else "",
             })
-        return candidate_response(people, allowed)
+        return candidate_response(people, allowed, staffing=db.staffing_status(game))
 
     @app.get("/api/blocks/<int:block_id>/candidates")
     def api_block_candidates(block_id: int):
@@ -1357,20 +1376,27 @@ def create_app() -> Flask:
         if block is None:
             return api_error("Tagesblock nicht gefunden.", 404)
         slot_scopes = {}
-        for slot in range(db.BLOCK_SLOT_COUNT):
+        for slot in range(db.block_capacity(block)):
             assignment = block.assignment_for_slot(slot)
             occupant = assignment.person if assignment else None
             scope = block_slot_scope(block, occupant)
             if scope is not None:
                 slot_scopes[str(slot)] = (scope, occupant.id if occupant else None)
         if not slot_scopes:
-            return candidate_response([], {})
+            return candidate_response([], {}, **(
+                {"block": block_view(block)}
+                if block.phase == db.BLOCK_CAKE_DELIVERY else {}
+            ))
 
         persons = person_options(session_db)
+        assigned_ids = {assignment.person_id for assignment in block.assignments}
         allowed = {}
         used_ids = set()
         for key, (scope, occupant_id) in slot_scopes.items():
-            ids = [p["id"] for p in candidates_for_scope(persons, scope, None)]
+            ids = [
+                p["id"] for p in candidates_for_scope(persons, scope, None)
+                if p["id"] == occupant_id or p["id"] not in assigned_ids
+            ]
             used_ids.update(ids)
             allowed[key] = {"candidate_ids": ids, "occupant_id": occupant_id}
         people = [
@@ -1381,7 +1407,50 @@ def create_app() -> Flask:
             for p in persons if p["id"] in used_ids
         ]
         people.sort(key=lambda p: (p["sort_name"], p["id"]))
-        return candidate_response(people, allowed)
+        return candidate_response(people, allowed, **(
+            {"block": block_view(block)}
+            if block.phase == db.BLOCK_CAKE_DELIVERY else {}
+        ))
+
+    def progress_data(filled: int, total: int) -> dict[str, int]:
+        return {
+            "filled": filled,
+            "total": total,
+            "percent": (filled * 100 + total // 2) // total if total else 0,
+        }
+
+    def block_view(block, full_date_games=None):
+        calculated = db.calculated_block_time(block, full_date_games)
+        home_date = parse_date(block.date)
+        adjacent_date = (
+            calculated.strftime("%d.%m.%Y")
+            if calculated and calculated.date() != home_date else ""
+        )
+        slots = []
+        for slot in range(db.block_capacity(block)):
+            assignment = block.assignment_for_slot(slot)
+            occupant = assignment.person if assignment else None
+            slots.append({
+                "label": db.block_slot_label(block, slot),
+                "slot": slot,
+                "person_id": occupant.id if occupant else None,
+                "person_name": occupant.name if occupant else "",
+                "person_team_label": db.membership_label(occupant) if occupant else "",
+                "editable": block_slot_scope(block, occupant) is not None,
+            })
+        return {
+            "id": block.id, "phase": block.phase, "label": block.label,
+            "time": calculated.strftime("%H:%M") if calculated else "",
+            "time_date": adjacent_date,
+            "delivery_time": block.delivery_time,
+            "cake_quantity": block.cake_quantity,
+            "configured": db.block_is_configured(block),
+            "slots": slots,
+            "progress": progress_data(
+                sum(slot["person_id"] is not None for slot in slots), len(slots)
+            ),
+            "past": bool(home_date and home_date < common.effective_today()),
+        }
 
     def build_schedule(
         session, season_year: int, filters: dict[str, str] | None = None,
@@ -1421,13 +1490,6 @@ def create_app() -> Flask:
         person_filter = " ".join(filters.get("person", "").split()).casefold()
         date_filter = filters.get("date", "")
         all_games = games
-
-        def progress_data(filled: int, total: int) -> dict[str, int]:
-            return {
-                "filled": filled,
-                "total": total,
-                "percent": (filled * 100 + total // 2) // total if total else 0,
-            }
 
         def game_view(game):
             sales = {
@@ -1477,6 +1539,7 @@ def create_app() -> Flask:
                 for s in slots if s["role"] in db.REQUIRED_ROLE_SLOT_COUNT
             )
             d = parse_date(game.date)
+            staffing = db.staffing_status(game)
             return {
                 "id": game.id,
                 "nr": game.game_nr,
@@ -1496,41 +1559,7 @@ def create_app() -> Flask:
                     required_filled, sum(db.REQUIRED_ROLE_SLOT_COUNT.values())
                 ),
                 "past": bool(d and d < today),
-            }
-
-        def block_view(block, full_date_games):
-            calculated = db.calculated_block_time(block, full_date_games)
-            home_date = parse_date(block.date)
-            adjacent_date = (
-                calculated.strftime("%d.%m.%Y")
-                if calculated and calculated.date() != home_date
-                else ""
-            )
-            slots = []
-            for slot in range(db.BLOCK_SLOT_COUNT):
-                assignment = block.assignment_for_slot(slot)
-                occupant = assignment.person if assignment else None
-                scope = block_slot_scope(block, occupant)
-                slots.append({
-                    "label": db.block_slot_label(block, slot),
-                    "slot": slot,
-                    "person_id": occupant.id if occupant else None,
-                    "person_name": occupant.name if occupant else "",
-                    "person_team_label": db.membership_label(occupant) if occupant else "",
-                    "editable": scope is not None,
-                })
-            return {
-                "id": block.id,
-                "phase": block.phase,
-                "label": block.label,
-                "time": calculated.strftime("%H:%M") if calculated else "",
-                "time_date": adjacent_date,
-                "slots": slots,
-                "progress": progress_data(
-                    sum(slot["person_id"] is not None for slot in slots),
-                    db.BLOCK_SLOT_COUNT,
-                ),
-                "past": bool(home_date and home_date < today),
+                "eligibility_deficiencies": staffing["deficiencies"] if not d or d >= today else [],
             }
 
         day_groups = []
@@ -1581,6 +1610,7 @@ def create_app() -> Flask:
                 "past": bool(d and d < today),
                 "games": views,
                 "preparation": block_views.get(db.BLOCK_PREPARATION),
+                "cake_delivery": block_views.get(db.BLOCK_CAKE_DELIVERY),
                 "cleanup": block_views.get(db.BLOCK_CLEANUP),
             })
 
@@ -1696,10 +1726,10 @@ def create_app() -> Flask:
         gaps = []
         for game in games:
             d = parse_date(game.date)
-            if d is None or d < today:
+            if d is not None and d < today:
                 continue
-            missing_roles = db.missing_slots(game)
-            if missing_roles:
+            staffing = db.staffing_status(game)
+            if not staffing["complete"]:
                 gaps.append({
                     "kind": "game",
                     "nr": game.game_nr,
@@ -1709,7 +1739,8 @@ def create_app() -> Flask:
                     "ak": game.ak or "",
                     "color": ak_color(game.ak),
                     "team_name": game.judge_team_name or "",
-                    "missing": list(missing_roles.items()),
+                    "missing": list(staffing["vacancies"].items()),
+                    "deficiencies": staffing["deficiencies"],
                 })
 
         for block in season_blocks:
@@ -1718,9 +1749,10 @@ def create_app() -> Flask:
                 continue
             occupied = {assignment.slot for assignment in block.assignments}
             missing_count = sum(
-                1 for slot in range(db.BLOCK_SLOT_COUNT) if slot not in occupied
+                1 for slot in range(db.block_capacity(block)) if slot not in occupied
             )
-            if missing_count:
+            setup_needed = not db.block_is_configured(block)
+            if missing_count or setup_needed:
                 calculated = db.calculated_block_time(block)
                 gaps.append({
                     "kind": "block",
@@ -1731,7 +1763,8 @@ def create_app() -> Flask:
                     "ak": "Tagesdienst",
                     "color": "#0a1d4e",
                     "team_name": "–",
-                    "missing": [(block.label, missing_count)],
+                    "missing": [(block.label, missing_count)] if missing_count else [],
+                    "setup_needed": setup_needed,
                 })
         gaps.sort(key=lambda gap: (
             parse_date(gap["date"]) or datetime.max.date(), gap["time"], gap["teams"]
@@ -1754,10 +1787,18 @@ def create_app() -> Flask:
     def persons():
         session = get_session()
         teams = team_options(session)
+        all_records = db.get_all_person_records(session) if g.tier == "admin" else []
+        missing_birth_dates = sum(p.birth_date is None for p in all_records)
+        birth_date_filter = (
+            "missing" if g.tier == "admin"
+            and request.args.get("birth_date") == "missing" else ""
+        )
         visible_people = [
-            person for person in db.get_all_person_records(session)
-            if person.account_status in (db.ACCOUNT_ACTIVE, db.ACCOUNT_INACTIVE)
+            person for person in all_records
+            if birth_date_filter or person.account_status in (db.ACCOUNT_ACTIVE, db.ACCOUNT_INACTIVE)
         ] if g.tier == "admin" else db.get_all_persons(session)
+        if birth_date_filter:
+            visible_people = [p for p in visible_people if p.birth_date is None]
 
         name_filter = (request.args.get("name") or "").strip()
         team_filter = request.args.get("team_id", type=int)
@@ -1795,6 +1836,8 @@ def create_app() -> Flask:
                 "team_label": db.membership_label(p),
                 "status": p.account_status,
                 "editable": g.tier == "admin" or p.id == g.viewer.id,
+                **({"birth_date": p.birth_date.isoformat() if p.birth_date else ""}
+                   if g.tier == "admin" or p.id == g.viewer.id else {}),
                 "mv_actions": [
                     {
                         "id": team_id,
@@ -1825,6 +1868,9 @@ def create_app() -> Flask:
             name_filter=name_filter,
             team_filter=team_filter,
             status_filter=status_filter,
+            birth_date_filter=birth_date_filter,
+            missing_birth_dates=missing_birth_dates,
+            birth_date_max=common.effective_today().isoformat(),
         )
 
     def _form_team_id(session) -> int | None:
@@ -1867,6 +1913,11 @@ def create_app() -> Flask:
                 flash(str(exc), "error")
                 return redirect(url_for("persons"))
         email, phone, errors = _normalized_person_contacts()
+        birth_date = None
+        try:
+            birth_date = db.validate_birth_date(request.form.get("birth_date"))
+        except ValueError as exc:
+            errors["birth_date"] = str(exc)
         if errors:
             flash(next(iter(errors.values())), "error")
             return redirect(url_for("persons"))
@@ -1879,7 +1930,7 @@ def create_app() -> Flask:
                 "error",
             )
             return redirect(url_for("persons"))
-        person = db.Person(name=name, email=email, phone=phone)
+        person = db.Person(name=name, email=email, phone=phone, birth_date=birth_date)
         session.add(person)
         try:
             session.flush()
@@ -1908,6 +1959,14 @@ def create_app() -> Flask:
 
         name = (request.form.get("name") or "").strip()
         email, phone, errors = _normalized_person_contacts()
+        birth_date = person.birth_date
+        if "birth_date" in request.form:
+            raw_birth_date = (request.form.get("birth_date") or "").strip()
+            if raw_birth_date or person.birth_date is not None:
+                try:
+                    birth_date = db.validate_birth_date(raw_birth_date)
+                except ValueError as exc:
+                    errors["birth_date"] = str(exc)
         if errors:
             flash(next(iter(errors.values())), "error")
             return redirect(url_for("persons"))
@@ -1924,6 +1983,7 @@ def create_app() -> Flask:
             person.name = name
         person.email = email
         person.phone = phone
+        person.birth_date = birth_date
         try:
             session.commit()
         except IntegrityError:
@@ -2178,7 +2238,7 @@ def create_app() -> Flask:
         except ValueError as exc:
             session_db.rollback()
             return api_error(str(exc))
-        return jsonify(ok=True, warning=_warning_for(game, person))
+        return jsonify(ok=True, warning=_warning_for(game, person), staffing=db.staffing_status(game))
 
     @app.post("/api/assignment/release")
     def api_assignment_release():
@@ -2213,7 +2273,7 @@ def create_app() -> Flask:
                 exc,
             )
             return _assignment_unavailable_response(exc)
-        return jsonify(ok=True)
+        return jsonify(ok=True, staffing=db.staffing_status(game))
 
     def _block_assignment_request():
         data = request.get_json(silent=True) or {}
@@ -2230,7 +2290,7 @@ def create_app() -> Flask:
             return data, session_db, None, None, api_error(
                 "Tagesblock nicht gefunden.", 404
             )
-        if not 0 <= slot < db.BLOCK_SLOT_COUNT:
+        if not 0 <= slot < db.block_capacity(block):
             return data, session_db, None, None, api_error("Ungültiger Slot.")
         block_date = parse_date(block.date)
         if (
@@ -2273,6 +2333,8 @@ def create_app() -> Flask:
         except ValueError as exc:
             session_db.rollback()
             return api_error(str(exc))
+        if block.phase == db.BLOCK_CAKE_DELIVERY:
+            return jsonify(ok=True, block_id=block.id, block=block_view(block))
         return jsonify(ok=True, block_id=block.id)
 
     @app.post("/api/block-assignment/release")
@@ -2297,7 +2359,65 @@ def create_app() -> Flask:
         except db.AssignmentTemporarilyUnavailableError as exc:
             session_db.rollback()
             return _assignment_unavailable_response(exc)
+        except ValueError as exc:
+            session_db.rollback()
+            return api_error(str(exc))
+        if block.phase == db.BLOCK_CAKE_DELIVERY:
+            return jsonify(ok=True, block_id=block.id, block=block_view(block))
         return jsonify(ok=True, block_id=block.id)
+
+    @app.post("/api/blocks/<int:block_id>/cake-settings")
+    def api_cake_settings(block_id: int):
+        if g.tier != "admin":
+            return api_error("Nur Admins können die Kuchenlieferung konfigurieren.", 403)
+        session_db = get_session()
+        block = session_db.get(db.DayBlock, block_id)
+        if block is None or block.phase != db.BLOCK_CAKE_DELIVERY:
+            return api_error("Kuchenblock nicht gefunden.", 404)
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict):
+            return api_error("Ungültige Kucheneinstellungen.")
+        quantity = data.get("cake_quantity")
+        delivery_time = data.get("delivery_time")
+        if type(quantity) is not int or quantity < 0:
+            return api_error("Die Kuchenanzahl muss eine nichtnegative ganze Zahl sein.")
+        if (
+            not isinstance(delivery_time, str)
+            or re.fullmatch(r"(?:[01][0-9]|2[0-3]):[0-5][0-9]", delivery_time) is None
+        ):
+            return api_error("Bitte eine gültige Lieferzeit im Format HH:MM angeben.")
+        if not {"expected_delivery_time", "expected_cake_quantity"} <= data.keys():
+            return api_error("Die erwarteten gespeicherten Einstellungen fehlen.")
+        expected_time = data["expected_delivery_time"]
+        expected_quantity = data["expected_cake_quantity"]
+        if (
+            (expected_time is not None and not isinstance(expected_time, str))
+            or (expected_quantity is not None and type(expected_quantity) is not int)
+        ):
+            return api_error("Ungültige erwartete Einstellungen.")
+        try:
+            db.configure_cake_block(
+                session_db, block, delivery_time, quantity,
+                expected_delivery_time=expected_time,
+                expected_cake_quantity=expected_quantity,
+            )
+            session_db.commit()
+        except db.CakeConfigurationConflictError as exc:
+            session_db.rollback()
+            return jsonify(
+                ok=False, code="stale_cake_settings",
+                error="Die Kucheneinstellungen wurden inzwischen geändert. Bitte prüfe die gespeicherten Werte.",
+                current_delivery_time=exc.current_delivery_time,
+                current_cake_quantity=exc.current_cake_quantity,
+                block=block_view(block),
+            ), 409
+        except db.AssignmentTemporarilyUnavailableError as exc:
+            session_db.rollback()
+            return _assignment_unavailable_response(exc)
+        except ValueError as exc:
+            session_db.rollback()
+            return api_error(str(exc))
+        return jsonify(ok=True, block=block_view(block))
 
     @app.post("/api/games/<int:game_id>/team")
     def api_game_team(game_id: int):

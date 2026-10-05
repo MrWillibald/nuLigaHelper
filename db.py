@@ -12,10 +12,11 @@ import re
 import time
 
 import contact_validation as contacts
+import age_eligibility
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 
-from sqlalchemy import Boolean, CheckConstraint, Column, DateTime, Index, Integer, String, ForeignKey, Table, UniqueConstraint, create_engine, delete, event, select
+from sqlalchemy import Boolean, CheckConstraint, Column, Date, DateTime, Index, Integer, String, ForeignKey, Table, UniqueConstraint, create_engine, delete, event, select, update
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import (
     DeclarativeBase,
@@ -66,11 +67,15 @@ REQUIRED_ROLE_SLOT_COUNT = {
 }
 
 BLOCK_PREPARATION = "preparation"
+BLOCK_CAKE_DELIVERY = "cake_delivery"
 BLOCK_CLEANUP = "cleanup"
-BLOCK_PHASES = (BLOCK_PREPARATION, BLOCK_CLEANUP)
+BLOCK_PHASES = (BLOCK_PREPARATION, BLOCK_CAKE_DELIVERY, BLOCK_CLEANUP)
+# Preparation and cleanup retain their fixed capacity. Cake capacity is saved
+# per dated block and must be read through block_capacity().
 BLOCK_SLOT_COUNT = 3
 BLOCK_PHASE_LABELS = {
     BLOCK_PREPARATION: "Vorbereitung",
+    BLOCK_CAKE_DELIVERY: "Kuchenlieferung",
     BLOCK_CLEANUP: "Aufräumen",
 }
 
@@ -335,6 +340,13 @@ def verify_db(engine) -> None:
             "Stop database users and run 'manage_db.py migrate-schema "
             f"--confirm-stopped'.{suffix}"
         )
+    try:
+        schema_migrations.verify_head_schema(engine)
+    except schema_migrations.SchemaMigrationError as exc:
+        raise SQLiteInitializationError(
+            f"Database schema verification failed: {exc}. "
+            "Stop database users and restore a recognized snapshot or review the schema."
+        ) from exc
     _establish_sqlite_runtime(engine)
     _validate_database(engine)
 
@@ -422,6 +434,8 @@ class Person(Base):
     name: Mapped[str] = mapped_column(String(120))
     email: Mapped[str | None] = mapped_column(String(200), nullable=True, unique=True)
     phone: Mapped[str | None] = mapped_column(String(60), nullable=True, unique=True)
+    # Null represents honestly unknown legacy data, never an inferred age.
+    birth_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     account_status: Mapped[str] = mapped_column(String(20), default=ACCOUNT_ACTIVE)
     registered_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -533,7 +547,7 @@ class Assignment(Base):
 
 
 class DayBlock(Base):
-    """One automatic preparation or cleanup block for a home-game date."""
+    """One automatic dated task block, with configurable cake delivery."""
 
     __tablename__ = "day_blocks"
     __table_args__ = (
@@ -541,7 +555,18 @@ class DayBlock(Base):
             "season_year", "date", "phase", name="uq_day_block_season_date_phase"
         ),
         CheckConstraint(
-            "phase IN ('preparation', 'cleanup')", name="ck_day_block_phase"
+            "phase IN ('preparation', 'cake_delivery', 'cleanup')",
+            name="ck_day_block_phase",
+        ),
+        CheckConstraint(
+            "cake_quantity IS NULL OR "
+            "(typeof(cake_quantity) = 'integer' AND cake_quantity >= 0)",
+            name="ck_day_block_cake_quantity",
+        ),
+        CheckConstraint(
+            "phase = 'cake_delivery' OR "
+            "(cake_quantity IS NULL AND delivery_time IS NULL)",
+            name="ck_day_block_cake_metadata",
         ),
     )
 
@@ -549,6 +574,8 @@ class DayBlock(Base):
     season_year: Mapped[int] = mapped_column(Integer)
     date: Mapped[str] = mapped_column(String(20))
     phase: Mapped[str] = mapped_column(String(20))
+    cake_quantity: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    delivery_time: Mapped[str | None] = mapped_column(String(5), nullable=True)
     assignments: Mapped[list["BlockAssignment"]] = relationship(
         back_populates="block", cascade="all, delete-orphan"
     )
@@ -568,7 +595,7 @@ class BlockAssignment(Base):
     __table_args__ = (
         UniqueConstraint("block_id", "person_id", name="uq_block_person"),
         UniqueConstraint("block_id", "slot", name="uq_block_slot"),
-        CheckConstraint("slot >= 0 AND slot < 3", name="ck_block_assignment_slot"),
+        CheckConstraint("slot >= 0", name="ck_block_assignment_slot"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -809,7 +836,7 @@ def get_games_on_date(session: Session, date: str) -> list[Game]:
 def get_day_blocks(
     session: Session, season_year: int, block_date: str
 ) -> list[DayBlock]:
-    """Return a date's blocks in preparation/cleanup order."""
+    """Return a date's blocks in preparation/cake/cleanup order."""
     blocks = list(
         session.scalars(
             select(DayBlock).where(
@@ -821,9 +848,43 @@ def get_day_blocks(
     return sorted(blocks, key=lambda block: (order.get(block.phase, 99), block.id))
 
 
+def _valid_cake_delivery_time(value: str | None) -> bool:
+    return isinstance(value, str) and bool(
+        re.fullmatch(r"(?:[01][0-9]|2[0-3]):[0-5][0-9]", value)
+    )
+
+
+def block_is_configured(block: DayBlock) -> bool:
+    """Distinguish an explicit zero-cake request from missing setup."""
+    if block.phase in (BLOCK_PREPARATION, BLOCK_CLEANUP):
+        return True
+    return (
+        block.phase == BLOCK_CAKE_DELIVERY
+        and type(block.cake_quantity) is int
+        and block.cake_quantity >= 0
+        and _valid_cake_delivery_time(block.delivery_time)
+    )
+
+
+def block_capacity(block: DayBlock) -> int:
+    """Return configured positions, without inventing a cake quantity."""
+    if block.phase in (BLOCK_PREPARATION, BLOCK_CLEANUP):
+        return BLOCK_SLOT_COUNT
+    if block.phase == BLOCK_CAKE_DELIVERY and block_is_configured(block):
+        return block.cake_quantity
+    return 0
+
+
 def block_slot_label(block_or_phase: DayBlock | str, slot: int) -> str:
     phase = block_or_phase.phase if isinstance(block_or_phase, DayBlock) else block_or_phase
-    if phase not in BLOCK_PHASE_LABELS or not 0 <= slot < BLOCK_SLOT_COUNT:
+    # Display labels are also used for durable history after capacity changes.
+    # A cake position keeps its original name even after it no longer exists.
+    if (
+        phase not in BLOCK_PHASE_LABELS
+        or type(slot) is not int
+        or slot < 0
+        or (phase != BLOCK_CAKE_DELIVERY and slot >= BLOCK_SLOT_COUNT)
+    ):
         raise ValueError("Ungültiger Aufgabenplatz.")
     return f"{BLOCK_PHASE_LABELS[phase]} {slot + 1}"
 
@@ -831,17 +892,22 @@ def block_slot_label(block_or_phase: DayBlock | str, slot: int) -> str:
 def calculated_block_time(
     block: DayBlock, games: list[Game] | None = None
 ) -> datetime | None:
-    """Calculate a block boundary time, retaining adjacent calendar dates."""
+    """Return the saved cake time or calculated bookend, retaining dates."""
+    try:
+        base_date = datetime.strptime(block.date, "%d.%m.%Y")
+    except (TypeError, ValueError):
+        return None
+    if block.phase == BLOCK_CAKE_DELIVERY:
+        if not _valid_cake_delivery_time(block.delivery_time):
+            return None
+        hour, minute = map(int, block.delivery_time.split(":"))
+        return base_date.replace(hour=hour, minute=minute)
     if games is None:
         session = Session.object_session(block)
         if session is None:
             return None
         games = get_games_on_date(session, block.date)
         games = [game for game in games if game.season_year == block.season_year]
-    try:
-        base_date = datetime.strptime(block.date, "%d.%m.%Y")
-    except (TypeError, ValueError):
-        return None
     candidates = []
     for game in games:
         token = (game.time or "").split()
@@ -903,12 +969,15 @@ def game_sort_key(game: "Game") -> tuple:
 
 def get_or_create_person(session: Session, name: str, email: str | None = None,
                          phone: str | None = None,
-                         teams: list[Team] | tuple[Team, ...] | None = None) -> Person:
+                         teams: list[Team] | tuple[Team, ...] | None = None,
+                         *, birth_date: date | str | None = None) -> Person:
     """Seed a person by name; application identity must use ``Person.id``."""
     name = name.strip()
+    if birth_date is not None:
+        birth_date = validate_birth_date(birth_date)
     person = session.scalars(select(Person).where(Person.name == name)).first()
     if person is None:
-        person = Person(name=name, email=email, phone=phone)
+        person = Person(name=name, email=email, phone=phone, birth_date=birth_date)
         session.add(person)
         session.flush()
         logging.info(f"Person '{name}' created")
@@ -917,6 +986,8 @@ def get_or_create_person(session: Session, name: str, email: str | None = None,
             person.email = email
         if phone is not None:
             person.phone = phone
+        if birth_date is not None:
+            person.birth_date = birth_date
     if teams is not None:
         replace_person_teams(session, person, [team.id for team in teams])
     return person
@@ -1036,8 +1107,11 @@ def register_person(
     teams: list[Team] | tuple[Team, ...],
     email: str | None = None,
     phone: str | None = None,
+    *,
+    birth_date: date | str,
 ) -> Person:
     """Create an unverified registration with one or two canonical contacts."""
+    birth_date = validate_birth_date(birth_date)
     email = contacts.normalize_email(email)
     phone = contacts.normalize_phone(phone)
     if not email and not phone:
@@ -1048,6 +1122,7 @@ def register_person(
         name=name.strip(),
         email=email,
         phone=phone,
+        birth_date=birth_date,
         account_status=ACCOUNT_REGISTERED,
         registered_at=datetime.now(),
     )
@@ -1077,6 +1152,27 @@ class SlotConflictError(ValueError):
     def __init__(self, current_person_id: int | None):
         super().__init__("Der Aufgabenplatz wurde zwischenzeitlich geändert.")
         self.current_person_id = current_person_id
+
+
+class CakeConfigurationConflictError(ValueError):
+    """A stale settings edit, with the currently saved public configuration."""
+
+    def __init__(self, current_delivery_time: str | None, current_cake_quantity: int | None):
+        super().__init__("Die Kuchenlieferung wurde zwischenzeitlich geändert.")
+        self.current_delivery_time = current_delivery_time
+        self.current_cake_quantity = current_cake_quantity
+
+
+class AgeEligibilityError(ValueError):
+    """A public-safe structured eligibility refusal, without a person's age."""
+
+    def __init__(self, reason: dict):
+        super().__init__(reason["message"])
+        self.reason = reason
+
+
+validate_birth_date = age_eligibility.validate_birth_date
+classify_game_category = age_eligibility.classify_game_category
 
 
 def _is_sqlite_contention(exc: OperationalError) -> bool:
@@ -1169,6 +1265,14 @@ def claim_slot(
 
     while True:
         try:
+            # Acquire the SQLite writer lock BEFORE reading collective coverage.
+            # A stale WAL read snapshot fails here and retries from a fresh one.
+            with session.no_autoflush:
+                session.execute(
+                    update(Game).where(Game.id == game_id).values(id=Game.id)
+                    .execution_options(synchronize_session=False)
+                )
+            session.flush()
             current = _stored_slot(session, game_id, role, slot)
             current_id = current.person_id if current else None
             if current_id != expected_person_id:
@@ -1178,8 +1282,8 @@ def claim_slot(
                     return current
                 raise SlotConflictError(current.person_id)
 
-            stored_game = session.get(Game, game_id)
-            stored_person = session.get(Person, person_id)
+            stored_game = session.get(Game, game_id, populate_existing=True)
+            stored_person = session.get(Person, person_id, populate_existing=True)
             if stored_game is None or stored_person is None:
                 raise ValueError("Spiel oder Person wurde nicht gefunden.")
             if stored_person.account_status != ACCOUNT_ACTIVE:
@@ -1195,6 +1299,15 @@ def claim_slot(
                     f"{stored_person.name} ist für dieses Spiel bereits als "
                     f"'{other.role}' eingeteilt."
                 )
+
+            session.expire(stored_game, ["assignments"])
+            # Refresh sibling sellers too: the identity map may predate a
+            # separately committed profile correction or assignment mutation.
+            for sibling in stored_game.assignments:
+                session.refresh(sibling.person, ["birth_date"])
+            reason = claim_eligibility(stored_game, role, stored_person, slot)
+            if reason is not None:
+                raise AgeEligibilityError(reason)
 
             stored_actor = session.get(Person, actor_id) if actor_id else None
             assignment = Assignment(
@@ -1301,8 +1414,76 @@ def release_slot(
 
 
 def _validate_block_slot(block: DayBlock, slot: int) -> None:
-    if block.phase not in BLOCK_PHASES or not 0 <= slot < BLOCK_SLOT_COUNT:
+    if (
+        block.phase not in BLOCK_PHASES
+        or type(slot) is not int
+        or not 0 <= slot < block_capacity(block)
+    ):
+        if block.phase == BLOCK_CAKE_DELIVERY and not block_is_configured(block):
+            raise ValueError("Die Kuchenlieferung muss zuerst eingerichtet werden.")
         raise ValueError("Ungültiger Aufgabenplatz.")
+
+
+def _lock_day_block(session: Session, block_id: int) -> DayBlock:
+    """Read saved capacity only after obtaining the shared SQLite writer lock."""
+    with session.no_autoflush:
+        session.execute(
+            update(DayBlock).where(DayBlock.id == block_id).values(id=DayBlock.id)
+            .execution_options(synchronize_session=False)
+        )
+    session.flush()
+    stored = session.get(DayBlock, block_id, populate_existing=True)
+    if stored is None:
+        raise ValueError("Tagesblock wurde nicht gefunden.")
+    return stored
+
+
+def configure_cake_block(
+    session: Session,
+    block: DayBlock,
+    delivery_time: str,
+    cake_quantity: int,
+    expected_delivery_time: str | None,
+    expected_cake_quantity: int | None,
+) -> DayBlock:
+    """Save cake settings atomically with claims; authorization is the caller's job."""
+    if not _valid_cake_delivery_time(delivery_time):
+        raise ValueError("Bitte eine gültige Lieferzeit im Format HH:MM angeben.")
+    if type(cake_quantity) is not int or not 0 <= cake_quantity <= 2**63 - 1:
+        raise ValueError("Die Kuchenanzahl muss eine nichtnegative ganze Zahl sein.")
+    block_id = block.id
+    deadline = time.monotonic() + SQLITE_TIMEOUT_SECONDS
+    while True:
+        try:
+            stored_block = _lock_day_block(session, block_id)
+            if stored_block.phase != BLOCK_CAKE_DELIVERY:
+                raise ValueError("Nur Kuchenlieferungen haben Lieferzeit und Kuchenanzahl.")
+            if (
+                stored_block.delivery_time != expected_delivery_time
+                or stored_block.cake_quantity != expected_cake_quantity
+            ):
+                raise CakeConfigurationConflictError(
+                    stored_block.delivery_time, stored_block.cake_quantity
+                )
+            removed_occupant = session.scalars(
+                select(BlockAssignment).where(
+                    BlockAssignment.block_id == block_id,
+                    BlockAssignment.slot >= cake_quantity,
+                )
+            ).first()
+            if removed_occupant is not None:
+                raise ValueError(
+                    "Belegte Kuchenplätze müssen vor dem Verringern der Kuchenanzahl "
+                    "ausdrücklich freigegeben werden."
+                )
+            stored_block.delivery_time = delivery_time
+            stored_block.cake_quantity = cake_quantity
+            session.flush()
+            session.expire(stored_block, ["assignments"])
+            return stored_block
+        except OperationalError as exc:
+            session.rollback()
+            _wait_for_assignment_retry(deadline, exc)
 
 
 def _stored_block_slot(
@@ -1312,12 +1493,15 @@ def _stored_block_slot(
         select(BlockAssignment).where(
             BlockAssignment.block_id == block_id,
             BlockAssignment.slot == slot,
-        )
+        ).execution_options(populate_existing=True)
     ).first()
 
 
-def _block_snapshot(block: DayBlock) -> str:
-    return f"{block.date} | {BLOCK_PHASE_LABELS.get(block.phase, block.phase)}"
+def _block_snapshot(block: DayBlock, slot: int | None = None) -> str:
+    description = BLOCK_PHASE_LABELS.get(block.phase, block.phase)
+    if block.phase in BLOCK_PHASE_LABELS and slot is not None:
+        description = block_slot_label(block, slot)
+    return f"Saison {block.season_year} | {block.date} | {description}"
 
 
 def _audit_block_assignment(
@@ -1338,7 +1522,7 @@ def _audit_block_assignment(
             slot=assignment.slot,
             actor_name=actor.name if actor else "System",
             affected_person_name=assignment.person.name,
-            block_snapshot=_block_snapshot(assignment.block),
+            block_snapshot=_block_snapshot(assignment.block, assignment.slot),
         )
     )
 
@@ -1353,12 +1537,15 @@ def claim_block_slot(
     actor_tier: str = "system",
 ) -> BlockAssignment:
     """Claim one day-block slot with bounded compare-and-swap semantics."""
-    _validate_block_slot(block, slot)
+    if type(slot) is not int or slot < 0:
+        raise ValueError("Ungültiger Aufgabenplatz.")
     block_id, person_id = block.id, person.id
     actor_id = actor.id if actor else None
     deadline = time.monotonic() + SQLITE_TIMEOUT_SECONDS
     while True:
         try:
+            stored_block = _lock_day_block(session, block_id)
+            _validate_block_slot(stored_block, slot)
             current = _stored_block_slot(session, block_id, slot)
             current_id = current.person_id if current else None
             if current_id != expected_person_id:
@@ -1367,9 +1554,8 @@ def claim_block_slot(
                 if current.person_id == person_id:
                     return current
                 raise SlotConflictError(current.person_id)
-            stored_block = session.get(DayBlock, block_id)
-            stored_person = session.get(Person, person_id)
-            if stored_block is None or stored_person is None:
+            stored_person = session.get(Person, person_id, populate_existing=True)
+            if stored_person is None:
                 raise ValueError("Tagesblock oder Person wurde nicht gefunden.")
             if stored_person.account_status != ACCOUNT_ACTIVE:
                 raise ValueError("Diese Person kann nicht eingeteilt werden.")
@@ -1432,13 +1618,19 @@ def release_block_slot(
     action: str = "release",
 ) -> Person | None:
     """Release one day-block slot with bounded compare-and-swap semantics."""
-    _validate_block_slot(block, slot)
+    if type(slot) is not int or slot < 0:
+        raise ValueError("Ungültiger Aufgabenplatz.")
     block_id = block.id
     actor_id = actor.id if actor else None
     deadline = time.monotonic() + SQLITE_TIMEOUT_SECONDS
     while True:
         try:
+            stored_block = _lock_day_block(session, block_id)
             current = _stored_block_slot(session, block_id, slot)
+            # Retained occupants remain releasable even if stored cake setup is
+            # invalid; an empty position must be part of the saved capacity.
+            if current is None:
+                _validate_block_slot(stored_block, slot)
             current_id = current.person_id if current else None
             if current_id != expected_person_id:
                 raise SlotConflictError(current_id)
@@ -1455,7 +1647,7 @@ def release_block_slot(
                 slot=current.slot,
                 actor_name=actor.name if actor else "System",
                 affected_person_name=person.name,
-                block_snapshot=_block_snapshot(current.block),
+                block_snapshot=_block_snapshot(current.block, current.slot),
             )
             result = session.execute(
                 delete(BlockAssignment).where(
@@ -1487,7 +1679,7 @@ def release_block_slot(
 def reconcile_day_blocks(
     session: Session, season_year: int, active_dates: set[str]
 ) -> None:
-    """Ensure two blocks per active date and audit removal for vanished dates."""
+    """Ensure all dated phases and audit removal for vanished dates."""
     existing = list(
         session.scalars(select(DayBlock).where(DayBlock.season_year == season_year))
     )
@@ -1531,27 +1723,33 @@ def set_role_assignments(session: Session, game: Game, role: str,
     _validate_slot(role, 0)
     if len(person_ids) > ROLE_SLOT_COUNT[role]:
         raise ValueError("Zu viele Personen für diese Aufgabe.")
-    # Release changed slots first so moving a person between slots does not
-    # temporarily violate the one-task-per-game constraint.
-    for slot in range(ROLE_SLOT_COUNT[role]):
-        current = _slot_assignment(game, role, slot)
-        desired_id = person_ids[slot] if slot < len(person_ids) else None
-        if current is not None and current.person_id != desired_id:
-            release_slot(
-                session, game, role, slot, current.person_id, actor, actor_tier
-            )
-    for slot in range(ROLE_SLOT_COUNT[role]):
-        current = _slot_assignment(game, role, slot)
-        desired_id = person_ids[slot] if slot < len(person_ids) else None
-        if desired_id is None or (
-            current is not None and current.person_id == desired_id
-        ):
-            continue
-        person_id = desired_id
-        person = session.get(Person, person_id)
-        if person is not None:
-            claim_slot(session, game, role, slot, None, person, actor, actor_tier)
-    session.commit()
+    try:
+        # Release changed slots first so moving a person between slots does not
+        # temporarily violate the one-task-per-game constraint.
+        for slot in range(ROLE_SLOT_COUNT[role]):
+            current = _slot_assignment(game, role, slot)
+            desired_id = person_ids[slot] if slot < len(person_ids) else None
+            if current is not None and current.person_id != desired_id:
+                release_slot(
+                    session, game, role, slot, current.person_id, actor, actor_tier
+                )
+        for slot in range(ROLE_SLOT_COUNT[role]):
+            current = _slot_assignment(game, role, slot)
+            desired_id = person_ids[slot] if slot < len(person_ids) else None
+            if desired_id is None or (
+                current is not None and current.person_id == desired_id
+            ):
+                continue
+            person_id = desired_id
+            person = session.get(Person, person_id)
+            if person is not None:
+                claim_slot(session, game, role, slot, None, person, actor, actor_tier)
+        session.commit()
+    except BaseException:
+        # A refused replacement must not leave earlier releases or claims
+        # pending for a caller to accidentally commit, including their audits.
+        session.rollback()
+        raise
 
 
 def delete_person(
@@ -1657,6 +1855,45 @@ def missing_slots(game: Game) -> dict[str, int]:
         if missing:
             result[role] = missing
     return result
+
+
+def claim_eligibility(game: Game, role: str, person: Person, slot: int = 0) -> dict | None:
+    """Eligibility of a hypothetical claim; authorization and CAS stay separate."""
+    reason = age_eligibility.timing_eligibility(game, role, person, slot)
+    if reason is not None or role != ROLE_SALE:
+        return reason
+    if age_eligibility.parse_game_date(game.date) is None:
+        return age_eligibility.deficiency(
+            ROLE_SALE, "unresolved_game_date", minimum_age=18
+        )
+    sellers = [assignment.person for assignment in game.assignments_by_role(ROLE_SALE)
+               if assignment.slot != slot]
+    sellers.append(person)
+    # Incremental staffing may leave coverage outstanding. The final claim
+    # must establish coverage; no individual minimum applies to the other seller.
+    if len(sellers) < ROLE_SLOT_COUNT[ROLE_SALE]:
+        return None
+    return age_eligibility.sale_coverage(game, sellers)
+
+
+def staffing_status(game: Game) -> dict:
+    """Keep physical vacancies distinct from invalid or unresolved eligibility."""
+    vacancies = missing_slots(game)
+    deficiencies = []
+    for role in (ROLE_TIMEKEEPER, ROLE_SECRETARY):
+        for assignment in game.assignments_by_role(role):
+            reason = age_eligibility.timing_eligibility(
+                game, role, assignment.person, assignment.slot
+            )
+            if reason is not None:
+                deficiencies.append(reason)
+    sale_reason = age_eligibility.sale_coverage(
+        game, [assignment.person for assignment in game.assignments_by_role(ROLE_SALE)]
+    )
+    if sale_reason is not None:
+        deficiencies.append(sale_reason)
+    return {"vacancies": vacancies, "deficiencies": deficiencies,
+            "complete": not vacancies and not deficiencies}
 
 
 def assign_person(

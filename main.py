@@ -150,6 +150,7 @@ def _send_notifications(
         if db.get_games_on_date(session, next_week):
             cnt = notifier.notify_service_early(next_week)
             cnt += notifier.notify_cleanup_early(next_week)
+            cnt += notifier.notify_cakes_early(next_week)
             cnt += notifier.notify_pre(next_week)
             logging.info(f"Number of sent service notifications: {cnt}")
             logging.info("-------------------------------------------------")

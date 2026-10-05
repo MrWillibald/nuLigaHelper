@@ -25,15 +25,17 @@ with h.Session(ENGINE) as session:
     teams = [team for team in db.get_all_teams(session) if not team.is_support]
     own_team, other_team = teams[:2]
     support = db.get_support_team(session)
-    admin = db.Person(name="Admin", email="admin@x.test", teams=[support], is_admin=True)
-    mv = db.Person(name="MV", email="mv@x.test", teams=[own_team])
-    member = db.Person(name="Member", email="member@x.test", teams=[own_team, other_team])
-    other = db.Person(name="Other", email="private@x.test", teams=[other_team])
+    admin = db.Person(birth_date=h.ADULT_BIRTH_DATE, name="Admin", email="admin@x.test", teams=[support], is_admin=True)
+    mv = db.Person(birth_date=h.ADULT_BIRTH_DATE, name="MV", email="mv@x.test", teams=[own_team])
+    member = db.Person(birth_date=h.ADULT_BIRTH_DATE, name="Member", email="member@x.test", teams=[own_team, other_team])
+    other = db.Person(birth_date=h.ADULT_BIRTH_DATE, name="Other", email="private@x.test", teams=[other_team])
     pending_other = db.Person(
+        birth_date=h.ADULT_BIRTH_DATE,
         name="Pending Other", email="pending@x.test", teams=[other_team],
         account_status=db.ACCOUNT_VERIFIED,
     )
     pending_support = db.Person(
+        birth_date=h.ADULT_BIRTH_DATE,
         name="Pending Support", email="support@x.test", teams=[support],
         account_status=db.ACCOUNT_VERIFIED,
     )
@@ -46,7 +48,7 @@ with h.Session(ENGINE) as session:
     other_game.team_id = other_team.id
     past_game = db.Game(
         season_year=h.SEASON, game_nr="9900",
-        date="01.01.2020", team=own_team
+        date="01.01.2020", ak="BL mD", team=own_team
     )
     session.add(past_game)
     db.assign_person(session, own_game, other, db.ROLE_CLEANING)
@@ -99,6 +101,7 @@ def test_02_member_sees_no_foreign_contacts_and_admin_writes_are_refused():
     ))
     assert option_ids <= {IDS["member"]}, "members may only receive their own person option"
     assert client.post("/personen/add", data=h.csrf_data({
+        "birth_date": "1990-01-01",
         "name": "Forged", "team_id": IDS["own_team"]
     }, token)).status_code == 403
     assert client.post(f"/personen/{IDS['other']}/edit", data=h.csrf_data({
