@@ -131,7 +131,7 @@ def test_admin_and_mv_creation_require_date_and_roll_back_all_fields():
             submitted = dict(payload)
             if invalid is not None:
                 submitted["birth_date"] = invalid
-            assert client.post("/personen/add", data=h.csrf_data(submitted)).status_code == 302
+            assert client.post("/personen/add", data=h.csrf_data(submitted)).status_code == 400
             with h.Session(engine) as session:
                 assert session.query(db.Person).filter_by(name=payload["name"]).first() is None
         assert client.post("/personen/add", data=h.csrf_data({**payload, "birth_date": "2007-08-09"})).status_code == 302
@@ -166,7 +166,7 @@ def test_birth_date_completion_correction_and_clearing_preserve_identity_and_oth
     assert _edit(legacy, ids["legacy"], name="Legacy completed", email="repaired@example.test", birth_date="1991-03-05").status_code == 302
     assert _edit(member, ids["member"], name="Corrected self", email="birth-member@example.test", birth_date="2001-04-05").status_code == 302
     for invalid in ("", "2001-02-29", "9999-12-31"):
-        assert _edit(member, ids["member"], name="Must not save", email="must-not-save@example.test", birth_date=invalid).status_code == 302
+        assert _edit(member, ids["member"], name="Must not save", email="must-not-save@example.test", birth_date=invalid).status_code == 400
         with h.Session(engine) as session:
             person = session.get(db.Person, ids["member"])
             assert person.birth_date == date(2001, 4, 5) and person.name == "Corrected self"

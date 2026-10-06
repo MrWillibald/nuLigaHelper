@@ -1,3 +1,8 @@
+const feedback = [];
+globalThis.nuLigaFeedback = {
+  show: (value) => feedback.push(value),
+  navigate: (values) => { feedback.push(...values); return true; },
+};
 // A rejected claim must leave the card and its progress at the saved value.
 const elements = {
   "[data-progress-count]": { textContent: "" },
@@ -17,10 +22,10 @@ const assignmentSelect = {
   value: "",
   addEventListener(name, callback) { listeners[name] = callback; },
   get selectedOptions() { return [this.value ? candidate : empty]; },
-  classList: { add() {}, remove() {} },
+  classList: { add() {}, remove() {}, toggle() {} },
 };
 const card = {
-  classList: { add() {}, remove() {} },
+  classList: { add() {}, remove() {}, toggle() {} },
   offsetWidth: 1,
   querySelector: (selector) => selector === ".coverage" ? coverage : null,
   querySelectorAll: () => [assignmentSelect],
@@ -100,3 +105,17 @@ await listeners.change();
 if (!removed || coverage.dataset.progressFilled !== "5" || coverage.dataset.progressTotal !== "5") {
   throw new Error("retained youth duty release failed to remove its field or changed baseline coverage");
 }
+
+if (feedback.at(-1).severity !== "success" || !feedback.at(-1).message.includes("freigegeben")) {
+  throw new Error("saved release was mislabeled as an assignment");
+}
+assignmentSelect.dataset.releaseOnly = "false";
+listeners.focus();
+assignmentSelect.value = "7";
+globalThis.fetch = async () => ({ status: 200, json: async () => ({
+  ok: true, warning: "Person spielt selbst.",
+  staffing: { required_filled: 5, required_total: 5, deficiencies: [] },
+}) });
+await listeners.change();
+if (feedback.at(-1).severity !== "warning" || !feedback.at(-1).message.includes("gespeichert")
+    || assignmentSelect.value !== "7") throw new Error("authoritative advisory did not confirm the saved assignment");

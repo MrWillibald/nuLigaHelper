@@ -77,5 +77,23 @@ def test_task_help_supports_pointer_keyboard_touch_without_assignment_actions():
     assert result.returncode == 0, result.stderr or result.stdout
 
 
+def test_feedback_lifecycle_plain_text_accessibility_and_one_use_navigation():
+    node = shutil.which("node")
+    if node is None:
+        return
+    result = subprocess.run([node, "test/js_feedback.mjs"], cwd=h.PROJECT_DIR,
+                            text=True, capture_output=True, timeout=30)
+    assert result.returncode == 0, result.stderr or result.stdout
+
+
+def test_team_and_mv_feedback_preserves_navigation_expiry_and_refused_state():
+    node = shutil.which("node")
+    if node is None:
+        return
+    result = subprocess.run([node, "test/js_mutation_feedback.mjs"], cwd=h.PROJECT_DIR,
+                            text=True, capture_output=True, timeout=30)
+    assert result.returncode == 0, result.stderr or result.stdout
+
+
 if __name__ == "__main__":
     h.run_all(dict(globals()))

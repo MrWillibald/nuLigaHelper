@@ -40,6 +40,42 @@ restricted secrets, monitoring and a reviewed launch procedure.
 - **Statistik**: games covered per team, jobs per person (incl. role breakdown) and upcoming games and day blocks with missing assignments, unresolved age eligibility or cake setup still needed.
 - **Änderungsprotokoll**: admin-only, append-only history of assignment claims and releases with actor, tier, person, game, role, slot and timestamp.
 
+Action results share a bottom-center feedback stack on every page, including assignments
+and releases, cake settings, responsible-team/MV changes, helper/profile/membership
+maintenance, registration decisions and login/logout. Each bubble includes a German
+severity label. Every pill uses a flat tinted background, bold dark text and rounded
+corners, without a border or shadow. Confirmation matches the green **Aktiv** badge,
+information matches the navy-on-slate team badges, and errors match the pink/red
+delete button. Warnings use the corresponding light amber/dark brown treatment.
+All bubbles disappear automatically after five seconds of visible reading time;
+hovering, keyboard focus, a hidden tab or scrolling a message outside the stack's
+visible area pauses that time. Bubbles have no close button. The bounded stack
+retains unread results and reveals each newest result
+without moving keyboard focus. It wraps on narrow screens, follows the visible viewport
+(including the on-screen keyboard), respects safe-area space and reduced-motion settings,
+and shares space with task guidance. Without JavaScript, server form feedback stays
+readable in the document flow, without timers or close buttons.
+
+Action-required reloads and sign-in navigation carry only that action's plain-text
+feedback once through same-tab session storage, expiring after 60 seconds. Its full
+reading time starts at the destination. Blocked storage keeps the result on the current
+page with an explicit refresh/sign-in link. Login/logout clear obsolete account feedback.
+No form values, contact data, birth dates, authentication challenges/codes or security
+tokens are copied into this transfer. Server redirects use one-use Flask flashes.
+
+A saved assignment with an advisory says **Dienst gespeichert.** before the warning;
+a release says **Dienst freigegeben.** Removing the last contact confirms the profile
+save in orange and warns about future login. A replacement confirms release first and
+then separately claims the new helper: a refused claim explains that the earlier duty
+was released and the replacement was refused. A lost/unreadable response reports an
+unconfirmed outcome and asks the user to check the saved state. Failed candidate reads
+after a confirmed save retain its success and occupancy/progress; incomplete pickers
+stay disabled with local retry/sign-in controls. Field validation, code-entry instructions,
+awaiting-approval status and staffing deficiencies remain beside the relevant content.
+Contact verification confirms only verification; the persistent status still explains
+that administrative approval is pending. Approval and rejection both receive success
+confirmation after a completed decision. The pre-deletion warning remains separate.
+
 Registration and login each use one two-step form: request a six-digit code, then enter it on the same page. During registration, E-Mail and SMS are individually optional, but at least one valid contact is required and both may be supplied. The selected route alone receives the verification code, while all supplied contacts are stored; after approval, either stored route can be selected independently for login. Registration additionally requires a name, valid birth date, one or more selected teams and consent to publish the name when assigned. The birth date is validated before requesting a code and preserved through verification. Successful contact verification queues the person and all selected teams as one user-level approval and notifies every active administrator; it does not itself approve the account. When an administrator approves the registration, the new active user receives a welcome notification inviting them to sign in and take open Heimspielplan duties. Both automatic notifications prefer E-Mail and use SMS only when no usable e-mail address is stored. Team membership itself has no separate confirmation. E-mail addresses are syntax-checked and stored in a canonical lowercase form. Phone input combines the selected country calling code with the national number and is stored as E.164 (for example `+491701234567`). Codes are single-use and valid for 15 minutes; sessions expire after one hour of inactivity. Active accounts land on the Heimspielplan after login, while verified registrations awaiting approval see only their status.
 
 New people need a real calendar birth date that is not after `common.effective_today()`, including contactless admin/MV creation and CLI creation. A member can complete or correct their own date; an admin can do so for any person. A known date cannot be cleared. Existing people with an unknown date can still receive unrelated profile repairs. Dates are self-reported; the application does not verify identity documents. Full dates are limited to own/admin person maintenance and are absent from schedules, candidates, statistics, ordinary notifications, diagnostic logs and assignment audits. See the [data inventory](DATA-INVENTORY.md).

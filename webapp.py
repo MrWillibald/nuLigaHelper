@@ -414,6 +414,8 @@ def create_app() -> Flask:
                     code="session_expired",
                     error="Deine Sitzung ist abgelaufen. Bitte melde dich erneut an.",
                 ), 401
+            if request.method != "GET":
+                flash("Deine Sitzung ist abgelaufen. Bitte melde dich erneut an.", "error")
             return redirect(url_for("login", next=request.path))
         if (
             g.viewer.account_status == db.ACCOUNT_VERIFIED
@@ -433,8 +435,9 @@ def create_app() -> Flask:
         if not expected or not supplied or not secrets.compare_digest(expected, supplied):
             if request.path.startswith("/api/"):
                 return api_error("Ungültiges Sicherheitstoken.", 403)
+            flash("Das Formular ist abgelaufen. Bitte lade die Seite neu.", "error")
             return render_template(
-                "message.html", message="Das Formular ist abgelaufen. Bitte lade die Seite neu."
+                "message.html", message="Bitte öffne das Formular erneut."
             ), 403
         return None
 
@@ -449,6 +452,7 @@ def create_app() -> Flask:
             "csrf_token": session["csrf_token"],
             "membership_label": db.membership_label,
             "person_label": db.person_label,
+            "feedback_auth_boundary": session.pop("feedback_auth_boundary", False),
         }
 
     def legal_page(name):
@@ -868,6 +872,8 @@ def create_app() -> Flask:
         message: str | None = None,
     ):
         payload = _decode_challenge(challenge, "login")
+        if message:
+            flash(message, "info")
         return render_template(
             "login.html",
             values=values or {
@@ -882,7 +888,6 @@ def create_app() -> Flask:
             masked_destination=(
                 payload.get("masked_destination") if payload else None
             ),
-            request_message=message,
             country_codes=COUNTRY_CODES,
         )
 
@@ -894,6 +899,8 @@ def create_app() -> Flask:
         message: str | None = None,
     ):
         payload = _decode_challenge(challenge, "verify")
+        if message:
+            flash(message, "info")
         initial = {
             "name": "",
             "birth_date": "",
@@ -914,7 +921,6 @@ def create_app() -> Flask:
             masked_destination=(
                 payload.get("masked_destination") if payload else None
             ),
-            request_message=message,
             country_codes=COUNTRY_CODES,
             birth_date_max=common.effective_today().isoformat(),
         )
@@ -923,6 +929,7 @@ def create_app() -> Flask:
         session.clear()
         session["person_id"] = person.id
         session.permanent = True
+        session["feedback_auth_boundary"] = True
 
     @app.route("/login", methods=["GET", "POST"])
     def login():
@@ -959,6 +966,7 @@ def create_app() -> Flask:
                     challenge=signed_challenge,
                 )
             _establish_session(person)
+            flash("Du bist angemeldet.", "success")
             return redirect(
                 url_for("schedule")
                 if person.account_status == db.ACCOUNT_ACTIVE
@@ -1005,6 +1013,7 @@ def create_app() -> Flask:
                 message="Anmeldung ungültig oder abgelaufen.",
             ), 400
         _establish_session(person)
+        flash("Du bist angemeldet.", "success")
         return redirect(
             url_for("schedule")
             if person.account_status == db.ACCOUNT_ACTIVE
@@ -1018,6 +1027,8 @@ def create_app() -> Flask:
     @app.post("/logout")
     def logout():
         session.clear()
+        session["feedback_auth_boundary"] = True
+        flash("Du bist abgemeldet.", "success")
         return redirect(url_for("schedule"))
 
     @app.route("/registrieren", methods=["GET", "POST"])
@@ -1055,6 +1066,7 @@ def create_app() -> Flask:
             get_session().commit()
             _notify_registration_approvers(person)
             _establish_session(person)
+            flash("Kontakt bestätigt. Die Freigabe steht noch aus.", "success")
             return redirect(url_for("registration_status"))
 
         values = _auth_values()
@@ -1164,9 +1176,11 @@ def create_app() -> Flask:
         db.verify_person(get_session(), person)
         get_session().commit()
         _notify_registration_approvers(person)
+        session["feedback_auth_boundary"] = True
+        flash("Kontakt bestätigt.", "success")
         return render_template(
             "message.html",
-            message="Kontakt bestätigt. Die Freigabe steht noch aus.",
+            message="Deine Registrierung wartet auf Freigabe.",
         )
 
     def _notify_registration_approvers(person: db.Person) -> None:
@@ -1207,7 +1221,10 @@ def create_app() -> Flask:
         if g.tier != "admin":
             return api_error("Keine Berechtigung.", 403)
         if decision == "approve":
-            db.approve_person(get_session(), person)
+            try:
+                db.approve_person(get_session(), person)
+            except ValueError as exc:
+                return api_error(str(exc))
         elif decision == "reject":
             person.account_status = db.ACCOUNT_REJECTED
             person.rejected_at = datetime.now()
@@ -1216,6 +1233,8 @@ def create_app() -> Flask:
         get_session().commit()
         if decision == "approve":
             _notify_registration_approved(person)
+        flash(f"Registrierung von '{person.name}' wurde "
+              + ("freigegeben." if decision == "approve" else "abgelehnt."), "success")
         return redirect(url_for("persons"))
 
     def person_options(session, records=None) -> list[dict]:
@@ -1853,7 +1872,27 @@ def create_app() -> Flask:
             birth_date_filter=birth_date_filter,
             missing_birth_dates=missing_birth_dates,
             birth_date_max=common.effective_today().isoformat(),
+            field_errors=g.get("person_field_errors", {}),
+            error_person_id=g.get("error_person_id"),
+            new_values=g.get("new_person_values", {}),
         )
+
+    def person_field_errors(errors, person_id=None):
+        # Render only after the caller's authorization checks. Never flash private values.
+        g.person_field_errors = errors
+        g.error_person_id = person_id
+        if person_id is None:
+            g.new_person_values = {field: request.form.get(field, "")
+                                   for field in ("name", "email", "phone", "birth_date")}
+        return persons(), 400
+
+    def _contact_collision_errors(email, phone, person_id=None):
+        errors = {}
+        if _contact_in_use("email", email, person_id):
+            errors["email"] = "E-Mail-Adresse wird bereits verwendet."
+        if _contact_in_use("sms", phone, person_id):
+            errors["phone"] = "Telefonnummer wird bereits verwendet."
+        return errors
 
     def _form_team_id(session) -> int | None:
         raw = request.form.get("team_id")
@@ -1901,17 +1940,10 @@ def create_app() -> Flask:
         except ValueError as exc:
             errors["birth_date"] = str(exc)
         if errors:
-            flash(next(iter(errors.values())), "error")
-            return redirect(url_for("persons"))
-        if (
-            _contact_in_use("email", email)
-            or _contact_in_use("sms", phone)
-        ):
-            flash(
-                "E-Mail-Adresse oder Telefonnummer wird bereits verwendet.",
-                "error",
-            )
-            return redirect(url_for("persons"))
+            return person_field_errors(errors)
+        errors = _contact_collision_errors(email, phone)
+        if errors:
+            return person_field_errors(errors)
         person = db.Person(name=name, email=email, phone=phone, birth_date=birth_date)
         session.add(person)
         try:
@@ -1926,7 +1958,7 @@ def create_app() -> Flask:
                 "error",
             )
             return redirect(url_for("persons"))
-        flash(f"'{name}' wurde angelegt.", "ok")
+        flash(f"'{name}' wurde angelegt.", "success")
         return redirect(url_for("persons"))
 
     @app.post("/personen/<int:person_id>/edit")
@@ -1950,17 +1982,10 @@ def create_app() -> Flask:
                 except ValueError as exc:
                     errors["birth_date"] = str(exc)
         if errors:
-            flash(next(iter(errors.values())), "error")
-            return redirect(url_for("persons"))
-        if (
-            _contact_in_use("email", email, person.id)
-            or _contact_in_use("sms", phone, person.id)
-        ):
-            flash(
-                "E-Mail-Adresse oder Telefonnummer wird bereits verwendet.",
-                "error",
-            )
-            return redirect(url_for("persons"))
+            return person_field_errors(errors, person.id)
+        errors = _contact_collision_errors(email, phone, person.id)
+        if errors:
+            return person_field_errors(errors, person.id)
         if name:
             person.name = name
         person.email = email
@@ -1977,11 +2002,11 @@ def create_app() -> Flask:
             return redirect(url_for("persons"))
         if not person.email and not person.phone:
             flash(
-                "Gespeichert. Ohne Kontaktweg kannst du dich nicht erneut anmelden.",
-                "error",
+                "Daten gespeichert. Ohne Kontaktweg ist keine erneute Anmeldung möglich.",
+                "warning",
             )
         else:
-            flash(f"Daten von '{person.name}' gespeichert.", "ok")
+            flash(f"Daten von '{person.name}' gespeichert.", "success")
         return redirect(url_for("persons"))
 
     @app.post("/personen/<int:person_id>/teams")
@@ -2019,7 +2044,7 @@ def create_app() -> Flask:
         except ValueError as exc:
             session.rollback()
             return api_error(str(exc), 403)
-        flash(f"Mannschaften von '{person.name}' gespeichert.", "ok")
+        flash(f"Mannschaften von '{person.name}' gespeichert.", "success")
         return redirect(url_for("persons"))
 
     @app.post("/personen/<int:person_id>/teams/<int:team_id>/<action>")
@@ -2039,7 +2064,7 @@ def create_app() -> Flask:
         except ValueError as exc:
             session.rollback()
             return api_error(str(exc), 403)
-        flash(f"Mannschaftszuordnung von '{person.name}' wurde geändert.", "ok")
+        flash(f"Mannschaftszuordnung von '{person.name}' wurde geändert.", "success")
         return redirect(url_for("persons"))
 
     @app.post("/personen/<int:person_id>/delete")
@@ -2051,7 +2076,7 @@ def create_app() -> Flask:
         if person is not None:
             name = person.name
             db.delete_person(session, person, g.viewer, "admin")
-            flash(f"'{name}' wurde gelöscht (inkl. Diensteinträge).", "ok")
+            flash(f"'{name}' wurde gelöscht (inkl. Diensteinträge).", "success")
         return redirect(url_for("persons"))
 
     @app.post("/personen/<int:person_id>/deactivate")
@@ -2062,7 +2087,7 @@ def create_app() -> Flask:
         if person is None:
             return api_error("Person nicht gefunden.", 404)
         db.deactivate_person(get_session(), person, g.viewer, "admin")
-        flash(f"'{person.name}' wurde deaktiviert.", "ok")
+        flash(f"'{person.name}' wurde deaktiviert.", "success")
         return redirect(url_for("persons"))
 
     @app.post("/personen/<int:person_id>/reactivate")
@@ -2073,7 +2098,7 @@ def create_app() -> Flask:
         if person is None:
             return api_error("Person nicht gefunden.", 404)
         db.reactivate_person(get_session(), person)
-        flash(f"'{person.name}' wurde reaktiviert.", "ok")
+        flash(f"'{person.name}' wurde reaktiviert.", "success")
         return redirect(url_for("persons"))
 
     # ------------------------------------------------------------------
@@ -2110,8 +2135,12 @@ def create_app() -> Flask:
     # JSON API for inline updates
     # ------------------------------------------------------------------
 
-    def api_error(message: str, status: int = 400):
-        return jsonify(ok=False, error=message), status
+    def api_error(message: str, status: int = 400, *, field: str | None = None):
+        if not request.path.startswith("/api/"):
+            flash(message, "error")
+            return render_template("message.html", message="Bitte prüfe die Anfrage und deine Berechtigung."), status
+        return jsonify(ok=False, error=message,
+                       **({"field_errors": {field: message}} if field else {})), status
 
     def _assignment_request():
         data = request.get_json(silent=True) or {}
@@ -2362,12 +2391,12 @@ def create_app() -> Flask:
         quantity = data.get("cake_quantity")
         delivery_time = data.get("delivery_time")
         if type(quantity) is not int or quantity < 0:
-            return api_error("Die Kuchenanzahl muss eine nichtnegative ganze Zahl sein.")
+            return api_error("Die Kuchenanzahl muss eine nichtnegative ganze Zahl sein.", field="cake_quantity")
         if (
             not isinstance(delivery_time, str)
             or re.fullmatch(r"(?:[01][0-9]|2[0-3]):[0-5][0-9]", delivery_time) is None
         ):
-            return api_error("Bitte eine gültige Lieferzeit im Format HH:MM angeben.")
+            return api_error("Bitte eine gültige Lieferzeit im Format HH:MM angeben.", field="delivery_time")
         if not {"expected_delivery_time", "expected_cake_quantity"} <= data.keys():
             return api_error("Die erwarteten gespeicherten Einstellungen fehlen.")
         expected_time = data["expected_delivery_time"]

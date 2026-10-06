@@ -1,6 +1,16 @@
 {% extends "base.html" %}
 {% block title %}Helfer verwalten{% endblock %}
 
+{% macro local_error(field, scope) %}
+  {% if error_person_id == scope and field_errors.get(field) %}
+  <span class="auth-error" id="person-{{ scope or 'new' }}-{{ field }}-error" role="alert">{{ field_errors[field] }}</span>
+  {% endif %}
+{% endmacro %}
+{% macro error_attributes(field, scope) %}
+  {% if error_person_id == scope and field_errors.get(field) %}
+  aria-invalid="true" aria-describedby="person-{{ scope or 'new' }}-{{ field }}-error"
+  {% endif %}
+{% endmacro %}
 {% block content %}
 <section class="section management-section">
   <div class="section-header"><div class="section-icon">👥</div><h2>Helfer verwalten</h2></div>
@@ -8,12 +18,6 @@
     Hier werden Name, Kontaktdaten und Mannschaften aller Helferinnen und Helfer gepflegt.
     Die Personen erscheinen danach direkt in den Auswahllisten des Heimspielplans.
   </p>
-
-  {% with messages = get_flashed_messages(with_categories=true) %}
-    {% for category, message in messages %}
-    <div class="form-message {{ 'ok' if category == 'ok' else 'error' }}">{{ message }}</div>
-    {% endfor %}
-  {% endwith %}
 
   {% if viewer_tier in ('admin', 'mv') %}
   <div class="management-divider">
@@ -28,9 +32,9 @@
       <p>Neue Einträge sind sofort aktiv. E-Mail und Telefon bleiben optional, werden aber für Anmeldung und Benachrichtigungen benötigt.</p>
       <div class="form-grid">
         <div class="form-field full"><label for="new-name">Name *</label>
-          <input id="new-name" name="name" required maxlength="120"></div>
+          <input id="new-name" name="name" required maxlength="120" value="{{ new_values.get('name', '') }}"></div>
         <div class="form-field full"><label for="new-birth-date">Geburtsdatum *</label>
-          <input id="new-birth-date" name="birth_date" type="date" max="{{ birth_date_max }}" required>
+          <input id="new-birth-date" name="birth_date" type="date" max="{{ birth_date_max }}" required value="{{ new_values.get('birth_date', '') }}" {{ error_attributes('birth_date', none) }}>{{ local_error('birth_date', none) }}
           <small>Für die Altersprüfung am Spieltag. Sichtbar nur für die Person selbst und Admins.</small></div>
         <div class="form-field full"><label for="new-team">Mannschaft{% if viewer_tier == 'admin' %}en{% endif %} *</label>
           {% if viewer_tier == 'admin' %}
@@ -55,9 +59,9 @@
           </select>
           {% endif %}</div>
         <div class="form-field full"><label for="new-email">E-Mail</label>
-          <input id="new-email" name="email" type="email" maxlength="200"></div>
+          <input id="new-email" name="email" type="email" maxlength="200" value="{{ new_values.get('email', '') }}" {{ error_attributes('email', none) }}>{{ local_error('email', none) }}</div>
         <div class="form-field full"><label for="new-phone">Telefon (z. B. +49170…)</label>
-          <input id="new-phone" name="phone" maxlength="60"></div>
+          <input id="new-phone" name="phone" maxlength="60" value="{{ new_values.get('phone', '') }}" {{ error_attributes('phone', none) }}>{{ local_error('phone', none) }}</div>
         <div class="form-field full">
           <button class="submit-btn" type="submit">BENUTZER HINZUFÜGEN</button>
         </div>
@@ -206,11 +210,11 @@
           <label>Name
             <input type="text" name="name" value="{{ p.name }}" required maxlength="120"></label>
           <label>Geburtsdatum{% if not p.birth_date %} – noch nicht hinterlegt{% endif %}
-            <input type="date" name="birth_date" value="{{ p.birth_date }}" max="{{ birth_date_max }}"{% if p.birth_date %} required{% endif %}></label>
+            <input type="date" name="birth_date" value="{{ p.birth_date }}" max="{{ birth_date_max }}"{% if p.birth_date %} required{% endif %} {{ error_attributes('birth_date', p.id) }}>{{ local_error('birth_date', p.id) }}</label>
           <label>E-Mail
-            <input type="email" name="email" value="{{ p.email }}" maxlength="200"></label>
+            <input type="email" name="email" value="{{ p.email }}" maxlength="200" {{ error_attributes('email', p.id) }}>{{ local_error('email', p.id) }}</label>
           <label>Telefon
-            <input type="text" name="phone" value="{{ p.phone }}" maxlength="60"></label>
+            <input type="text" name="phone" value="{{ p.phone }}" maxlength="60" {{ error_attributes('phone', p.id) }}>{{ local_error('phone', p.id) }}</label>
           <button class="btn btn-primary" type="submit">Speichern</button>
         </form>
         {% else %}

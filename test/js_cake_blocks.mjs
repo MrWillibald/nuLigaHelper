@@ -1,3 +1,8 @@
+const feedback = [];
+globalThis.nuLigaFeedback = {
+  show: (value) => feedback.push(value),
+  navigate: (values) => { feedback.push(...values); return true; },
+};
 // Exercise the cake card's saved configuration and dynamically created controls.
 function check(condition, message) {
   if (!condition) throw new Error(message);
@@ -281,7 +286,14 @@ focusedHelp.blur();
 globalThis.fetch = ordinaryCandidateFetch;
 select = card.querySelectorAll("")[0];
 select.value = "7";
+candidateFailure = true;
 await select.listeners.change();
+check(feedback.at(-1).severity === "success" && feedback.at(-1).message.includes("gespeichert"),
+  "candidate refresh failure reclassified the confirmed save");
+check(retry.hidden === false && card.querySelectorAll("").every((control) => control.disabled),
+  "confirmed save with failed candidates enabled incomplete pickers or lost recovery");
+candidateFailure = false;
+await globalThis.nuLigaCandidateTools.loadCandidateCard(card, true);
 check(coverage.dataset.progressFilled === "1" && positions.children[0].dataset.occupantId === "7", "cake claim did not show saved progress and occupant");
 check(card.querySelectorAll("")[1].options.every((option) => option.value !== "7"), "cake volunteer still offered for another cake");
 
@@ -429,3 +441,8 @@ check(card.elements["[data-cake-status]"].textContent === "Keine Kuchen angefrag
 check(!coverage.elements["[data-progress-percent]"].textContent.includes("NaN"), "zero cake progress divided by zero");
 globalThis.nuLigaCakeTools.renderCakeBlock(card, savedBlock(null));
 check(coverage.hidden && card.elements["[data-cake-status]"].textContent.includes("Einrichtung"), "unset cake status appears fully staffed");
+
+check(feedback.some((value) => value.severity === "success" && value.message === "Kucheneinstellungen gespeichert."),
+  "cake configuration has no shared success result");
+check(feedback.some((value) => value.severity === "error"), "cake refusals have no shared error result");
+check(!message.textContent.includes("gespeichert"), "cake result duplicated its transient confirmation inline");

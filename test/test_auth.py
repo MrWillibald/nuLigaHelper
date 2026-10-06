@@ -1028,7 +1028,7 @@ def test_person_contact_writes_validate_atomically_and_use_canonical_uniqueness(
         "phone": "",
         "csrf_token": csrf,
     })
-    assert invalid.status_code == 302
+    assert invalid.status_code == 400
     with h.Session(engine) as session:
         member = session.get(db.Person, member_id)
         assert member.name == "Member"
