@@ -1,3 +1,8 @@
+const feedback = [];
+globalThis.nuLigaFeedback = {
+  show: (value) => feedback.push(value),
+  navigate: (values) => { feedback.push(...values); return true; },
+};
 // A replacement is two saved mutations: a rejected claim cannot undo its release.
 const displays = {
   "[data-progress-count]": { textContent: "2 von 5 Pflichtdiensten besetzt" },
@@ -16,10 +21,10 @@ const select = {
   dataset: { game: "1", role: "Verkauf", slot: "0" }, value: "7",
   addEventListener(name, callback) { listeners[name] = callback; },
   get selectedOptions() { return options.filter((option) => option.value === this.value); },
-  closest() { return label; }, classList: { add() {}, remove() {} },
+  closest() { return label; }, classList: { add() {}, remove() {}, toggle() {} },
 };
 const card = {
-  classList: { add() {}, remove() {} }, offsetWidth: 1,
+  classList: { add() {}, remove() {}, toggle() {} }, offsetWidth: 1,
   querySelector: (selector) => selector === ".coverage" ? coverage : null,
   querySelectorAll: () => [select],
 };
@@ -47,4 +52,21 @@ if (requests.join() !== "/api/assignment/release,/api/assignment/claim") {
 }
 if (select.value !== "" || label.dataset.occupantId !== "" || coverage.dataset.progressFilled !== "1") {
   throw new Error("rejected replacement restored a released occupant or fabricated occupancy");
+}
+
+if (feedback.at(-1).severity !== "error" || !feedback.at(-1).message.includes("freigegeben")
+    || !feedback.at(-1).message.includes("abgelehnt")) throw new Error("partial replacement feedback lost the confirmed release");
+select.value = "7";
+label.dataset.occupantId = "7";
+listeners.focus();
+select.value = "9";
+globalThis.fetch = async (url) => {
+  if (url.endsWith("/claim")) throw new Error("lost response");
+  return { status: 200, json: async () => ({ ok: true,
+    staffing: { required_filled: 1, required_total: 5, deficiencies: [] } }) };
+};
+await listeners.change();
+if (!feedback.at(-1).message.includes("nicht bestätigt") || !feedback.at(-1).message.includes("freigegeben")
+    || feedback.at(-1).message.includes("abgelehnt") || select.value !== "") {
+  throw new Error("lost replacement response asserted a refusal or restored a released helper");
 }

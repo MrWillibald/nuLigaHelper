@@ -131,7 +131,7 @@ CATALOG: dict[str, MessageTemplate | FragmentTemplate] = {
         'Benachrichtigung Dienst {task_label}',
         'Hallo {recipient_name},\n\ndu bist nächste Woche ({game_date}) für den Dienst '
         '{task_label} beim Spielfest {age_class} eingeteilt. Das Spielfest beginnt um '
-        '{game_start_time}. Bitte sei rechtzeitig in der Halle.\n\nViele Grüße\n TuS'
+        '{game_start_time}. Bitte sei rechtzeitig in der Halle.\n\nViele Grüße\nTuS'
         ' Raubling Handball',
         shared_sms=True,
         purpose='One-week Spielfest reminder without invented opponents.',

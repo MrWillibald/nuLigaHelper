@@ -8,6 +8,8 @@
 **/.opencode/**
 **.code-workspace
 **.db
+**.db-shm
+**.db-wal
 **.daily.lock
 venv/**
 **.nuligahelper_secret

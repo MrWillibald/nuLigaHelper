@@ -1,10 +1,18 @@
-function showToast(message, ok) {
-  const toast = document.getElementById("toast");
-  toast.textContent = message;
-  toast.classList.toggle("error", !ok);
-  toast.classList.add("show");
-  clearTimeout(toast._timer);
-  toast._timer = setTimeout(() => toast.classList.remove("show"), 2600);
+function showFeedback(message, severity = "error", action) {
+  return globalThis.nuLigaFeedback.show({ message, severity, ...(action ? { action } : {}) });
+}
+
+function mutationFailure(result, released = false) {
+  const prefix = released ? "Die bisherige Einteilung wurde freigegeben. " : "";
+  const message = prefix + (result.unconfirmed
+    ? (released ? "Das Ergebnis der neuen Einteilung konnte nicht bestätigt werden. Bitte prüfe den gespeicherten Stand."
+      : "Das Ergebnis konnte nicht bestätigt werden. Bitte prüfe den gespeicherten Stand.")
+    : released ? "Die neue Einteilung wurde abgelehnt. " + result.error : result.error);
+  const value = { message, severity: "error" };
+  if (result.loginRequired) return globalThis.nuLigaFeedback.navigate([value], "/login");
+  if (result.conflict) return globalThis.nuLigaFeedback.navigate([value]);
+  showFeedback(message, "error", result.unconfirmed ? "refresh" : undefined);
+  return false;
 }
 
 const activeTaskHelp = new Set();
@@ -40,6 +48,11 @@ function positionTaskHelp(button, description) {
     top: visual?.offsetTop || 0,
   };
   if (!viewport.width || !viewport.height) return;
+  const feedback = document.getElementById?.("feedback");
+  const feedbackRect = feedback?.getBoundingClientRect?.();
+  if (feedback?.children?.length && feedbackRect?.height) {
+    viewport.height = Math.max(24, feedbackRect.top - viewport.top - 6);
+  }
   const scrollTop = description.scrollTop;
   description.style.width = `${Math.min(400, viewport.width - 24)}px`;
   description.style.maxHeight = `${viewport.height - 24}px`;
@@ -257,11 +270,13 @@ async function postJSON(url, body) {
     try {
       data = await response.json();
     } catch (err) {
-      data = { ok: false, error: `Serverfehler (${response.status})` };
+      data = { ok: false, unconfirmed: true, error: "Das Ergebnis konnte nicht bestätigt werden. Bitte prüfe den gespeicherten Stand." };
     }
+    if (typeof data?.ok !== "boolean") return { ok: false, unconfirmed: true,
+      error: "Das Ergebnis konnte nicht bestätigt werden. Bitte prüfe den gespeicherten Stand." };
     return data;
   } catch (err) {
-    return { ok: false, error: "Server nicht erreichbar" };
+    return { ok: false, unconfirmed: true, error: "Das Ergebnis konnte nicht bestätigt werden. Bitte prüfe den gespeicherten Stand." };
   }
 }
 
@@ -539,13 +554,8 @@ document.querySelectorAll("select[data-role]").forEach((select) => {
       if (!result.ok) {
         select.value = savedId === null ? "" : String(savedId);
         prevOptions.set(select, select.selectedOptions[0]);
-        showToast(result.error || "Fehler beim Speichern", false);
-        if (result.loginRequired) setTimeout(() => { window.location.href = "/login"; }, 1200);
-        if (result.conflict) {
-          setTimeout(() => { window.location.reload(); }, 500);
-        } else {
-          await loadCandidateCard(card, true, true);
-        }
+        const navigated = mutationFailure(result, previousId !== null && savedId === null && newId !== null);
+        if (!navigated) await loadCandidateCard(card, true, true);
         return;
       }
       select.value = newId === null ? "" : String(newId);
@@ -559,17 +569,10 @@ document.querySelectorAll("select[data-role]").forEach((select) => {
       }
       if (result.staffing) updateGameStaffing(card, result.staffing);
       if (select.dataset.releaseOnly === "true" && newId === null) label?.remove();
-      const option = select.selectedOptions[0];
-      if (option && option.classList.contains("option-playing")) {
-        showToast("Achtung: Person spielt selbst in diesem Spiel", false);
-        select.classList.add("select-warn");
-      } else if (option && option.classList.contains("foreign-option")) {
-        showToast("Hinweis: Person gehört nicht zum zugewiesenen Team", false);
-        select.classList.add("select-warn");
-      } else {
-        showToast("Dienst gespeichert", true);
-        select.classList.remove("select-warn");
-      }
+      const warning = newId !== null && result.warning;
+      showFeedback(newId === null ? "Dienst freigegeben." : warning
+        ? `Dienst gespeichert. ${warning}` : "Dienst gespeichert.", warning ? "warning" : "success");
+      select.classList.toggle("select-warn", Boolean(warning));
       await loadCandidateCard(card, true, true);
       prevOptions.set(select, select.selectedOptions[0]);
     } finally {
@@ -619,14 +622,8 @@ function bindBlockSelect(select) {
       if (!result.ok) {
         select.value = savedId === null ? "" : String(savedId);
         prevOptions.set(select, select.selectedOptions[0]);
-        showToast(result.error || "Fehler beim Speichern", false);
-        if (result.loginRequired) setTimeout(() => { window.location.href = "/login"; }, 1200);
-        if (result.conflict) {
-          card._candidateLoaded = false;
-          setTimeout(() => { window.location.reload(); }, 500);
-        } else {
-          await loadCandidateCard(card, true, true);
-        }
+        const navigated = mutationFailure(result, previousId !== null && savedId === null && newId !== null);
+        if (!navigated) await loadCandidateCard(card, true, true);
         return;
       }
       select.value = newId === null ? "" : String(newId);
@@ -639,7 +636,7 @@ function bindBlockSelect(select) {
         renderCakeBlock(card, result.block);
       }
       flashBlock(select.dataset.block);
-      showToast("Tagesdienst gespeichert", true);
+      showFeedback(newId === null ? "Tagesdienst freigegeben." : "Tagesdienst gespeichert.", "success");
       await loadCandidateCard(card, true, true);
       prevOptions.set(select, select.selectedOptions[0]);
     } finally {
@@ -776,6 +773,8 @@ document.querySelectorAll("[data-cake-config]").forEach((form) => {
       message.hidden = false;
       return;
     }
+    message.hidden = true;
+    message.textContent = "";
     setCardMutationPending(card, true);
     try {
       const result = await postJSON(form.dataset.settingsUrl, {
@@ -792,10 +791,17 @@ document.querySelectorAll("[data-cake-config]").forEach((form) => {
       } else if (card.open && card.querySelector("select[data-block-assignment]")) {
         await loadCandidateCard(card, true, true);
       }
-      message.textContent = result.ok ? "Kucheneinstellungen gespeichert." : result.error || "Fehler beim Speichern";
-      message.hidden = false;
-      if (result.ok) flashBlock(card.dataset.blockCard);
-      if (result.loginRequired) setTimeout(() => { window.location.href = "/login"; }, 1200);
+      if (result.ok) {
+        flashBlock(card.dataset.blockCard);
+        showFeedback("Kucheneinstellungen gespeichert.", "success");
+      } else {
+        if (result.field_errors) {
+          message.textContent = Object.values(result.field_errors).join(" ");
+          message.hidden = false;
+        }
+        // Cake conflicts already reconcile saved settings locally.
+        mutationFailure({ ...result, conflict: false });
+      }
     } finally {
       setCardMutationPending(card, false);
     }
@@ -804,41 +810,29 @@ document.querySelectorAll("[data-cake-config]").forEach((form) => {
 
 globalThis.nuLigaCakeTools = { renderCakeBlock, invalidateCandidateCard };
 
-document.querySelectorAll(".team-select").forEach((select) => {
+function bindSettingSelect(select, url, field, confirmation) {
+  let previous = select.value;
+  select.addEventListener("focus", () => { previous = select.value; });
   select.addEventListener("change", async () => {
-    const gameId = select.dataset.game;
-    const result = await postJSON(`/api/games/${gameId}/team`, {
-      team_id: select.value ? Number(select.value) : null,
-    });
+    select.disabled = true;
+    const result = await postJSON(url, { [field]: select.value ? Number(select.value) : null });
     if (result.ok) {
-      flashCard(gameId);
-      showToast("Team gespeichert", true);
-      setTimeout(() => {
-        window.location.reload();
-      }, 500);
+      previous = select.value;
+      if (!globalThis.nuLigaFeedback.navigate([{ message: confirmation, severity: "success" }])) {
+        await loadCandidateCard(select.closest?.("details"), true);
+      }
     } else {
-      showToast(result.error || "Fehler beim Speichern", false);
-      const previous = select.getAttribute("data-prev") || "";
       select.value = previous;
+      mutationFailure(result);
     }
+    select.disabled = false;
   });
-  select.addEventListener("focus", () => select.setAttribute("data-prev", select.value));
+}
+document.querySelectorAll(".team-select").forEach((select) => {
+  bindSettingSelect(select, `/api/games/${select.dataset.game}/team`, "team_id", "Verantwortliche Mannschaft gespeichert.");
 });
-
 document.querySelectorAll(".mv-select").forEach((select) => {
-  select.addEventListener("focus", () => select.setAttribute("data-prev", select.value));
-  select.addEventListener("change", async () => {
-    const result = await postJSON(`/api/teams/${select.dataset.team}/mv`, {
-      person_id: select.value ? Number(select.value) : null,
-    });
-    if (result.ok) {
-      showToast("MV gespeichert", true);
-      window.location.reload();
-    } else {
-      showToast(result.error || "Fehler beim Speichern", false);
-      select.value = select.getAttribute("data-prev") || "";
-    }
-  });
+  bindSettingSelect(select, `/api/teams/${select.dataset.team}/mv`, "person_id", "Mannschaftsverantwortlicher gespeichert.");
 });
 
 document.querySelectorAll("[data-delete-person]").forEach((button) => {

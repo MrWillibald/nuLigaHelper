@@ -110,7 +110,7 @@
     <label for="cake-quantity-{{ b.id }}">Kuchenanzahl <input id="cake-quantity-{{ b.id }}" name="cake_quantity" type="number" min="0" step="1" value="{{ b.cake_quantity if b.cake_quantity is not none else '' }}" required></label>
     <button class="btn btn-primary" type="submit">Einstellungen speichern</button>
     <p class="hint">Belegte Plätze vor einer Verringerung ausdrücklich freigeben.</p>
-    <p class="cake-settings-message" data-cake-settings-message role="status" hidden></p>
+    <p class="cake-settings-message" data-cake-settings-message role="alert" hidden></p>
   </form>
   {% endif %}
   {% endif %}

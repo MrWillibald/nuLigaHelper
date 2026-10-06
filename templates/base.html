@@ -47,7 +47,17 @@
   </nav>
 </footer>
 
-<div id="toast" class="toast" role="status"></div>
+<section id="feedback" class="feedback" aria-label="Aktionsmeldungen"
+         data-auth-boundary="{{ 'true' if feedback_auth_boundary else 'false' }}">
+  {% for category, message in get_flashed_messages(with_categories=true) %}
+  {% set severity = 'success' if category == 'ok' else category if category in ('success', 'info', 'warning', 'error') else 'info' %}
+  <div class="feedback-entry feedback-{{ severity }}" data-feedback-message data-severity="{{ severity }}">
+    <strong>{{ {'success': 'Erfolg', 'info': 'Information', 'warning': 'Warnung', 'error': 'Fehler'}[severity] }}:</strong>
+    <span data-feedback-text>{{ message }}</span>
+  </div>
+  {% endfor %}
+</section>
+<script src="{{ url_for('static', filename='feedback.js') }}"></script>
 <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 </html>
