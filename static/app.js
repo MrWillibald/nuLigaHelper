@@ -1,3 +1,33 @@
+// Native details remain usable when enhancement is unavailable. Track explicit
+// activation rather than toggle events, which also fire after setting .open.
+function initializeResponsiveDisclosures() {
+  const viewport = globalThis.window?.matchMedia?.("(max-width: 700px)");
+  if (!viewport) return;
+  const disclosures = Array.from(document.querySelectorAll("[data-responsive-disclosure]"));
+  disclosures.forEach((details) => {
+    const state = { deliberate: false, dirty: false };
+    const hasError = () => details.dataset.disclosureError === "true"
+      || Boolean(details.querySelector('[aria-invalid="true"]'));
+    const applyDefault = () => {
+      if (state.deliberate) return;
+      if (hasError()) {
+        details.open = true;
+        return;
+      }
+      if (state.dirty || details.contains(document.activeElement)) return;
+      details.open = !viewport.matches && details.dataset.desktopOpen === "true";
+    };
+    applyDefault();
+    details.querySelector("summary")?.addEventListener("click", () => { state.deliberate = true; });
+    details.addEventListener("input", () => { state.dirty = true; });
+    details.addEventListener("change", () => { state.dirty = true; });
+    if (viewport.addEventListener) viewport.addEventListener("change", applyDefault);
+    else viewport.addListener(applyDefault);
+  });
+}
+
+initializeResponsiveDisclosures();
+
 function showFeedback(message, severity = "error", action) {
   return globalThis.nuLigaFeedback.show({ message, severity, ...(action ? { action } : {}) });
 }
@@ -16,6 +46,53 @@ function mutationFailure(result, released = false) {
 }
 
 const activeTaskHelp = new Set();
+
+function initializeReturnToTop() {
+  const link = document.getElementById?.("return-to-top");
+  const top = document.getElementById?.("page-navigation");
+  const browser = globalThis.window;
+  if (!link || !top || !browser?.requestAnimationFrame) return;
+  let scheduled = false;
+  const update = () => {
+    scheduled = false;
+    const feedback = document.getElementById("feedback");
+    const focusedField = document.activeElement?.matches?.('input, select, textarea, [contenteditable="true"]');
+    const obstructed = Boolean(feedback?.children.length || activeTaskHelp.size
+      || document.querySelector("dialog[open]") || focusedField);
+    const hide = (browser.scrollY || 0) < browser.innerHeight || obstructed;
+    // Do not remove the keyboard's current position during a scroll/resize.
+    if (hide && document.activeElement === link) return;
+    if (link.hidden !== hide) link.hidden = hide;
+  };
+  const scheduleUpdate = () => {
+    if (scheduled) return;
+    scheduled = true;
+    browser.requestAnimationFrame(update);
+  };
+  link.classList.add("return-top-enhanced");
+  document.body.classList.add("has-return-top");
+  update();
+  browser.addEventListener("scroll", scheduleUpdate, { passive: true });
+  browser.addEventListener("resize", scheduleUpdate);
+  browser.visualViewport?.addEventListener("resize", scheduleUpdate);
+  browser.visualViewport?.addEventListener("scroll", scheduleUpdate);
+  document.addEventListener("focusin", scheduleUpdate);
+  document.addEventListener("focusout", scheduleUpdate);
+  if (globalThis.MutationObserver) {
+    new MutationObserver(scheduleUpdate).observe(document.body, {
+      childList: true, subtree: true, attributes: true, attributeFilter: ["open", "hidden"],
+    });
+  }
+  link.addEventListener("click", (event) => {
+    event.preventDefault();
+    top.focus({ preventScroll: true });
+    const reduced = browser.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    browser.scrollTo({ top: 0, behavior: reduced ? "instant" : "smooth" });
+    scheduleUpdate();
+  });
+}
+
+initializeReturnToTop();
 
 function taskHelpPlacement(anchor, size, viewport) {
   const margin = 12;

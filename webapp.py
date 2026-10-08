@@ -1826,6 +1826,19 @@ def create_app() -> Flask:
                 if person.account_status == status_filter
             ]
 
+        active_filters = []
+        if name_filter:
+            active_filters.append(f"Name: {name_filter}")
+        selected_team = next((team for team in teams if team["id"] == team_filter), None)
+        if team_filter is not None:
+            active_filters.append(
+                f"Mannschaft: {selected_team['name']}" if selected_team else "Unbekannte Mannschaft"
+            )
+        if status_filter:
+            active_filters.append(f"Status: {'Aktiv' if status_filter == db.ACCOUNT_ACTIVE else 'Inaktiv'}")
+        if birth_date_filter:
+            active_filters.append("Geburtsdatum: Fehlt")
+
         all_persons = [
             {
                 "id": p.id,
@@ -1837,6 +1850,9 @@ def create_app() -> Flask:
                 "team_label": db.membership_label(p),
                 "status": p.account_status,
                 "editable": g.tier == "admin" or p.id == g.viewer.id,
+                "edit_values": g.get("person_edit_values", {})
+                if g.get("error_person_id") == p.id
+                and (g.tier == "admin" or p.id == g.viewer.id) else {},
                 **({"birth_date": p.birth_date.isoformat() if p.birth_date else ""}
                    if g.tier == "admin" or p.id == g.viewer.id else {}),
                 "mv_actions": [
@@ -1870,6 +1886,8 @@ def create_app() -> Flask:
             team_filter=team_filter,
             status_filter=status_filter,
             birth_date_filter=birth_date_filter,
+            active_filters=active_filters,
+            unknown_team_filter=team_filter is not None and selected_team is None,
             missing_birth_dates=missing_birth_dates,
             birth_date_max=common.effective_today().isoformat(),
             field_errors=g.get("person_field_errors", {}),
@@ -1884,6 +1902,10 @@ def create_app() -> Flask:
         if person_id is None:
             g.new_person_values = {field: request.form.get(field, "")
                                    for field in ("name", "email", "phone", "birth_date")}
+        else:
+            g.person_edit_values = {field: request.form[field]
+                                    for field in ("name", "email", "phone", "birth_date")
+                                    if field in request.form}
         return persons(), 400
 
     def _contact_collision_errors(email, phone, person_id=None):

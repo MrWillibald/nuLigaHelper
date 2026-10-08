@@ -35,10 +35,61 @@ It is then reachable in the local network at `http://<device-ip>:8080`.
 Public hosting requires a separately maintained production deployment with TLS,
 restricted secrets, monitoring and a reviewed launch procedure.
 
-- **Heimspielplan**: public, read-only schedule with assigned helper names. Use **Datum** to show one game day or all days, together with **Spielende Mannschaft**, **Verantwortliche Mannschaft** and **Eingeteilte Person**. A person search keeps only games and day-task blocks where that person is assigned; selecting a responsible team hides day-task blocks because they have no responsible team. **Filter löschen** restores the full plan. Every game and day-task block starts compact; cake cards awaiting setup or requesting zero cakes show their status, while configured duties show a staffing bar; compact game cards also show the responsible team or **– offen –**. Expand a card to see the game's offered positions and any retained assignments in removed duties and, when permitted, the editable responsible-team field. Assignment candidates load when an editable card opens; a loading error leaves its dropdowns disabled and offers a retry. Unopened cards carry no candidate lists, so registrations do not multiply the initial page size. Game progress counts eight required positions for adult games and five for youth/unknown games; retained removed duties are release-only and do not affect the bar. Each preparation and cleanup bar counts three slots. Past game days appear muted under **Vergangene Spieltage anzeigen**; selecting a past date opens that section. Signed-in members can claim and release their own future tasks. MVs can additionally staff their own team on games for which that team is responsible; admins can correct every slot and set the responsible team. Concurrent stale changes are rejected rather than overwriting another person's work.
+- **Heimspielplan**: public, read-only schedule with assigned helper names. Use **Datum** to show one game day or all days, together with **Spielende Mannschaft**, **Verantwortliche Mannschaft** and **Eingeteilte Person**. A person search keeps only games and day-task blocks where that person is assigned; selecting a responsible team hides day-task blocks because they have no responsible team. **Filter löschen** restores the full plan. Every game and day-task block starts compact; cake cards awaiting setup or requesting zero cakes show their status, while configured duties show a staffing bar; compact game cards also show the responsible team or **– offen –**. The triangle beside **Details** points right when closed and down when open, including without JavaScript. Expand a card through **Details** to see the game's offered positions and any retained assignments in removed duties and, when permitted, the editable responsible-team field. Assignment candidates load when an editable card opens; a loading error leaves its dropdowns disabled and offers a retry. Unopened cards carry no candidate lists, so registrations do not multiply the initial page size. Game progress counts eight required positions for adult games and five for youth/unknown games; retained removed duties are release-only and do not affect the bar. Each preparation and cleanup bar counts three slots. Past game days appear muted under **Vergangene Spieltage**; selecting a past date opens that section. Signed-in members can claim and release their own future tasks. MVs can additionally staff their own team on games for which that team is responsible; admins can correct every slot and set the responsible team. Concurrent stale changes are rejected rather than overwriting another person's work.
 - **Helfer verwalten**: members see names and complete team memberships but only their own contact data and birth date. Admins create, edit, deactivate/reactivate or delete erroneous entries, replace membership sets, complete missing birth dates, approve user registrations and appoint team MVs. MVs can create people with a birth date and add or remove active people only in rosters they manage; they do not see another existing person's birth date or decide pending registrations.
 - **Statistik**: games covered per team, jobs per person (incl. role breakdown) and upcoming games and day blocks with missing assignments, unresolved age eligibility or cake setup still needed.
 - **Änderungsprotokoll**: admin-only, append-only history of assignment claims and releases with actor, tier, person, game, role, slot and timestamp.
+
+At **700 CSS pixels wide or less**, JavaScript initially collapses the general
+introductions on Heimspielplan, Helfer verwalten and Statistik behind **Hinweise**.
+On wider screens they start expanded. Opening a disclosure shows the
+complete explanation; validation errors, missing-birth-date follow-up, cake setup
+and staffing/age warnings remain beside the content they concern.
+
+The schedule and roster filters start collapsed on mobile behind **Filter**
+and expanded on desktop. Applied filters remain readable outside the disclosure,
+with **Filter löschen** on the schedule or **Zurücksetzen** on the roster. Reopening
+the form retains its selections; opening or closing it does not submit filters.
+Team values use their names, and roster summaries include only filters permitted
+for the viewer. The existing GET submissions and reset links also work without
+JavaScript.
+
+Helper cards keep each person's name, every team and permitted status visible.
+Existing authorized profile, membership and record actions sit behind **Bearbeitung**;
+those controls start collapsed on mobile, desktop and without JavaScript. Cards with
+no permitted action have no empty editing control. A rejected profile edit reopens
+the affected card, preserving submitted values and field errors for correction.
+Other cards keep their normal
+defaults. The administration area still precedes the roster, and disclosure does not
+change access to contacts or birth dates.
+
+Statistics sections appear in this order: **Spiele pro Mannschaft**, **Dienste pro
+Person**, then **Offene Dienste, Altersanforderungen und Einrichtung**. All three start
+collapsed on enhanced mobile pages; desktop opens only the team section initially.
+They open independently. Headers count displayed teams, people with duties, and
+affected upcoming games/day blocks respectively. One game or block contributes once
+to the last count even if it has several vacancies or age/setup issues; the count is
+not a number of missing helpers. Zero-count headers remain visible and expand to an
+explanation of the empty result.
+
+Disclosure captions identify the content and stay the same when open or closed:
+**Hinweise**, **Filter**, **Bearbeitung**, **Details**, **Vergangene Spieltage** and
+the statistics section titles. Native disclosures support keyboard and touch.
+During a page visit, resizing or rotating preserves deliberate disclosure choices,
+unsaved form edits, focused fields
+and validation errors. A fresh visit restores the initial defaults. Without JavaScript,
+introductions and filters start expanded; authorized helper maintenance starts collapsed
+and opens through its native control, except that returned validation errors start open.
+The team statistics section starts expanded and the other statistics sections remain
+available through their native disclosure controls.
+
+Shared pages offer an upward-arrow **Nach oben** action. With JavaScript it floats at
+the lower right after scrolling at least one viewport height and hides near the top;
+without JavaScript it remains a footer link. It supports keyboard focus and a touch
+target of at least 44×44 CSS pixels, respects safe areas, and yields space to active
+feedback, task guidance and dialogs. Activation returns to the top with usable keyboard
+focus and leaves form values and filters intact. Reduced-motion settings disable
+animated scrolling.
 
 Action results share a bottom-center feedback stack on every page, including assignments
 and releases, cake settings, responsible-team/MV changes, helper/profile/membership

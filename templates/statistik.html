@@ -4,17 +4,24 @@
 {% block content %}
 <section class="section">
   <div class="section-header"><div class="section-icon">📊</div><h2>Statistik {{ season }}</h2></div>
+  <details class="responsive-disclosure page-introduction" data-responsive-disclosure data-desktop-open="true" open>
+    <summary>Hinweise</summary>
+    <div class="disclosure-content">
   <p class="hint">
     Übersicht über die Dienstverteilung: Wie viele Spiele deckt jede Mannschaft ab,
     wie viele Dienste hat jede Person übernommen und wo fehlen noch Helfer.
   </p>
+    </div>
+  </details>
 
   {% if total_games == 0 %}
   <p class="hint">Noch keine Spiele vorhanden.</p>
   {% endif %}
 
+  <details class="responsive-disclosure statistics-disclosure" data-responsive-disclosure data-desktop-open="true" open>
+    <summary><h3 class="stat-title">Spiele pro Mannschaft <span class="stat-count">({{ team_stats | length }} {{ 'Mannschaft' if team_stats | length == 1 else 'Mannschaften' }})</span></h3></summary>
+    <div class="disclosure-content">
   {% if team_stats %}
-  <h3 class="stat-title">Spiele pro Mannschaft</h3>
   <div class="stat-grid">
     {% for t in team_stats %}
     <article class="stat-card {% if t.is_support %}stat-support{% endif %}">
@@ -29,10 +36,16 @@
     </article>
     {% endfor %}
   </div>
+  {% else %}
+  <p class="hint">Noch keine Mannschaften vorhanden.</p>
   {% endif %}
+    </div>
+  </details>
 
+  <details class="responsive-disclosure statistics-disclosure" data-responsive-disclosure data-desktop-open="false">
+    <summary><h3 class="stat-title">Dienste pro Person <span class="stat-count">({{ person_stats | length }} {{ 'Person' if person_stats | length == 1 else 'Personen' }} mit Diensten)</span></h3></summary>
+    <div class="disclosure-content">
   {% if person_stats %}
-  <h3 class="stat-title">Dienste pro Person</h3>
   <div class="data-table-wrap">
   <table class="data-table responsive-table stat-table">
     <thead><tr><th>Person</th><th>Mannschaft</th><th>Dienste</th><th>Aufteilung</th></tr></thead>
@@ -55,8 +68,12 @@
   {% else %}
   <p class="hint">Noch keine Dienste vergeben.</p>
   {% endif %}
+    </div>
+  </details>
 
-  <h3 class="stat-title">Offene Dienste, Altersanforderungen und Einrichtung</h3>
+  <details class="responsive-disclosure statistics-disclosure" data-responsive-disclosure data-desktop-open="false">
+    <summary><h3 class="stat-title">Offene Dienste, Altersanforderungen und Einrichtung <span class="stat-count">({{ gaps | length }} {{ 'betroffenes Spiel bzw. betroffener Tagesblock' if gaps | length == 1 else 'betroffene Spiele oder Tagesblöcke' }})</span></h3></summary>
+    <div class="disclosure-content">
   {% if gaps %}
   <p class="hint">{{ gaps | length }} anstehende Spiele oder Tagesblöcke haben freie Plätze, ungeklärte Altersanforderungen oder benötigen Einrichtung:</p>
   <div class="data-table-wrap">
@@ -85,5 +102,7 @@
   {% else %}
   <p class="hint">Alle anstehenden Spiele und Tagesblöcke sind vollständig besetzt und erfüllen die Altersanforderungen. 🎉</p>
   {% endif %}
+    </div>
+  </details>
 </section>
 {% endblock %}
