@@ -35,6 +35,24 @@ h3{color:var(--navy)}
 .hint{margin:-8px 0 24px;color:var(--muted);line-height:1.6}
 .hint code{background:#eef3f8;border-radius:6px;padding:2px 6px}
 
+/* Shared native disclosures have no connection to candidate-loading cards. */
+.responsive-disclosure{min-width:0;margin-bottom:22px;border:1px solid var(--line);border-radius:14px;background:#f8fafc}
+.responsive-disclosure>summary{min-height:44px;padding:12px 14px;color:var(--navy);font-weight:800;
+  cursor:pointer;overflow-wrap:anywhere}
+.responsive-disclosure>summary:focus-visible{outline:3px solid var(--kids);outline-offset:2px;border-radius:12px}
+.responsive-disclosure>.disclosure-content{padding:0 14px 14px;min-width:0}
+.responsive-disclosure>.disclosure-content>.hint{margin:0;overflow-wrap:anywhere}
+.filter-disclosure>.disclosure-content{padding:0}
+.filter-disclosure .schedule-filter-card,.filter-disclosure .roster-filter-card{margin-bottom:0;border:0;background:transparent}
+.active-filter-summary{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;margin:0 0 20px;
+  line-height:1.5;overflow-wrap:anywhere}
+.active-filter-summary a{color:var(--navy);font-weight:800}
+.active-filter-summary a:focus-visible{outline:3px solid var(--kids);outline-offset:3px}
+.person-maintenance{margin-top:14px;margin-bottom:0}
+.person-card-body h3{overflow-wrap:anywhere}
+.statistics-disclosure .stat-title{display:inline;margin:0;font-size:1.1rem;line-height:1.45}
+.stat-count{display:inline-block;margin:4px 0 4px 10px;color:var(--muted);font-size:.85rem;line-height:1.4}
+
 /* ---- schedule ---- */
 .schedule-filter-card{display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) auto;
   gap:14px;align-items:end;padding:18px;margin-bottom:24px;border:1px solid var(--line);
@@ -69,10 +87,11 @@ h3{color:var(--navy)}
   background:#e4eaf2;overflow:hidden}
 .coverage-fill{display:block;height:100%;border-radius:inherit;background:var(--navy);
   transition:width .2s ease}
-.disclosure-label{align-self:flex-end;color:var(--navy);font-size:.83rem;font-weight:800;
+.disclosure-label{display:inline-flex;align-items:center;gap:6px;align-self:flex-end;color:var(--navy);font-size:.83rem;font-weight:800;
   text-decoration:underline;text-underline-offset:3px}
-.game-card .hide-label,.game-card[open] .show-label{display:none}
-.game-card[open] .hide-label{display:inline}
+.disclosure-indicator{width:0;height:0;border-top:4px solid transparent;border-bottom:4px solid transparent;
+  border-left:7px solid currentColor;flex:0 0 auto}
+.game-card[open]>.game-summary .disclosure-indicator{transform:rotate(90deg)}
 .game-detail-body{padding:16px 20px 20px;border-top:1px solid var(--line)}
 .game-info{display:flex;flex-direction:column;gap:7px}
 .game-time{font-size:1.5rem;font-weight:900;color:var(--navy)}
@@ -391,6 +410,15 @@ select.select-warn{border-color:#e8b23c;background:#fffaf0}
 .footer small{display:block;margin-top:8px;color:#d4dbe8;font-size:.82rem}
 .footer a{color:#e7edf6;text-decoration:underline;text-underline-offset:3px}
 .footer a:hover{color:#fff;text-decoration-thickness:2px}
+.return-top{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-width:44px;min-height:44px;
+  margin-top:12px;border-radius:12px;padding:10px}
+.return-top.return-top-enhanced{position:fixed;right:max(12px,env(safe-area-inset-right));
+  bottom:max(12px,env(safe-area-inset-bottom));z-index:998;margin:0;padding:12px;
+  background:var(--navy);color:#fff;border:1px solid #fff;box-shadow:0 4px 14px rgba(6,20,58,.25)}
+.return-top-enhanced span{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.return-top[hidden]{display:none}
+.has-return-top{padding-bottom:calc(60px + env(safe-area-inset-bottom))}
+.return-top:focus-visible{outline:3px solid var(--kids);outline-offset:3px}
 
 @media(max-width:900px){
   .game-summary{grid-template-columns:1fr;gap:12px}
@@ -410,13 +438,23 @@ select.select-warn{border-color:#e8b23c;background:#fffaf0}
 @media(max-width:700px){
   body{padding-top:64px}
   main{padding:32px 16px 0}.section{padding:22px 16px}
+  .section-header h2{min-width:0;overflow-wrap:anywhere;font-size:clamp(1.25rem,4vw,1.65rem)}
+  .person-edit-form input,.person-edit-form select{width:100%;min-width:0}
+  .person-team-badge,.person-team-edit{max-width:100%;overflow-wrap:anywhere}
+  .management-card-grid{grid-template-columns:minmax(0,1fr)}
+  .management-card,.form-field,.new-user-team-picker{min-width:0}
+  .management-card h3,.new-user-team-trigger{overflow-wrap:anywhere;max-width:100%}
+  .team-mv-row{grid-template-columns:minmax(0,1fr)}
+  .person-team-fallback{min-width:0}
+  .person-team-fallback label{display:block;overflow-wrap:anywhere}
   .nav-inner{justify-content:flex-start;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:thin}
   .nav-inner a,.nav-action{flex:0 0 auto}
   .nav-inner a,.nav-action button{font-size:.84rem;padding:14px 9px;white-space:nowrap}
   .form-grid{grid-template-columns:1fr}
-  .roster-heading{align-items:flex-start}.roster-filter-card,.audit-filter-card,.schedule-filter-card,.management-card-grid{grid-template-columns:1fr}
+  .roster-heading{align-items:flex-start}.roster-filter-card,.audit-filter-card,.schedule-filter-card{grid-template-columns:1fr}
   .filter-actions{grid-column:auto;flex-wrap:wrap}.filter-actions .btn{flex:1 1 130px}
   .persons-grid{grid-template-columns:1fr}.person-edit-card{grid-template-columns:44px minmax(0,1fr);gap:12px;padding:17px}
+  .people-grid{grid-template-columns:minmax(0,1fr)}
   .person-icon{width:42px;height:42px;font-size:19px}.management-divider{margin-top:34px}
   .responsive-table td{grid-template-columns:82px minmax(0,1fr)}.audit-tier-badge{margin-left:4px}
   .auth-shell{padding:12px}

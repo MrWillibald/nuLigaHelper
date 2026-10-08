@@ -95,5 +95,15 @@ def test_team_and_mv_feedback_preserves_navigation_expiry_and_refused_state():
     assert result.returncode == 0, result.stderr or result.stdout
 
 
+def test_responsive_disclosures_and_return_navigation_preserve_forms_focus_and_overlays():
+    node = shutil.which("node")
+    if node is None:
+        return
+    for viewport in ("mobile", "desktop"):
+        result = subprocess.run([node, "test/js_mobile_presentation.mjs", viewport],
+                                cwd=h.PROJECT_DIR, text=True, capture_output=True, timeout=30)
+        assert result.returncode == 0, result.stderr or result.stdout
+
+
 if __name__ == "__main__":
     h.run_all(dict(globals()))

@@ -14,10 +14,16 @@
 {% block content %}
 <section class="section management-section">
   <div class="section-header"><div class="section-icon">👥</div><h2>Helfer verwalten</h2></div>
-  <p class="hint">
-    Hier werden Name, Kontaktdaten und Mannschaften aller Helferinnen und Helfer gepflegt.
-    Die Personen erscheinen danach direkt in den Auswahllisten des Heimspielplans.
-  </p>
+  <details class="responsive-disclosure introduction-disclosure" data-responsive-disclosure
+           data-desktop-open="true" open>
+    <summary>Hinweise</summary>
+    <div class="disclosure-content">
+      <p class="hint">
+        Hier werden Name, Kontaktdaten und Mannschaften aller Helferinnen und Helfer gepflegt.
+        Die Personen erscheinen danach direkt in den Auswahllisten des Heimspielplans.
+      </p>
+    </div>
+  </details>
 
   {% if viewer_tier in ('admin', 'mv') %}
   <div class="management-divider">
@@ -159,6 +165,16 @@
   <p class="hint"><a href="{{ url_for('persons', birth_date='missing') }}">{{ missing_birth_dates }} Personen ohne Geburtsdatum</a> – bitte vorhandene Datensätze ergänzen.</p>
   {% endif %}
 
+  {% if active_filters %}
+  <div class="active-filter-summary" aria-label="Aktive Filter">
+    <span>Aktive Filter: {{ active_filters | join(' · ') }}</span>
+    <a href="{{ url_for('persons') }}">Zurücksetzen</a>
+  </div>
+  {% endif %}
+  <details class="responsive-disclosure filter-disclosure roster-filter-disclosure" data-responsive-disclosure
+           data-desktop-open="true" open>
+    <summary>Filter</summary>
+    <div class="disclosure-content">
   <form class="roster-filter-card" method="get" action="{{ url_for('persons') }}">
     <div class="filter-field filter-name">
       <label for="person-name-filter">Name</label>
@@ -169,6 +185,7 @@
       <label for="person-team-filter">Mannschaft</label>
       <select id="person-team-filter" name="team_id">
         <option value="">Alle Mannschaften</option>
+        {% if unknown_team_filter %}<option value="{{ team_filter }}" selected>Unbekannte Mannschaft</option>{% endif %}
         {% for t in teams %}
         <option value="{{ t.id }}" {% if team_filter == t.id %}selected{% endif %}>
           {{ t.name }}{% if t.is_support %} (Support){% endif %}
@@ -198,29 +215,15 @@
       <a class="btn btn-secondary" href="{{ url_for('persons') }}">Zurücksetzen</a>
     </div>
   </form>
+    </div>
+  </details>
 
   <div class="people-grid persons-grid">
     {% for p in persons %}
-    <article class="person-card person-edit-card">
+    <article class="person-card person-edit-card" id="person-{{ p.id }}">
       <div class="person-icon">{{ p.name[:1] | upper }}</div>
       <div class="person-card-body">
-        {% if p.editable %}
-        <form method="post" action="{{ url_for('edit_person', person_id=p.id) }}" class="person-edit-form">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-          <label>Name
-            <input type="text" name="name" value="{{ p.name }}" required maxlength="120"></label>
-          <label>Geburtsdatum{% if not p.birth_date %} – noch nicht hinterlegt{% endif %}
-            <input type="date" name="birth_date" value="{{ p.birth_date }}" max="{{ birth_date_max }}"{% if p.birth_date %} required{% endif %} {{ error_attributes('birth_date', p.id) }}>{{ local_error('birth_date', p.id) }}</label>
-          <label>E-Mail
-            <input type="email" name="email" value="{{ p.email }}" maxlength="200" {{ error_attributes('email', p.id) }}>{{ local_error('email', p.id) }}</label>
-          <label>Telefon
-            <input type="text" name="phone" value="{{ p.phone }}" maxlength="60" {{ error_attributes('phone', p.id) }}>{{ local_error('phone', p.id) }}</label>
-          <button class="btn btn-primary" type="submit">Speichern</button>
-        </form>
-        {% else %}
         <h3>{{ p.name }}</h3>
-        {% endif %}
-
         <div class="person-memberships">
           <span class="person-membership-label">Mannschaften</span>
           <div class="person-team-badges" aria-label="Mannschaften von {{ p.name }}">
@@ -230,11 +233,88 @@
             <span class="person-team-empty">Ohne Mannschaft</span>
             {% endfor %}
           </div>
-          {% if viewer_tier == 'admin' or (viewer_tier == 'mv' and p.mv_actions) %}
+        </div>
+        {% if viewer_tier == 'admin' %}
+        <span class="status-badge status-{{ p.status }}">
+          {{ {'inactive': 'Inaktiv', 'active': 'Aktiv', 'registered': 'Kontaktprüfung offen', 'verified': 'Freigabe offen', 'rejected': 'Abgelehnt'}.get(p.status, p.status) }}
+        </span>
+        {% endif %}
+
+        {% if p.editable or viewer_tier == 'admin' or (viewer_tier == 'mv' and p.mv_actions) %}
+        <details class="responsive-disclosure person-maintenance" id="person-maintenance-{{ p.id }}"
+                 data-responsive-disclosure data-desktop-open="false"
+                 {% if error_person_id == p.id and field_errors %}data-disclosure-error="true" open{% endif %}>
+          <summary>Bearbeitung</summary>
+          <div class="disclosure-content">
+        {% if p.editable %}
+        <form method="post" action="{{ url_for('edit_person', person_id=p.id) }}" class="person-edit-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <label>Name
+            <input type="text" name="name" value="{{ p.edit_values.get('name', p.name) }}" required maxlength="120"></label>
+          <label>Geburtsdatum{% if not p.birth_date %} – noch nicht hinterlegt{% endif %}
+            <input type="date" name="birth_date" value="{{ p.edit_values.get('birth_date', p.birth_date) }}" max="{{ birth_date_max }}"{% if p.birth_date %} required{% endif %} {{ error_attributes('birth_date', p.id) }}>{{ local_error('birth_date', p.id) }}</label>
+          <label>E-Mail
+            <input type="email" name="email" value="{{ p.edit_values.get('email', p.email) }}" maxlength="200" {{ error_attributes('email', p.id) }}>{{ local_error('email', p.id) }}</label>
+          <label>Telefon
+            <input type="text" name="phone" value="{{ p.edit_values.get('phone', p.phone) }}" maxlength="60" {{ error_attributes('phone', p.id) }}>{{ local_error('phone', p.id) }}</label>
+          <button class="btn btn-primary" type="submit">Speichern</button>
+        </form>
+        {% endif %}
+        {% if viewer_tier == 'admin' or (viewer_tier == 'mv' and p.mv_actions) %}
           <button class="btn team-editor-trigger person-team-edit" type="button"
                   data-team-dialog-open="team-dialog-{{ p.id }}">
             Mannschaften bearbeiten
           </button>
+        {% endif %}
+        {% if viewer_tier == 'admin' %}
+        <noscript>
+          <form method="post" action="{{ url_for('edit_person_teams', person_id=p.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <fieldset class="person-team-fallback"><legend>Mannschaften bearbeiten</legend>
+              {% for team in teams %}
+              <label><input name="team_ids" type="checkbox" value="{{ team.id }}"
+                            {% if team.id in p.team_ids %}checked{% endif %}> {{ team.name }}</label>
+              {% endfor %}
+            </fieldset>
+            <button class="btn btn-primary" type="submit">Mannschaften speichern</button>
+          </form>
+        </noscript>
+        {% endif %}
+        {% if viewer_tier == 'mv' and p.mv_actions %}
+        <noscript>
+          <div class="person-admin-actions">
+          {% for team in p.mv_actions %}
+          <form method="post" action="{{ url_for('change_roster_membership', person_id=p.id, team_id=team.id, action='remove' if team.member else 'add') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="btn" type="submit"{% if team.locked %} disabled{% endif %}>{{ team.name }}: {{ 'entfernen' if team.member else 'hinzufügen' }}</button>
+          </form>
+          {% endfor %}
+          </div>
+        </noscript>
+        {% endif %}
+        {% if viewer_tier == 'admin' %}
+        <div class="person-admin-actions">
+          {% if p.status == 'inactive' %}
+          <form method="post" action="{{ url_for('reactivate_person', person_id=p.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-primary" type="submit">Reaktivieren</button></form>
+          {% elif p.status == 'active' %}
+          <form method="post" action="{{ url_for('deactivate_person', person_id=p.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn" type="submit">Deaktivieren</button></form>
+          {% endif %}
+          <button class="btn btn-danger" type="button" data-delete-person="{{ p.id }}"
+                  data-name="{{ p.name }}">Löschen</button>
+          <noscript>
+            <form method="post" action="{{ url_for('delete_person', person_id=p.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <label><input type="checkbox" required> Löschen einschließlich aller Diensteinträge bestätigen. Zum Ausscheiden bitte deaktivieren.</label>
+              <button class="btn btn-danger" type="submit">Löschen bestätigen</button>
+            </form>
+          </noscript>
+        </div>
+        {% endif %}
+          </div>
+        </details>
+        {% endif %}
+
+        {% if viewer_tier == 'admin' or (viewer_tier == 'mv' and p.mv_actions) %}
           <dialog class="team-membership-dialog" id="team-dialog-{{ p.id }}"
                   aria-labelledby="team-dialog-title-{{ p.id }}">
             <form method="post" action="{{ url_for('edit_person_teams', person_id=p.id) }}">
@@ -280,34 +360,6 @@
               </div>
             </form>
           </dialog>
-          {% endif %}
-        </div>
-
-        {% if viewer_tier == 'mv' and p.mv_actions %}
-        <noscript>
-          <div class="person-admin-actions">
-          {% for team in p.mv_actions %}
-          <form method="post" action="{{ url_for('change_roster_membership', person_id=p.id, team_id=team.id, action='remove' if team.member else 'add') }}">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <button class="btn" type="submit">{{ team.name }}: {{ 'entfernen' if team.member else 'hinzufügen' }}</button>
-          </form>
-          {% endfor %}
-          </div>
-        </noscript>
-        {% endif %}
-        {% if viewer_tier == 'admin' %}
-        <span class="status-badge status-{{ p.status }}">
-          {{ {'inactive': 'Inaktiv', 'active': 'Aktiv', 'registered': 'Kontaktprüfung offen', 'verified': 'Freigabe offen', 'rejected': 'Abgelehnt'}.get(p.status, p.status) }}
-        </span>
-        <div class="person-admin-actions">
-          {% if p.status == 'inactive' %}
-          <form method="post" action="{{ url_for('reactivate_person', person_id=p.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-primary" type="submit">Reaktivieren</button></form>
-          {% elif p.status == 'active' %}
-          <form method="post" action="{{ url_for('deactivate_person', person_id=p.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn" type="submit">Deaktivieren</button></form>
-          {% endif %}
-          <button class="btn btn-danger" type="button" data-delete-person="{{ p.id }}"
-                  data-name="{{ p.name }}">Löschen</button>
-        </div>
         {% endif %}
       </div>
     </article>

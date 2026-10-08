@@ -115,7 +115,7 @@ def test_03_name_search_matches_both_people_with_same_name_and_no_roster():
 def test_04_past_section_is_collapsed_and_counts_filtered_days():
     page = _page("/?person=Alex")
     assert re.search(r"<details class=\"past-details\">\s*<summary>"
-                     r"Vergangene Spieltage anzeigen \(1\)", page)
+                     r"Vergangene Spieltage \(1\)", page)
     assert 'class="day-block past"' in page
     assert "Nr. 1001" in page and "Nr. 9001" in page
     assert 'class="day-block past"' not in _page("/?person=Zweiter")

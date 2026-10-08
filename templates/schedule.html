@@ -43,7 +43,7 @@
       <div class="eligibility-status" data-eligibility-status data-eligibility-past="{{ g.past }}" role="status" {% if not g.eligibility_deficiencies %}hidden{% endif %}>
         {% for deficiency in g.eligibility_deficiencies %}<p>{{ deficiency.message }}</p>{% endfor %}
       </div>
-      <span class="disclosure-label"><span class="show-label">Details anzeigen</span><span class="hide-label">Schließen</span></span>
+      <span class="disclosure-label"><span class="disclosure-indicator" aria-hidden="true"></span>Details</span>
     </div>
   </summary>
   <div class="game-detail-body"><div class="game-assign">
@@ -97,7 +97,7 @@
       <p class="cake-status" data-cake-status role="status"{% if b.configured and b.cake_quantity > 0 %} hidden{% endif %}>{% if not b.configured %}Admin-Einrichtung erforderlich{% elif b.cake_quantity == 0 %}Keine Kuchen angefragt{% endif %}</p>
       {{ coverage(b.progress, 'cake', not b.configured or b.cake_quantity == 0) }}
       {% else %}{{ coverage(b.progress, 'block') }}{% endif %}
-      <span class="disclosure-label"><span class="show-label">Details anzeigen</span><span class="hide-label">Schließen</span></span>
+      <span class="disclosure-label"><span class="disclosure-indicator" aria-hidden="true"></span>Details</span>
     </div>
   </summary>
   <div class="game-detail-body">
@@ -137,6 +137,9 @@
 {% block content %}
 <section class="section">
   <div class="section-header"><div class="section-icon">📅</div><h2>Heimspielplan {{ season }}</h2></div>
+  <details class="responsive-disclosure page-introduction" data-responsive-disclosure data-desktop-open="true" open>
+    <summary>Hinweise</summary>
+    <div class="disclosure-content">
   <p class="hint">
     Alle Heimspiele des TuS Raubling mit den eingeteilten Helferinnen und Helfern.
     {% if viewer %}Freigegebene Dienste können direkt eingetragen oder freigegeben werden.
@@ -147,12 +150,36 @@
   {% if viewer %}<p class="hint">Zeitnehmer und Sekretär benötigen ein bekanntes Geburtsdatum und das Mindestalter am Spieltag.
     Im vollständig besetzten Verkauf muss mindestens eine eingeteilte Person 18 Jahre oder älter sein.
     Freigaben bleiben möglich; offene Altersanforderungen werden gesondert angezeigt.</p>{% endif %}
+    </div>
+  </details>
 
+  {% set active_filter_names = namespace(date='', playing_team='', responsible_team='') %}
+  {% for option in date_options if filters.date == option.date %}
+    {% set active_filter_names.date = option.day ~ ' ' ~ option.date %}
+  {% endfor %}
+  {% for t in teams %}
+    {% if not t.is_support and filters.playing_team == 'team-' ~ t.id %}{% set active_filter_names.playing_team = t.name %}{% endif %}
+    {% if filters.responsible_team == 'team-' ~ t.id %}{% set active_filter_names.responsible_team = t.name %}{% endif %}
+  {% endfor %}
+  {% if filters.date or filters.playing_team or filters.responsible_team or filters.person %}
+  <p class="active-filter-summary" aria-label="Aktive Spielplanfilter">
+    <strong>Aktive Filter:</strong>
+    {% if filters.date %}<span>Datum: {{ active_filter_names.date or 'Unbekannter Spieltag' }}</span>{% endif %}
+    {% if filters.playing_team %}<span>Spielende Mannschaft: {{ active_filter_names.playing_team or 'Unbekannte Mannschaft' }}</span>{% endif %}
+    {% if filters.responsible_team %}<span>Verantwortliche Mannschaft: {{ active_filter_names.responsible_team or 'Unbekannte Mannschaft' }}</span>{% endif %}
+    {% if filters.person %}<span>Eingeteilte Person: {{ filters.person }}</span>{% endif %}
+    <a href="{{ url_for('schedule') }}">Filter löschen</a>
+  </p>
+  {% endif %}
+  <details class="responsive-disclosure filter-disclosure" data-responsive-disclosure data-desktop-open="true" open>
+    <summary>Filter</summary>
+    <div class="disclosure-content">
   <form class="schedule-filter-card" method="get" action="{{ url_for('schedule') }}" aria-label="Spielplan filtern">
     <div class="filter-field">
       <label for="date-filter">Datum</label>
       <select id="date-filter" name="date">
         <option value="">Alle Spieltage</option>
+        {% if filters.date and not active_filter_names.date %}<option value="{{ filters.date }}" selected>Unbekannter Spieltag</option>{% endif %}
         {% for option in date_options %}
         <option value="{{ option.date }}" {% if filters.date == option.date %}selected{% endif %}>{{ option.day }} {{ option.date }}</option>
         {% endfor %}
@@ -162,6 +189,7 @@
       <label for="playing-team-filter">Spielende Mannschaft</label>
       <select id="playing-team-filter" name="playing_team">
         <option value="">Alle Mannschaften</option>
+        {% if filters.playing_team and not active_filter_names.playing_team %}<option value="{{ filters.playing_team }}" selected>Unbekannte Mannschaft</option>{% endif %}
         {% for t in teams if not t.is_support %}
         <option value="team-{{ t.id }}" {% if filters.playing_team == 'team-' ~ t.id %}selected{% endif %}>{{ t.name }}</option>
         {% endfor %}
@@ -171,6 +199,7 @@
       <label for="responsible-team-filter">Verantwortliche Mannschaft</label>
       <select id="responsible-team-filter" name="responsible_team">
         <option value="">Alle Mannschaften</option>
+        {% if filters.responsible_team and not active_filter_names.responsible_team %}<option value="{{ filters.responsible_team }}" selected>Unbekannte Mannschaft</option>{% endif %}
         {% for t in teams %}
         <option value="team-{{ t.id }}" {% if filters.responsible_team == 'team-' ~ t.id %}selected{% endif %}>{{ t.name }}</option>
         {% endfor %}
@@ -185,6 +214,8 @@
       <a class="btn btn-secondary" href="{{ url_for('schedule') }}">Filter löschen</a>
     </div>
   </form>
+    </div>
+  </details>
 
   {% if not total_games %}
   <p class="hint">Noch keine Spiele vorhanden. Führe zuerst <code>main.py</code> aus, um den Spielplan zu laden.</p>
@@ -208,7 +239,7 @@
 
   {% if past %}
   <details class="past-details"{% if selected_date_is_past %} open{% endif %}>
-    <summary>Vergangene Spieltage anzeigen ({{ past | selectattr("type", "equalto", "day") | list | length }})</summary>
+    <summary>Vergangene Spieltage ({{ past | selectattr("type", "equalto", "day") | list | length }})</summary>
     {% for item in past %}
       {% if item.type == "month" %}
         <h3 class="month-title">{{ item.label }}</h3>
