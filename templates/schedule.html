@@ -139,6 +139,7 @@
   <div class="section-header"><div class="section-icon">📅</div><h2>Heimspielplan {{ season }}</h2></div>
   <details class="responsive-disclosure page-introduction" data-responsive-disclosure data-desktop-open="true" open>
     <summary>Hinweise</summary>
+    {% include '_responsive_disclosure_script.html' %}
     <div class="disclosure-content">
   <p class="hint">
     Alle Heimspiele des TuS Raubling mit den eingeteilten Helferinnen und Helfern.
@@ -173,6 +174,7 @@
   {% endif %}
   <details class="responsive-disclosure filter-disclosure" data-responsive-disclosure data-desktop-open="true" open>
     <summary>Filter</summary>
+    {% include '_responsive_disclosure_script.html' %}
     <div class="disclosure-content">
   <form class="schedule-filter-card" method="get" action="{{ url_for('schedule') }}" aria-label="Spielplan filtern">
     <div class="filter-field">

@@ -21,6 +21,15 @@ test/run_tests.sh
 ./venv/bin/python -m pytest test/ -v
 ```
 
+The optional `browser_disclosures.mjs` check uses an already installed Playwright
+module and Chromium browser; it installs no packages. It serves only a synthetic
+app on loopback and checks delayed scripts, native fallbacks and a larger roster:
+
+```bash
+PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs \
+  BROWSER_EXECUTABLE=/absolute/path/to/chromium node test/browser_disclosures.mjs
+```
+
 ## Files
 
 | File               | Scope                                                                    |

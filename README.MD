@@ -40,8 +40,12 @@ restricted secrets, monitoring and a reviewed launch procedure.
 - **Statistik**: games covered per team, jobs per person (incl. role breakdown) and upcoming games and day blocks with missing assignments, unresolved age eligibility or cake setup still needed.
 - **Änderungsprotokoll**: admin-only, append-only history of assignment claims and releases with actor, tier, person, game, role, slot and timestamp.
 
-At **700 CSS pixels wide or less**, JavaScript initially collapses the general
-introductions on Heimspielplan, Helfer verwalten and Statistik behind **Hinweise**.
+At **700 CSS pixels wide or less**, JavaScript collapses the general
+introductions on Heimspielplan, Helfer verwalten and Statistik behind **Hinweise**
+before their contents are parsed. The same early initialization applies to filters,
+statistics and authorized helper maintenance, so expanded contents do not flash while
+the main application scripts load. A small same-origin script runs after each header;
+the shared layout preloads it under the existing production script policy.
 On wider screens they start expanded. Opening a disclosure shows the
 complete explanation; validation errors, missing-birth-date follow-up, cake setup
 and staffing/age warnings remain beside the content they concern.
@@ -77,11 +81,13 @@ Disclosure captions identify the content and stay the same when open or closed:
 the statistics section titles. Native disclosures support keyboard and touch.
 During a page visit, resizing or rotating preserves deliberate disclosure choices,
 unsaved form edits, focused fields
-and validation errors. A fresh visit restores the initial defaults. Without JavaScript,
+and validation errors, including interaction before the main application scripts load.
+A fresh visit restores the initial defaults. Without JavaScript or if early initialization fails,
 introductions and filters start expanded; authorized helper maintenance starts collapsed
 and opens through its native control, except that returned validation errors start open.
 The team statistics section starts expanded and the other statistics sections remain
-available through their native disclosure controls.
+available through their native disclosure controls. Later application loading leaves
+each panel's native fallback or manually selected state intact.
 
 Shared pages offer an upward-arrow **Nach oben** action. With JavaScript it floats at
 the lower right after scrolling at least one viewport height and hides near the top;

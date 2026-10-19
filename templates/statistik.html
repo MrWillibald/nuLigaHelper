@@ -6,6 +6,7 @@
   <div class="section-header"><div class="section-icon">📊</div><h2>Statistik {{ season }}</h2></div>
   <details class="responsive-disclosure page-introduction" data-responsive-disclosure data-desktop-open="true" open>
     <summary>Hinweise</summary>
+    {% include '_responsive_disclosure_script.html' %}
     <div class="disclosure-content">
   <p class="hint">
     Übersicht über die Dienstverteilung: Wie viele Spiele deckt jede Mannschaft ab,
@@ -20,6 +21,7 @@
 
   <details class="responsive-disclosure statistics-disclosure" data-responsive-disclosure data-desktop-open="true" open>
     <summary><h3 class="stat-title">Spiele pro Mannschaft <span class="stat-count">({{ team_stats | length }} {{ 'Mannschaft' if team_stats | length == 1 else 'Mannschaften' }})</span></h3></summary>
+    {% include '_responsive_disclosure_script.html' %}
     <div class="disclosure-content">
   {% if team_stats %}
   <div class="stat-grid">
@@ -44,6 +46,7 @@
 
   <details class="responsive-disclosure statistics-disclosure" data-responsive-disclosure data-desktop-open="false">
     <summary><h3 class="stat-title">Dienste pro Person <span class="stat-count">({{ person_stats | length }} {{ 'Person' if person_stats | length == 1 else 'Personen' }} mit Diensten)</span></h3></summary>
+    {% include '_responsive_disclosure_script.html' %}
     <div class="disclosure-content">
   {% if person_stats %}
   <div class="data-table-wrap">
@@ -73,6 +76,7 @@
 
   <details class="responsive-disclosure statistics-disclosure" data-responsive-disclosure data-desktop-open="false">
     <summary><h3 class="stat-title">Offene Dienste, Altersanforderungen und Einrichtung <span class="stat-count">({{ gaps | length }} {{ 'betroffenes Spiel bzw. betroffener Tagesblock' if gaps | length == 1 else 'betroffene Spiele oder Tagesblöcke' }})</span></h3></summary>
+    {% include '_responsive_disclosure_script.html' %}
     <div class="disclosure-content">
   {% if gaps %}
   <p class="hint">{{ gaps | length }} anstehende Spiele oder Tagesblöcke haben freie Plätze, ungeklärte Altersanforderungen oder benötigen Einrichtung:</p>

@@ -11,6 +11,7 @@ from lxml import html
 import helpers as h
 import db
 import webapp
+from disclosure_markup import assert_early_disclosure_markup
 
 
 TODAY = date(2026, 10, 8)
@@ -70,7 +71,9 @@ def _page(app, path="/", person_id=None):
     with patch.object(webapp.common, "effective_today", return_value=TODAY):
         response = client.get(path)
     assert response.status_code == 200, "synthetic presentation page should remain reachable"
-    return html.fromstring(response.get_data(as_text=True)), response.get_data(as_text=True)
+    tree = html.fromstring(response.get_data(as_text=True))
+    assert_early_disclosure_markup(tree)
+    return tree, response.get_data(as_text=True)
 
 
 def _stat_sections(tree):

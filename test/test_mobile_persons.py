@@ -6,6 +6,7 @@ from lxml import html
 
 import helpers as h
 import db
+from disclosure_markup import assert_early_disclosure_markup
 from test_auth import _new_app
 
 
@@ -49,7 +50,9 @@ def _client(app, ids, role):
 def _page(client, path="/personen"):
     response = client.get(path)
     assert response.status_code == 200
-    return html.fromstring(response.get_data(as_text=True))
+    page = html.fromstring(response.get_data(as_text=True))
+    assert_early_disclosure_markup(page)
+    return page
 
 
 def _card(page, person_id):
@@ -58,6 +61,23 @@ def _card(page, person_id):
 
 def _maintenance(card):
     return card.xpath('.//details[@data-responsive-disclosure]')
+
+
+def test_parser_time_disclosure_scripts_cover_guest_and_each_authorized_viewer_tier():
+    app, _, ids, _ = _roster()
+    guest = _page(app.test_client(), "/")
+    assert len(guest.xpath('//details[@data-responsive-disclosure]')) == 2
+    for role in ("member", "mv", "admin"):
+        client = _client(app, ids, role)
+        schedule = _page(client, "/")
+        assert len(schedule.xpath('//details[@data-responsive-disclosure]')) == 2
+        roster = _page(client)
+        maintenance = roster.xpath('//details[contains(@class,"person-maintenance")]')
+        assert maintenance, "every signed-in viewer has at least their own authorized maintenance"
+        if role == "member":
+            assert [item.get("id") for item in maintenance] == [f"person-maintenance-{ids['member']}"]
+        statistics = _page(client, "/statistik")
+        assert len(statistics.xpath('//details[@data-responsive-disclosure]')) == 4
 
 
 def test_roster_headers_keep_complete_memberships_and_status_outside_authorized_actions():
@@ -153,6 +173,7 @@ def test_invalid_self_edit_reopens_only_affected_form_and_preserves_submitted_va
     response = client.post(f"/personen/{ids['member']}/edit", data=h.csrf_data(values))
     assert response.status_code == 400
     page = html.fromstring(response.get_data(as_text=True))
+    assert_early_disclosure_markup(page)
     card = _card(page, ids["member"])
     maintenance = _maintenance(card)[0]
     assert maintenance.get("open") is not None and maintenance.get("data-disclosure-error") == "true"
@@ -178,6 +199,7 @@ def test_admin_edit_failure_preserves_missing_fields_and_unrelated_entry_default
     }))
     assert response.status_code == 400
     page = html.fromstring(response.get_data(as_text=True))
+    assert_early_disclosure_markup(page)
     affected = _maintenance(_card(page, ids["other"]))[0]
     assert affected.get("data-disclosure-error") == "true" and affected.get("open") is not None
     assert affected.xpath('.//input[@name="name"]/@value') == ["Attempted admin edit"]
