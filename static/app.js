@@ -1,33 +1,3 @@
-// Native details remain usable when enhancement is unavailable. Track explicit
-// activation rather than toggle events, which also fire after setting .open.
-function initializeResponsiveDisclosures() {
-  const viewport = globalThis.window?.matchMedia?.("(max-width: 700px)");
-  if (!viewport) return;
-  const disclosures = Array.from(document.querySelectorAll("[data-responsive-disclosure]"));
-  disclosures.forEach((details) => {
-    const state = { deliberate: false, dirty: false };
-    const hasError = () => details.dataset.disclosureError === "true"
-      || Boolean(details.querySelector('[aria-invalid="true"]'));
-    const applyDefault = () => {
-      if (state.deliberate) return;
-      if (hasError()) {
-        details.open = true;
-        return;
-      }
-      if (state.dirty || details.contains(document.activeElement)) return;
-      details.open = !viewport.matches && details.dataset.desktopOpen === "true";
-    };
-    applyDefault();
-    details.querySelector("summary")?.addEventListener("click", () => { state.deliberate = true; });
-    details.addEventListener("input", () => { state.dirty = true; });
-    details.addEventListener("change", () => { state.dirty = true; });
-    if (viewport.addEventListener) viewport.addEventListener("change", applyDefault);
-    else viewport.addListener(applyDefault);
-  });
-}
-
-initializeResponsiveDisclosures();
-
 function showFeedback(message, severity = "error", action) {
   return globalThis.nuLigaFeedback.show({ message, severity, ...(action ? { action } : {}) });
 }

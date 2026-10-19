@@ -17,6 +17,7 @@
   <details class="responsive-disclosure introduction-disclosure" data-responsive-disclosure
            data-desktop-open="true" open>
     <summary>Hinweise</summary>
+    {% include '_responsive_disclosure_script.html' %}
     <div class="disclosure-content">
       <p class="hint">
         Hier werden Name, Kontaktdaten und Mannschaften aller Helferinnen und Helfer gepflegt.
@@ -174,6 +175,7 @@
   <details class="responsive-disclosure filter-disclosure roster-filter-disclosure" data-responsive-disclosure
            data-desktop-open="true" open>
     <summary>Filter</summary>
+    {% include '_responsive_disclosure_script.html' %}
     <div class="disclosure-content">
   <form class="roster-filter-card" method="get" action="{{ url_for('persons') }}">
     <div class="filter-field filter-name">
@@ -245,6 +247,7 @@
                  data-responsive-disclosure data-desktop-open="false"
                  {% if error_person_id == p.id and field_errors %}data-disclosure-error="true" open{% endif %}>
           <summary>Bearbeitung</summary>
+          {% include '_responsive_disclosure_script.html' %}
           <div class="disclosure-content">
         {% if p.editable %}
         <form method="post" action="{{ url_for('edit_person', person_id=p.id) }}" class="person-edit-form">

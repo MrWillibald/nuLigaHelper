@@ -100,9 +100,10 @@ def test_responsive_disclosures_and_return_navigation_preserve_forms_focus_and_o
     if node is None:
         return
     for viewport in ("mobile", "desktop"):
-        result = subprocess.run([node, "test/js_mobile_presentation.mjs", viewport],
-                                cwd=h.PROJECT_DIR, text=True, capture_output=True, timeout=30)
-        assert result.returncode == 0, result.stderr or result.stdout
+        for enhancement in ("available", "legacy", "failed", "no-viewport"):
+            result = subprocess.run([node, "test/js_mobile_presentation.mjs", viewport, enhancement],
+                                    cwd=h.PROJECT_DIR, text=True, capture_output=True, timeout=30)
+            assert result.returncode == 0, result.stderr or result.stdout
 
 
 if __name__ == "__main__":

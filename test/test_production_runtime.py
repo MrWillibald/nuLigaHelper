@@ -286,13 +286,16 @@ def test_security_headers_cover_html_json_redirect_error_and_static(caplog=None)
                 "Strict-Transport-Security": "max-age=31536000"}
     client = app.test_client()
     _sign_in_production(client, _add_active_person(path))
-    for path in ("/", "/_json", "/_redirect", "/missing", "/static/app.js"):
+    for path in ("/", "/_json", "/_redirect", "/missing", "/static/app.js", "/static/disclosures.js"):
         response = _proxy(client, path)
         expected_status = {"/_json": 200, "/_redirect": 302, "/missing": 404}.get(path)
         if expected_status is not None:
             assert response.status_code == expected_status
         for name, value in expected.items():
             assert response.headers.getlist(name) == [value], (path, name)
+        if path.startswith("/static/"):
+            assert response.status_code == 200, "same-origin scripts must remain available in production"
+            assert response.mimetype in ("text/javascript", "application/javascript")
     assert "'unsafe-inline'" not in expected["Content-Security-Policy"].split("script-src", 1)[1].split(";", 1)[0]
 
 
