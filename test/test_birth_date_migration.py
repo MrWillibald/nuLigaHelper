@@ -62,7 +62,7 @@ def _values(path):
         for table in ("persons", "teams", "person_teams", "games", "assignments",
                       "assignment_audit", "auth_tokens", "day_blocks", "block_assignments"):
             columns = [row[1] for row in connection.execute(f'PRAGMA table_info("{table}")')
-                       if row[1] not in {"birth_date", "cake_quantity", "delivery_time"}]
+                       if row[1] not in {"birth_date", "cake_quantity", "delivery_time", "replacement_token", "locked_at"}]
             selected = ", ".join(f'"{column}"' for column in columns)
             clause = " WHERE phase <> 'cake_delivery'" if table == "day_blocks" else ""
             values[table] = sorted(connection.execute(

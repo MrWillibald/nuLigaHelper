@@ -125,12 +125,16 @@ def test_adult_repeated_cleaning_positions_are_independent_audited_and_stale_saf
             assert "Ungültiger" in str(exc)
         else:
             raise AssertionError("a second Ordnungsdienst must not exist")
-        db.release_slot(session, game, db.ROLE_CLEANING, 1, second.id)
+        third = session.get(db.Person, ids["helpers"][2])
+        request = db.request_replacement(session, game, db.ROLE_CLEANING, 1, second.id)
+        assert request.person_id == second.id, "seeking a replacement must preserve the numbered occupant"
+        db.takeover_slot(session, game, db.ROLE_CLEANING, 1, second.id, request.replacement_token, third)
         session.commit()
         assert game.assignment_by_role(db.ROLE_CLEANING, 0).person_id == first.id
-        assert game.assignment_by_role(db.ROLE_CLEANING, 1) is None
+        assert game.assignment_by_role(db.ROLE_CLEANING, 1).person_id == third.id
         assert [(a.action, a.slot) for a in session.query(db.AssignmentAudit).order_by(db.AssignmentAudit.id)] == [
-            ("claim", 1), ("claim", 0), ("release", 1)]
+            ("claim", 1), ("claim", 0), ("request_open", 1),
+            ("takeover_out", 1), ("request_close", 1), ("takeover_in", 1)]
 
 
 def test_saved_category_refuses_stale_new_duties_but_keeps_retained_assignments_releasable():
@@ -198,8 +202,10 @@ def test_category_markup_candidates_claim_refusals_and_retained_release_match_ex
     assert len(retained) == 1 and "Bestehende Einteilung" in card.text_content()
     assert [o.get("value") for o in retained[0].xpath("option")] == ["", str(ids["member"])]
     payload = member.get(f"/api/games/{youth}/candidates").get_json()
-    assert payload["slots"]["Kasse:0"] == {"candidate_ids": [ids["member"]],
-        "occupant_id": ids["member"], "release_only": True}
+    retained_slot = payload["slots"]["Kasse:0"]
+    assert retained_slot["candidate_ids"] == [ids["member"]]
+    assert retained_slot["occupant_id"] == ids["member"] and retained_slot["release_only"] is True
+    assert retained_slot["locked"] is False and not retained_slot["seeking_replacement"], "obsolete duties must not gain replacement flow"
     for tier in ("admin", "mv"):
         payload = _client(app, ids[tier]).get(f"/api/games/{youth}/candidates").get_json()
         assert payload["slots"]["Kasse:0"]["candidate_ids"] == [ids["member"]], "no replacement candidate"
@@ -255,11 +261,16 @@ def test_cli_supports_both_cleaning_positions_and_refuses_removed_category_dutie
             assert "nicht angeboten" in str(exc)
         else:
             raise AssertionError("CLI cannot override offered game duties")
-    _cli(path, "unassign", adult, db.ROLE_CLEANING, ids["helpers"][1])
+    try:
+        _cli(path, "unassign", adult, db.ROLE_CLEANING, ids["helpers"][1])
+    except SystemExit as exc:
+        assert "verbindlich" in str(exc)
+    else:
+        raise AssertionError("CLI must not vacate an offered binding duty")
     with h.Session(engine) as session:
         game = session.get(db.Game, adult)
         assert game.assignment_by_role(db.ROLE_CLEANING, 0) is not None
-        assert game.assignment_by_role(db.ROLE_CLEANING, 1) is None
+        assert game.assignment_by_role(db.ROLE_CLEANING, 1).person_id == ids["helpers"][1]
 
 
 for _name, _test in list(globals().items()):

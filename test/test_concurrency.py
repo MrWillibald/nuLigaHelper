@@ -302,16 +302,12 @@ def test_stale_release_does_not_remove_replacement_or_write_audit():
 
             with h.Session(replacing_engine) as replacing:
                 replacing_game = replacing.get(db.Game, game_id)
-                db.release_slot(
+                request = db.request_replacement(
                     replacing, replacing_game, db.ROLE_SALE, 0, first_id
                 )
-                db.claim_slot(
-                    replacing,
-                    replacing_game,
-                    db.ROLE_SALE,
-                    0,
-                    None,
-                    replacing.get(db.Person, second_id),
+                db.takeover_slot(
+                    replacing, replacing_game, db.ROLE_SALE, 0, first_id,
+                    request.replacement_token, replacing.get(db.Person, second_id),
                 )
                 replacing.commit()
 
@@ -336,7 +332,7 @@ def test_stale_release_does_not_remove_replacement_or_write_audit():
             ).one()
             assert assignment.person_id == second_id
             audits = session.query(db.AssignmentAudit).filter_by(game_id=game_id).all()
-            assert [audit.action for audit in audits] == ["claim", "release", "claim"]
+            assert [audit.action for audit in audits] == ["claim", "request_open", "takeover_out", "request_close", "takeover_in"]
     finally:
         check_engine.dispose()
 

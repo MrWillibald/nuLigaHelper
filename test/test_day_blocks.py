@@ -63,10 +63,10 @@ def test_block_claim_release_enforces_container_scope_and_writes_atomic_audits()
         with pytest.raises(db.SlotConflictError):
             db.release_block_slot(session, preparation, 0, None)
         assert session.query(db.AssignmentAudit).count() == 2
-        db.release_block_slot(session, preparation, 0, person.id)
+        db.request_block_replacement(session, preparation, 0, person.id)
         session.commit()
         audits = session.query(db.AssignmentAudit).order_by(db.AssignmentAudit.id).all()
-        assert [entry.action for entry in audits] == ["claim", "claim", "release"]
+        assert [entry.action for entry in audits] == ["claim", "claim", "request_open"]
         assert all(entry.block_snapshot for entry in audits)
         assert all(entry.game_id is None for entry in audits)
         assert [entry.block_snapshot for entry in audits] == [
@@ -76,7 +76,7 @@ def test_block_claim_release_enforces_container_scope_and_writes_atomic_audits()
         ], "Every new day-block audit records the season and original named slot."
 
 
-def test_reconcile_removed_date_audits_occupied_slot_and_keeps_snapshot():
+def test_reconcile_and_sync_refuse_occupied_date_removal_without_partial_changes():
     engine = h.make_engine()
     with h.Session(engine) as session:
         db.sync_games(session, [_one_game()], h.SEASON)
@@ -87,12 +87,24 @@ def test_reconcile_removed_date_audits_occupied_slot_and_keeps_snapshot():
         db.claim_block_slot(session, block, 0, None, person)
         session.commit()
 
-        db.reconcile_day_blocks(session, h.SEASON, set())
+        request = db.request_block_replacement(session, block, 0, person.id)
+        token = request.replacement_token
         session.commit()
-        removal = session.query(db.AssignmentAudit).filter_by(action="remove").one()
-        assert removal.block_id is None
-        assert removal.block_snapshot == "Saison 2026 | 05.09.2026 | Vorbereitung 1"
-        assert session.query(db.DayBlock).count() == 0
+        before = session.query(db.AssignmentAudit).count()
+        original_ids = [b.id for b in db.get_day_blocks(session, h.SEASON, block.date)]
+        with pytest.raises(ValueError, match="verbindlichen"):
+            db.reconcile_day_blocks(session, h.SEASON, set())
+        session.rollback()
+        assert [b.id for b in db.get_day_blocks(session, h.SEASON, block.date)] == original_ids
+        assert block.assignment_for_slot(0).person_id == person.id
+        assert block.assignment_for_slot(0).replacement_token == token
+        assert session.query(db.AssignmentAudit).count() == before
+        assert session.query(db.AssignmentAudit).filter_by(action="remove").count() == 0
+        with pytest.raises(ValueError, match="verbindlichen"):
+            db.sync_games(session, [_one_game(date="06.09.2026", number="2001")], h.SEASON)
+        session.rollback()
+        assert session.query(db.Game).one().date == "05.09.2026", "refused sync must not partially move a game"
+        assert session.query(db.AssignmentAudit).count() == before
 
 
 def test_successful_sync_removes_vanished_blocks_logs_each_and_invalid_sync_does_not():

@@ -148,20 +148,23 @@ def test_stale_settings_and_occupied_reduction_keep_saved_positions_and_history(
     claim = _assignment(admin, ids["cake"], ids["volunteer"], 3).get_json()
     assert claim["block"]["progress"]["filled"] == 1
     blocked = _settings(admin, ids["cake"], 2, "11:00", 4, "10:00")
-    assert blocked.status_code == 400 and "freigegeben" in blocked.get_json()["error"]
+    assert blocked.status_code == 400 and "belegten" in blocked.get_json()["error"], "occupied cake reduction must explain the retained position"
     stale = _settings(admin, ids["cake"], 5)
     assert stale.status_code == 409
     current = stale.get_json()
     assert current["current_delivery_time"] == "10:00" and current["current_cake_quantity"] == 4
     assert current["block"]["progress"] == {"filled": 1, "total": 4, "percent": 25}
     assert current["block"]["slots"][3]["person_id"] == ids["volunteer"]
-    assert _assignment(admin, ids["cake"], ids["volunteer"], 3, "release").status_code == 200
-    assert _settings(admin, ids["cake"], 2, "11:00", 4, "10:00").status_code == 200
-    assert _assignment(admin, ids["cake"], ids["other"], 3).status_code == 400
+    assert _assignment(admin, ids["cake"], ids["volunteer"], 3, "release").status_code == 400, "cake settings must have no force-release backdoor"
+    assert _settings(admin, ids["cake"], 2, "11:00", 4, "10:00").status_code == 400
+    assert _settings(admin, ids["cake"], 5, "10:00", 4, "10:00").status_code == 200
+    assert _settings(admin, ids["cake"], 4, "10:00", 5, "10:00").status_code == 200, "only genuinely empty removed positions may be dropped"
+    assert _assignment(admin, ids["cake"], ids["other"], 4).status_code == 400
     with h.Session(engine) as session:
-        assert session.query(db.BlockAssignment).filter_by(block_id=ids["cake"]).count() == 0
+        assignment = session.query(db.BlockAssignment).filter_by(block_id=ids["cake"]).one()
+        assert assignment.slot == 3 and assignment.person_id == ids["volunteer"], "capacity edits compacted or released the saved volunteer"
         audits = session.query(db.AssignmentAudit).filter_by(block_id=ids["cake"]).all()
-        assert len(audits) == 2 and all("Kuchenlieferung 4" in entry.block_snapshot for entry in audits)
+        assert len(audits) == 1 and all("Kuchenlieferung 4" in entry.block_snapshot for entry in audits)
     history = admin.get("/audit").get_data(as_text=True)
     assert "Kuchenlieferung 4" in history and "Cake Only" in history
 
@@ -194,7 +197,8 @@ def test_cake_candidates_and_claims_use_current_capacity_active_people_and_self_
     assert "birth_date" not in candidates.get_data(as_text=True)
     assert _assignment(member, ids["past"], ids["volunteer"]).status_code == 403
     assert _assignment(admin, ids["past"], ids["volunteer"]).status_code == 200
-    assert member.get(f'/api/blocks/{ids["past"]}/candidates').get_json()["slots"] == {}
+    past_slots = member.get(f'/api/blocks/{ids["past"]}/candidates').get_json()["slots"]
+    assert len(past_slots) == 4 and all(not slot["candidate_ids"] for slot in past_slots.values()), "past block metadata must not authorize any candidate"
 
 
 @patch("common.effective_today", return_value=date(2026, 9, 1))
@@ -236,11 +240,16 @@ def test_statistics_report_setup_separately_from_configured_missing_cakes_and_ze
     assert "Kuchenlieferung (2×)" in cake_row.text_content()
     assert "Admin-Einrichtung erforderlich" not in cake_row.text_content()
     assert "1× Kuchenlieferung" in page.text_content() and "Kuchenlieferung 1" not in page.text_content()
-    _assignment(admin, ids["cake"], ids["volunteer"], action="release")
-    _assignment(admin, ids["cake"], ids["other"], 1, "release")
-    _settings(admin, ids["cake"], 0, expected_quantity=4, expected_time="10:00")
-    page = html.fromstring(admin.get("/statistik").get_data(as_text=True))
-    assert not page.xpath('//table[contains(@class,"gap-table")]//tr[contains(.,"Kuchenlieferung")]')
+    assert _assignment(admin, ids["cake"], ids["volunteer"], action="release").status_code == 400
+    assert _assignment(admin, ids["cake"], ids["other"], 1, "release").status_code == 400
+    assert _settings(admin, ids["cake"], 0, expected_quantity=4, expected_time="10:00").status_code == 400
+    retained = html.fromstring(admin.get("/statistik").get_data(as_text=True))
+    assert "Kuchenlieferung (2×)" in retained.text_content(), "refused releases changed missing-cake reporting"
+    empty_app, _empty_engine, empty_ids = _site()
+    empty_admin = _client(empty_app, empty_ids)
+    assert _settings(empty_admin, empty_ids["cake"], 0).status_code == 200
+    page = html.fromstring(empty_admin.get("/statistik").get_data(as_text=True))
+    assert not page.xpath('//table[contains(@class,"gap-table")]//tr[contains(.,"Kuchenlieferung")]'), "configured zero must be distinct from setup-needed or missing cakes"
 
 
 def test_cake_configuration_browser_state_regression():

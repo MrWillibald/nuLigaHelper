@@ -11,6 +11,8 @@ import os
 import tempfile
 import uuid
 
+import pytest
+
 import helpers as h
 import db
 import scraper
@@ -128,36 +130,43 @@ def test_chronological_ordering_includes_month_and_year():
         assert same_day == ["10:00", "17:30"], "times must be ordered within a day"
 
 
-def test_delete_person_removes_their_assignments():
+def test_delete_person_refuses_assigned_commitments_but_allows_empty_records():
     engine = _make_engine()
     with h.Session(engine) as session:
         games = h.sync_sample_games(session)
         person = db.get_or_create_person(session, "Alice", email="alice@x.de", birth_date=h.ADULT_BIRTH_DATE)
         game = _game_by_number(session, games[0]["game_nr"])
-        db.assign_person(session, game, person, db.ROLE_TIMEKEEPER)
+        assigned = db.assign_person(session, game, person, db.ROLE_TIMEKEEPER)
         session.commit()
+        before = session.query(db.AssignmentAudit).count()
+        with pytest.raises(ValueError, match="verbindliche"):
+            db.delete_person(session, person)
+        session.rollback()
+        assert session.get(db.Person, person.id) is person
+        assert game.assignment_by_role(db.ROLE_TIMEKEEPER).id == assigned.id
+        assert session.query(db.AssignmentAudit).count() == before
+        empty = db.get_or_create_person(session, "Mistaken empty", birth_date=h.ADULT_BIRTH_DATE)
+        empty_id = empty.id
+        session.commit()
+        db.delete_person(session, empty)
+        assert session.get(db.Person, empty_id) is None
+        assert game.assignment_by_role(db.ROLE_TIMEKEEPER).person_id == person.id
 
-        db.delete_person(session, person)
-        assert session.get(db.Person, person.id) is None
-        assert game.assignment_by_role(db.ROLE_TIMEKEEPER) is None
 
-
-def test_set_role_assignments_replaces_all_slots_of_a_role():
+def test_set_role_assignments_can_fill_empty_slots_but_cannot_replace_commitments():
     engine = _make_engine()
     with h.Session(engine) as session:
         games = h.sync_sample_games(session)
         game = _game_by_number(session, games[0]["game_nr"])
         alice = db.get_or_create_person(session, "Alice", birth_date=h.ADULT_BIRTH_DATE)
         bob = db.get_or_create_person(session, "Bob", birth_date=h.ADULT_BIRTH_DATE)
-
         db.set_role_assignments(session, game, db.ROLE_SALE, [alice.id])
         db.set_role_assignments(session, game, db.ROLE_SALE, [alice.id, bob.id])
-        names = [a.person.name for a in game.assignments_by_role(db.ROLE_SALE)]
-        assert names == ["Alice", "Bob"], names
-
-        db.set_role_assignments(session, game, db.ROLE_SALE, [bob.id])
-        names = [a.person.name for a in game.assignments_by_role(db.ROLE_SALE)]
-        assert names == ["Bob"], "removed slots must disappear completely"
+        before = session.query(db.AssignmentAudit).count()
+        with pytest.raises(ValueError, match="verbindlich"):
+            db.set_role_assignments(session, game, db.ROLE_SALE, [bob.id])
+        assert [a.person.name for a in game.assignments_by_role(db.ROLE_SALE)] == ["Alice", "Bob"]
+        assert session.query(db.AssignmentAudit).count() == before, "failed bulk replacement must commit no partial audit"
 
 
 def test_assign_person_blocks_a_second_task_for_the_same_game():
@@ -315,31 +324,30 @@ def test_registration_state_reaches_active_roster_membership():
         assert db.membership_team_ids(person) == (team.id,) and person.approved_at
 
 
-def test_slot_claim_release_conflicts_and_audit_survives_person_deletion():
+def test_slot_claim_takeover_conflicts_and_audit_survives_unassigned_person_deletion():
     engine = _make_engine()
     with h.Session(engine) as session:
         games = h.sync_sample_games(session)
         game = _game_by_number(session, games[0]["game_nr"])
         person = db.get_or_create_person(session, "Alex", birth_date=h.ADULT_BIRTH_DATE)
+        replacement = db.get_or_create_person(session, "Blair", birth_date=h.ADULT_BIRTH_DATE)
         db.claim_slot(session, game, db.ROLE_SALE, 0, None, person)
         session.commit()
-        try:
+        with pytest.raises(db.SlotConflictError) as conflict:
             db.claim_slot(session, game, db.ROLE_SALE, 0, None, person)
-        except db.SlotConflictError as exc:
-            assert exc.current_person_id == person.id
-        else:
-            raise AssertionError("claiming an occupied slot must conflict")
-
-        db.release_slot(session, game, db.ROLE_SALE, 0, person.id)
+        assert conflict.value.current_person_id == person.id
+        request = db.request_replacement(session, game, db.ROLE_SALE, 0, person.id)
+        assert request.person_id == person.id, "request must keep the original helper responsible"
+        db.takeover_slot(session, game, db.ROLE_SALE, 0, person.id, request.replacement_token, replacement)
         session.commit()
-        assert game.assignments_by_role(db.ROLE_SALE) == []
-        db.claim_slot(session, game, db.ROLE_SALE, 1, None, person)
-        session.commit()
+        person_id = person.id
         db.delete_person(session, person)
-        entries = session.query(db.AssignmentAudit).all()
-        assert len(entries) == 4, "each successful mutation must have one audit row"
-        assert all(e.affected_person_name == "Alex" for e in entries)
-        assert all(e.affected_person_id is None for e in entries)
+        assert session.get(db.Person, person_id) is None
+        assert game.assignment_by_role(db.ROLE_SALE, 0).person_id == replacement.id
+        entries = session.query(db.AssignmentAudit).order_by(db.AssignmentAudit.id).all()
+        assert len(entries) == 5
+        assert all(e.affected_person_name == "Alex" and e.affected_person_id is None for e in entries[:-1])
+        assert entries[-1].affected_person_name == "Blair" and entries[-1].affected_person_id == replacement.id
 
 
 def test_roster_queries_exclude_unapproved_and_inactive_people():
@@ -367,39 +375,37 @@ def test_roster_queries_exclude_unapproved_and_inactive_people():
             raise AssertionError("an inactive person must not become MV")
 
 
-def test_deactivation_keeps_past_and_audits_future_release():
+def test_deactivation_refuses_future_commitments_atomically_and_preserves_past_only_history():
     engine = _make_engine()
     with h.Session(engine) as session:
         team = db.get_or_create_team(session, "BL mD")
         person = db.Person(birth_date=h.ADULT_BIRTH_DATE, name="Alex", teams=[team])
+        past_only = db.Person(birth_date=h.ADULT_BIRTH_DATE, name="Past helper")
         actor = db.Person(birth_date=h.ADULT_BIRTH_DATE, name="Admin", is_admin=True)
-        past = db.Game(
-            season_year=h.SEASON, game_nr="9001",
-            date="01.01.2020", ak="BL mD"
-        )
-        future = db.Game(
-            season_year=h.SEASON, game_nr="9002",
-            date="31.12.2099", ak="BL mD"
-        )
-        session.add_all([person, actor, past, future])
-        session.flush()
+        past = db.Game(season_year=h.SEASON, game_nr="9001", date="01.01.2020", ak="BL mD")
+        future = db.Game(season_year=h.SEASON, game_nr="9002", date="31.12.2099", ak="BL mD")
+        session.add_all([person, past_only, actor, past, future]); session.flush()
         team.mv_person_id = person.id
         db.assign_person(session, past, person, db.ROLE_TIMEKEEPER)
         db.assign_person(session, future, person, db.ROLE_TIMEKEEPER)
+        db.assign_person(session, past, past_only, db.ROLE_SECRETARY)
         session.commit()
         before = session.query(db.AssignmentAudit).count()
-
-        db.deactivate_person(session, person, actor)
-        assert person.account_status == db.ACCOUNT_INACTIVE
-        assert team.mv_person_id is None
-        assert past.assignment_by_role(db.ROLE_TIMEKEEPER) is not None
-        assert future.assignment_by_role(db.ROLE_TIMEKEEPER) is None
-        assert session.query(db.AssignmentAudit).count() == before + 1
-        assert person not in db.get_all_persons(session)
-
-        db.reactivate_person(session, person)
-        assert person in db.get_all_persons(session)
-        assert future.assignment_by_role(db.ROLE_TIMEKEEPER) is None
+        with pytest.raises(ValueError, match="verbindliche"):
+            db.deactivate_person(session, person, actor)
+        session.rollback()
+        assert person.account_status == db.ACCOUNT_ACTIVE and team.mv_person_id == person.id
+        assert past.assignment_by_role(db.ROLE_TIMEKEEPER).person_id == person.id
+        assert future.assignment_by_role(db.ROLE_TIMEKEEPER).person_id == person.id
+        assert session.query(db.AssignmentAudit).count() == before
+        db.deactivate_person(session, past_only, actor)
+        assert past_only.account_status == db.ACCOUNT_INACTIVE
+        assert past.assignment_by_role(db.ROLE_SECRETARY).person_id == past_only.id
+        assert session.query(db.AssignmentAudit).count() == before, "past-only deactivation must not rewrite duty history"
+        db.reactivate_person(session, past_only)
+        assert past_only in db.get_all_persons(session)
+        assert past.assignment_by_role(db.ROLE_SECRETARY).person_id == past_only.id
+        assert future.assignment_by_role(db.ROLE_TIMEKEEPER).person_id == person.id
 
 
 if __name__ == "__main__":

@@ -106,5 +106,23 @@ def test_responsive_disclosures_and_return_navigation_preserve_forms_focus_and_o
             assert result.returncode == 0, result.stderr or result.stdout
 
 
+def test_every_duty_confirmation_preserves_cancel_focus_and_original_cas_expectation():
+    node = shutil.which("node")
+    if node is None:
+        return
+    result = subprocess.run([node, "test/js_assignment_confirmation.mjs"], cwd=h.PROJECT_DIR,
+                            text=True, capture_output=True, timeout=30)
+    assert result.returncode == 0, result.stderr or result.stdout
+
+
+def test_replacement_search_cancellation_keeps_responsibility_and_current_generation():
+    node = shutil.which("node")
+    if node is None:
+        return
+    result = subprocess.run([node, "test/js_replacement_cancellation.mjs"], cwd=h.PROJECT_DIR,
+                            text=True, capture_output=True, timeout=30)
+    assert result.returncode == 0, result.stderr or result.stdout
+
+
 if __name__ == "__main__":
     h.run_all(dict(globals()))

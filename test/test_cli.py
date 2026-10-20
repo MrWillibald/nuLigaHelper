@@ -88,12 +88,15 @@ def test_duplicate_names_are_discovered_and_selected_by_id():
     with h.Session(engine) as session:
         assert session.get(db.Game, first_game_id).team_id is not None
         assert session.get(db.Game, second_game_id).team_id is None
-    _run(
+    error = _expect_system_exit(lambda: _run(
         path, "--season", h.SEASON, "unassign", second_game_id,
         db.ROLE_TIMEKEEPER, second_id,
-    )
+    ))
+    assert "verbindlich" in str(error), "CLI identity selection cannot bypass binding duties"
     with h.Session(engine) as session:
-        assert session.query(db.Assignment).count() == 0
+        assignment = session.query(db.Assignment).one()
+        assert assignment.person_id == second_id and assignment.game_id == second_game_id
+        assert session.query(db.AssignmentAudit).filter_by(action="release").count() == 0
 
 
 def test_grant_admin_changes_the_derived_account_fact():

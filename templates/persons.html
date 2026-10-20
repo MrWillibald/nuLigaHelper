@@ -307,7 +307,7 @@
           <noscript>
             <form method="post" action="{{ url_for('delete_person', person_id=p.id) }}">
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-              <label><input type="checkbox" required> Löschen einschließlich aller Diensteinträge bestätigen. Zum Ausscheiden bitte deaktivieren.</label>
+              <label><input type="checkbox" required> Löschen des irrtümlich angelegten Datensatzes bestätigen. Bestehende Einteilungen verhindern das Löschen. Zum Ausscheiden bitte deaktivieren; laufende Dienste müssen zuvor übernommen werden.</label>
               <button class="btn btn-danger" type="submit">Löschen bestätigen</button>
             </form>
           </noscript>

@@ -248,6 +248,22 @@ select.select-warn{border-color:#e8b23c;background:#fffaf0}
   font-size:.72rem;font-weight:600;margin-top:2px}.team-dialog-choice.is-locked{cursor:not-allowed;opacity:.72}
 .team-dialog-actions{display:flex;justify-content:flex-end;gap:9px;padding:16px 24px 22px;border-top:1px solid var(--line)}
 .team-dialog-actions .btn{margin:0}
+
+.duty-state{font-size:.8rem;line-height:1.4;color:var(--muted);margin:5px 0}
+.duty-state-seeking{color:#774709;background:#fff0cf;border-radius:9px;padding:8px 10px;font-weight:700}
+.duty-state-locked{color:var(--navy);font-weight:700}
+.duty-request{align-self:flex-start;margin-top:5px;white-space:normal}
+.assign-field select[hidden],.duty-request[hidden],.duty-state[hidden],[data-duty-occupant][hidden]{display:none}
+.assignment-confirmation{width:min(540px,calc(100vw - 32px));max-height:calc(100dvh - 32px);margin:auto;
+  padding:24px;border:1px solid var(--line);border-radius:20px;color:var(--text);background:#fff;
+  overflow-y:auto;overscroll-behavior:contain;box-shadow:0 20px 80px rgba(6,20,58,.3)}
+.assignment-confirmation::backdrop{background:rgba(6,20,58,.55);backdrop-filter:blur(2px)}
+.assignment-confirmation h3{color:var(--navy);font-size:1.3rem;margin-bottom:14px}
+.assignment-confirmation p{line-height:1.55;overflow-wrap:anywhere;margin:12px 0}
+.assignment-confirmation-actions{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin-top:22px}
+.assignment-confirmation-actions .btn{min-height:44px}
+.assignment-confirmation button:focus-visible{outline:3px solid var(--kids);outline-offset:3px}
+@media(max-width:700px){.assignment-confirmation{padding:20px}.assignment-confirmation-actions .btn{flex:1 1 130px}}
 .person-admin-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:12px}
 .person-admin-actions .btn{margin:0}.status-badge{display:inline-block;margin-top:12px;border-radius:999px;padding:4px 9px;
   font-size:.72rem;font-weight:900;text-transform:uppercase;letter-spacing:.04em}

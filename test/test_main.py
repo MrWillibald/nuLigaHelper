@@ -99,6 +99,10 @@ class _FakeSession:
         self.state["order"].append(f"{self.name}:commit")
         self.write_transaction = False
 
+    def rollback(self):
+        self.write_transaction = False
+        self.state["order"].append(f"{self.name}:rollback")
+
     def __exit__(self, _error_type, _error, _traceback):
         self.closed = True
         self.write_transaction = False
@@ -255,6 +259,12 @@ def _fake_job(
         state["order"].append(f"games:{date}")
         return [object()] if games_exist else []
 
+    def lock_day_before_batch(session, season_year, date):
+        assert state["lock_active"], "cutoff started without the daily lock"
+        assert session is state["sessions"][2], "cutoff needs its own short writer"
+        session.write_transaction = True
+        state["order"].append("lock_day_before_batch")
+
     lock_factory = tracked_real_lock if real_lock else fake_lock
     patches: list[Any] = [
         patch.object(
@@ -272,6 +282,7 @@ def _fake_job(
         patch.object(main, "fetch_home_games", side_effect=scrape),
         patch.object(main.db, "Session", side_effect=session_factory),
         patch.object(main.db, "sync_games", side_effect=sync_games),
+        patch.object(main.db, "lock_day_before_batch", side_effect=lock_day_before_batch),
         patch.object(
             main.backup,
             "backup_database_to_dropbox",
@@ -320,6 +331,11 @@ def test_successful_daily_path_orders_lock_sync_backup_and_notifications():
         "notify_referee_alert",
         "notify_new_games",
         "games:03.09.2026",
+        "session2:enter",
+        "lock_day_before_batch",
+        "session2:commit",
+        "session2:exit",
+        "session1:rollback",
         "notify_game_day",
         "notify_blocks_day_before",
         "notify_referees_for_date",

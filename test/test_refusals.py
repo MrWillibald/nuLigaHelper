@@ -96,9 +96,10 @@ def test_02_member_sees_no_foreign_contacts_and_admin_writes_are_refused():
     roster = client.get("/personen").get_data(as_text=True)
     assert "member@x.test" in roster and "private@x.test" not in roster
     schedule = client.get("/").get_data(as_text=True)
-    option_ids = set(int(value) for value in __import__("re").findall(
-        r'<option value="(\d+)"', schedule
-    ))
+    from lxml import html
+    option_ids = {int(value) for value in html.fromstring(schedule).xpath(
+        '//select[not(@hidden)]/option[@value!=""]/@value'
+    ) if value.isdigit()}
     assert option_ids <= {IDS["member"]}, "members may only receive their own person option"
     assert client.post("/personen/add", data=h.csrf_data({
         "birth_date": "1990-01-01",
@@ -127,8 +128,13 @@ def test_02_member_sees_no_foreign_contacts_and_admin_writes_are_refused():
     assert _claim(client, token, IDS["own_game"], IDS["member"]).status_code == 200
     assert _release(
         client, token, IDS["own_game"], IDS["member"], db.ROLE_TIMEKEEPER
-    ).status_code == 200
-    assert _claim(client, token, IDS["own_game"], IDS["member"]).status_code == 200
+    ).status_code == 400, "ordinary withdrawal must not vacate an offered duty"
+    requested = client.post("/api/assignment/request-replacement", json={
+        "game_id": IDS["own_game"], "role": db.ROLE_TIMEKEEPER, "slot": 0,
+        "expected_person_id": IDS["member"],
+    }, headers=h.csrf_headers(token))
+    assert requested.status_code == 200 and requested.get_json()["assignment"]["person_id"] == IDS["member"]
+    assert _claim(client, token, IDS["own_game"], IDS["member"]).status_code == 409, "seeking replacement must remain an occupied duty"
 
 
 def test_03_mv_scope_requires_own_team_and_responsible_game():
@@ -142,7 +148,12 @@ def test_03_mv_scope_requires_own_team_and_responsible_game():
     assert IDS["mv"] in other_ids, "MV keeps ordinary self-service rights"
     assert _release(
         client, token, IDS["own_game"], IDS["member"], db.ROLE_TIMEKEEPER
-    ).status_code == 200
+    ).status_code == 400, "MV scope does not provide ordinary release"
+    requested = client.post("/api/assignment/request-replacement", json={
+        "game_id": IDS["own_game"], "role": db.ROLE_TIMEKEEPER, "slot": 0,
+        "expected_person_id": IDS["member"],
+    }, headers=h.csrf_headers(token))
+    assert requested.status_code == 200 and requested.get_json()["assignment"]["person_id"] == IDS["member"]
     assert _claim(
         client, token, IDS["own_game"], IDS["mv"], db.ROLE_SECRETARY
     ).status_code == 200
@@ -178,9 +189,13 @@ def test_04_admin_can_approve_fallback_and_correct_past_game(_send_account_messa
         f"/personen/{IDS['other']}/deactivate",
         data=h.csrf_data(token=token),
     )
-    assert deactivated.status_code == 302
+    assert deactivated.status_code == 409
+    with h.Session(ENGINE) as session:
+        assert session.get(db.Person, IDS["other"]).account_status == db.ACCOUNT_ACTIVE, "deactivation removed an existing current/future commitment"
+        assert session.get(db.Game, IDS["past_game"]).assignment_by_role(db.ROLE_TIMEKEEPER, 0).person_id == IDS["other"]
+        assert session.get(db.Game, IDS["own_game"]).assignment_by_role(db.ROLE_CLEANING, 0).person_id == IDS["other"]
     assert "Other" in client.get("/statistik").get_data(as_text=True), \
-        "past work by inactive people must remain in statistics"
+        "refused deactivation must retain current and past duty statistics"
 
 
 def test_05_member_and_mv_cannot_rewrite_past_games():

@@ -92,7 +92,7 @@ def _send_notifications(
     today: datetime.date,
     events: db.SyncEvents,
 ) -> None:
-    """Run the unchanged notification sequence in a fresh, non-writing session."""
+    """Persist due scheduled locks before reminder dispatch, outside transport I/O."""
     with db.Session(engine) as session:
         notifier = Notifier(club_cfg, session, season_year)
 
@@ -135,6 +135,14 @@ def _send_notifications(
         # Check if judge notifications have to be sent
         tomorrow = (today + datetime.timedelta(days=1)).strftime("%d.%m.%Y")
         if db.get_games_on_date(session, tomorrow):
+            # At/after the fixed Berlin cutoff, persist the dated locks before
+            # dispatch. The same cutoff is enforced even if this job is missed.
+            # Never hold this writer across network I/O.
+            with db.Session(engine) as cutoff_session:
+                db.lock_day_before_batch(cutoff_session, season_year, tomorrow)
+                cutoff_session.commit()
+            # Drop the earlier read snapshot before reading the locked cohort.
+            session.rollback()
             cnt = notifier.notify_game_day(tomorrow)
             cnt += notifier.notify_blocks_day_before(tomorrow)
             logging.info(f"Number of sent service notifications: {cnt}")

@@ -97,7 +97,7 @@ def test_management_results_fields_and_private_values_remain_separate():
     assert page.xpath(f'//*[@id="person-{ids["member"]}-birth_date-error"]')
     assert '1999-06-07' not in invalid_self.get_data(as_text=True), "foreign birth date leaked through validation"
     script = Path(h.PROJECT_DIR, 'static/app.js').read_text()
-    assert 'wirklich löschen?' in script and 'Alle Diensteinträge werden entfernt' in script
+    assert 'wirklich löschen?' in script and 'Bestehende Einteilungen verhindern das Löschen' in script
 
 
 def test_registration_decisions_and_form_refusals_keep_rights_and_html_contract():

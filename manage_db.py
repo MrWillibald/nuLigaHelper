@@ -343,8 +343,15 @@ def cmd_list_games(args):
         )
 
 
+def _persist_due_locks(engine):
+    with db.Session(engine) as cutoff_session:
+        db.lock_due_duties(cutoff_session)
+        cutoff_session.commit()
+
+
 def cmd_assign(args):
-    session, _ = open_session(args)
+    session, engine = open_session(args)
+    _persist_due_locks(engine)
     game = _resolve_game(session, args.game_id)
     person = _resolve_person(session, args.person_id)
     try:
@@ -358,10 +365,16 @@ def cmd_assign(args):
 
 
 def cmd_unassign(args):
-    session, _ = open_session(args)
+    session, engine = open_session(args)
+    _persist_due_locks(engine)
     game = _resolve_game(session, args.game_id)
     person = _resolve_person(session, args.person_id)
-    if db.unassign_person(session, game, person, args.role, actor_tier="cli"):
+    try:
+        removed = db.unassign_person(session, game, person, args.role, actor_tier="cli")
+    except ValueError as exc:
+        session.rollback()
+        raise SystemExit(str(exc)) from exc
+    if removed:
         session.commit()
         print(f"{person.name} removed from game ID {game.id} (Nr.{game.game_nr}, {args.role})")
     else:

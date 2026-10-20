@@ -2,12 +2,10 @@ function showFeedback(message, severity = "error", action) {
   return globalThis.nuLigaFeedback.show({ message, severity, ...(action ? { action } : {}) });
 }
 
-function mutationFailure(result, released = false) {
-  const prefix = released ? "Die bisherige Einteilung wurde freigegeben. " : "";
-  const message = prefix + (result.unconfirmed
-    ? (released ? "Das Ergebnis der neuen Einteilung konnte nicht bestätigt werden. Bitte prüfe den gespeicherten Stand."
-      : "Das Ergebnis konnte nicht bestätigt werden. Bitte prüfe den gespeicherten Stand.")
-    : released ? "Die neue Einteilung wurde abgelehnt. " + result.error : result.error);
+function mutationFailure(result) {
+  const message = result.unconfirmed
+    ? "Das Ergebnis konnte nicht bestätigt werden. Bitte prüfe den gespeicherten Stand."
+    : result.error;
   const value = { message, severity: "error" };
   if (result.loginRequired) return globalThis.nuLigaFeedback.navigate([value], "/login");
   if (result.conflict) return globalThis.nuLigaFeedback.navigate([value]);
@@ -414,24 +412,24 @@ function populateCandidateCard(card, payload) {
   if (payload.block) renderCakeBlock(card, payload.block);
   const selects = Array.from(card.querySelectorAll("select[data-role], select[data-block-assignment]"));
   const people = new Map(payload.people.map((person) => [person.id, person]));
-  const taken = new Set(Array.from(card.querySelectorAll("[data-occupant-id]"))
-    .map((label) => Number(label.dataset.occupantId)).filter(Boolean));
+  const taken = new Set(Object.values(payload.slots).map((slot) => slot.occupant_id).filter(Boolean));
   const plans = selects.map((select) => {
     const key = candidateSlotKey(select);
     const slot = payload.slots[key];
-    const selectedId = select.value ? Number(select.value) : null;
-    if (!slot || slot.occupant_id !== selectedId) {
+    const savedId = select.value ? Number(select.value) : null;
+    if (!slot || (slot.occupant_id !== savedId && slot.person_name === undefined)) {
       throw new Error("Die Einteilung hat sich geändert. Bitte lade die Seite neu.");
     }
+    const selectedId = slot.occupant_id;
     const allowed = new Set(slot.candidate_ids);
     const options = slot.candidate_ids
       .filter((id) => people.has(id) && (!taken.has(id) || id === selectedId))
       .map((id) => makeCandidateOption(people.get(id)))
       .sort(comparePersonOptions);
-    return { select, key, selectedId, allowed, options };
+    return { select, key, selectedId, allowed, options, slot };
   });
   const allowedBySlot = new Map();
-  plans.forEach(({ select, key, selectedId, allowed, options }) => {
+  plans.forEach(({ select, key, selectedId, allowed, options, slot }) => {
     allowedBySlot.set(key, allowed);
     // Rebuild candidates after sibling changes; retain a private/inactive
     // current occupant which the response intentionally does not list.
@@ -446,8 +444,17 @@ function populateCandidateCard(card, payload) {
       fragment.appendChild(option);
     });
     select.appendChild(fragment);
-    if (selectedId) select.value = String(selectedId);
-    select.disabled = Boolean(card._mutationPending);
+    if (selectedId && !select.querySelector(`option[value="${selectedId}"]`)) {
+      const occupant = document.createElement("option");
+      occupant.value = String(selectedId);
+      occupant.textContent = slot.person_name
+        ? `${slot.person_name}${slot.person_team_label ? ` · ${slot.person_team_label}` : ""}`
+        : "Bestehende Einteilung";
+      select.appendChild(occupant);
+    }
+    select.value = selectedId ? String(selectedId) : "";
+    applyDutyState(select.closest?.("[data-occupant-id]"), slot, select);
+    select.disabled = Boolean(card._mutationPending) || select.dataset.locked === "true";
   });
   card._candidateSlots = allowedBySlot;
   if (payload.staffing) updateGameStaffing(card, payload.staffing);
@@ -561,138 +568,249 @@ globalThis.nuLigaOptionTools = {
 };
 globalThis.nuLigaProgressTools = { updateCoverage, setCoverage, updateGameStaffing };
 
-const prevOptions = new WeakMap();
-document.querySelectorAll("select[data-role]").forEach((select) => {
-  select.addEventListener("focus", () => {
-    prevOptions.set(select, select.selectedOptions[0]);
-  });
-  select.addEventListener("change", async () => {
-    const previous = prevOptions.get(select);
-    const previousId = previous && previous.value ? Number(previous.value) : null;
-    const newId = select.value ? Number(select.value) : null;
-    const card = document.getElementById("game-" + select.dataset.game);
-    const requestBody = {
-      game_id: Number(select.dataset.game), role: select.dataset.role,
-      slot: Number(select.dataset.slot), expected_person_id: previousId,
+function assignmentTarget(control) {
+  return control.dataset.block ? {
+    block_id: Number(control.dataset.block), slot: Number(control.dataset.slot),
+  } : {
+    game_id: Number(control.dataset.game), role: control.dataset.role, slot: Number(control.dataset.slot),
+  };
+}
+
+function assignmentCard(control) {
+  return document.getElementById(control.dataset.block
+    ? `block-${control.dataset.block}` : `game-${control.dataset.game}`);
+}
+
+function applyDutyState(field, state, explicitSelect) {
+  const select = explicitSelect || field?.querySelector?.("select");
+  const data = field?.dataset || select?.dataset;
+  if (!data) return;
+  const personId = state.occupant_id !== undefined ? state.occupant_id : state.person_id;
+  if (personId !== undefined) data.occupantId = personId ? String(personId) : "";
+  for (const [key, attribute] of [
+    ["locked", "locked"], ["seeking_replacement", "seekingReplacement"],
+    ["can_request_replacement", "canRequestReplacement"], ["release_only", "releaseOnly"],
+    ["late_claim_locked", "lateClaimLocked"],
+  ]) {
+    if (state[key] !== undefined) data[attribute] = state[key] ? "true" : "false";
+  }
+  if (state.replacement_token !== undefined) data.replacementToken = state.replacement_token || "";
+  if (state.person_name !== undefined) data.personName = state.person_name;
+  const occupied = Boolean(data.occupantId);
+  const locked = data.locked === "true";
+  const seeking = data.seekingReplacement === "true";
+  const releaseOnly = data.releaseOnly === "true";
+  const occupant = field?.querySelector?.("[data-duty-occupant]");
+  if (occupant) {
+    if (state.person_name !== undefined) {
+      occupant.textContent = state.person_name
+        + (state.person_team_label ? ` · ${state.person_team_label}` : "");
+    }
+    occupant.hidden = !occupied;
+  }
+  const status = field?.querySelector?.("[data-duty-state]");
+  if (status) {
+    status.hidden = !occupied;
+    status.textContent = locked ? "Fest eingeteilt – Änderungen im Webdienst sind geschlossen."
+      : seeking ? `Ersatz gesucht – ${data.personName || "die eingeteilte Person"} bleibt bis zur Übernahme verantwortlich.`
+        : occupied ? "Verbindlich eingeteilt." : "";
+    status.classList.toggle("duty-state-seeking", seeking && !locked);
+    status.classList.toggle("duty-state-locked", locked);
+  }
+  if (select) {
+    for (const key of ["locked", "seekingReplacement", "releaseOnly", "replacementToken", "lateClaimLocked"]) {
+      select.dataset[key] = data[key] || "";
+    }
+    select.hidden = locked || (occupied && !seeking && !releaseOnly);
+    select.disabled = locked || select.disabled;
+    const empty = Array.from(select.options || []).find((option) => !option.value);
+    if (empty) {
+      empty.disabled = occupied && !releaseOnly;
+      empty.textContent = releaseOnly ? "– freigeben –" : occupied ? "– Ersatz auswählen –" : "– offen –";
+    }
+  }
+  const request = field?.querySelector?.("[data-request-replacement]");
+  if (request) {
+    request.hidden = !occupied || locked || releaseOnly || data.canRequestReplacement !== "true";
+    request.textContent = seeking ? "Ersatzsuche beenden" : "Ersatz suchen";
+  }
+}
+
+let activeAssignmentConfirmation = false;
+function confirmAssignment(select, option) {
+  const dialog = document.getElementById?.("assignment-confirmation");
+  if (!dialog?.showModal || activeAssignmentConfirmation) {
+    showFeedback("Die Bestätigung konnte nicht geöffnet werden. Bitte lade die Seite neu.");
+    return Promise.resolve(false);
+  }
+  activeAssignmentConfirmation = true;
+  const context = dialog.querySelector("[data-confirmation-context]");
+  const day = select.closest?.(".day-block")?.querySelector?.(".day-title")?.textContent?.trim();
+  const duty = select.dataset.dutyLabel || select.dataset.role || "Tagesdienst";
+  context.textContent = `${option.textContent || option.label || "Die ausgewählte Person"} übernimmt ${duty}${day ? ` am ${day}` : ""}.`;
+  const lateNotice = dialog.querySelector("[data-confirmation-late]");
+  if (lateNotice) lateNotice.hidden = select.dataset.lateClaimLocked !== "true";
+  for (const help of activeTaskHelp) help.dismiss();
+  return new Promise((resolve) => {
+    let finished = false;
+    const finish = (confirmed) => {
+      if (finished) return;
+      finished = true;
+      activeAssignmentConfirmation = false;
+      for (const [element, name, callback] of listeners) element.removeEventListener(name, callback);
+      if (dialog.open) dialog.close();
+      if (select.isConnected !== false && !select.hidden) select.focus?.({ preventScroll: true });
+      resolve(confirmed);
     };
-    let savedId = previousId;
-    const label = select.closest?.("[data-occupant-id]");
-    if (card._mutationPending) {
-      select.value = label?.dataset.occupantId || (previousId === null ? "" : String(previousId));
-      return;
+    const cancel = (event) => { event.preventDefault(); finish(false); };
+    const dismiss = (event) => {
+      if (event.target !== dialog) return;
+      const bounds = dialog.getBoundingClientRect();
+      if (event.clientX < bounds.left || event.clientX > bounds.right
+          || event.clientY < bounds.top || event.clientY > bounds.bottom) finish(false);
+    };
+    const listeners = [
+      [dialog.querySelector("[data-confirmation-confirm]"), "click", () => finish(true)],
+      [dialog.querySelector("[data-confirmation-cancel]"), "click", cancel],
+      [dialog, "cancel", cancel], [dialog, "close", () => finish(false)], [dialog, "click", dismiss],
+    ];
+    for (const [element, name, callback] of listeners) element.addEventListener(name, callback);
+    try {
+      dialog.showModal();
+      dialog.querySelector("[data-confirmation-cancel]").focus();
+    } catch (error) {
+      finish(false);
+      showFeedback("Die Bestätigung konnte nicht geöffnet werden. Bitte lade die Seite neu.");
+    }
+  });
+}
+
+const prevOptions = new WeakMap();
+function restoreSavedSelection(select, previousId) {
+  const field = select.closest?.("[data-occupant-id]");
+  select.value = field?.dataset.occupantId ?? (previousId ? String(previousId) : "");
+  prevOptions.set(select, select.selectedOptions[0]);
+}
+
+function bindAssignmentSelect(select) {
+  if (select._assignmentBound) return;
+  select._assignmentBound = true;
+  prevOptions.set(select, select.selectedOptions[0]);
+  select.addEventListener("focus", () => prevOptions.set(select, select.selectedOptions[0]));
+  select.addEventListener("change", async () => {
+    const field = select.closest?.("[data-occupant-id]");
+    const previous = prevOptions.get(select);
+    const previousId = field ? (Number(field.dataset.occupantId) || null)
+      : previous?.value ? Number(previous.value) : null;
+    const newId = select.value ? Number(select.value) : null;
+    const incoming = select.selectedOptions[0];
+    const card = assignmentCard(select);
+    const data = field?.dataset || select.dataset;
+    const token = data.replacementToken || select.dataset.replacementToken || null;
+    const releaseOnly = data.releaseOnly === "true" || select.dataset.releaseOnly === "true";
+    const target = { ...assignmentTarget(select), expected_person_id: previousId };
+    // The selection is only a draft. Saved occupancy remains visible throughout
+    // confirmation, including when the dialog is cancelled or another client wins.
+    restoreSavedSelection(select, previousId);
+    if (card._mutationPending || card._confirmationPending || previousId === newId) return;
+    if (data.locked === "true" || (!newId && !releaseOnly)) return;
+    if (newId && previousId && (!token || releaseOnly)) return;
+    if (newId) {
+      card._confirmationPending = true;
+      try {
+        if (!await confirmAssignment(select, incoming)) {
+          restoreSavedSelection(select, previousId);
+          return;
+        }
+      } finally { card._confirmationPending = false; }
     }
     setCardMutationPending(card, true);
     try {
-      let result = { ok: true };
-      if (previousId !== null) {
-        result = await postJSON("/api/assignment/release", requestBody);
-        if (result.ok) {
-          savedId = null;
-          select.value = "";
-          if (label) label.dataset.occupantId = "";
-          if (result.staffing) updateGameStaffing(card, result.staffing);
-        }
-      }
-      if (result.ok && newId !== null) {
-        result = await postJSON("/api/assignment/claim", {
-          ...requestBody, expected_person_id: null, person_id: newId,
-        });
-      }
+      const action = newId === null ? "release" : previousId === null ? "claim" : "takeover";
+      const prefix = select.dataset.block ? "/api/block-assignment/" : "/api/assignment/";
+      const result = await postJSON(prefix + action, {
+        ...target, ...(newId ? { person_id: newId } : {}),
+        ...(action === "takeover" ? { expected_request_token: token } : {}),
+      });
       if (!result.ok) {
-        select.value = savedId === null ? "" : String(savedId);
-        prevOptions.set(select, select.selectedOptions[0]);
-        const navigated = mutationFailure(result, previousId !== null && savedId === null && newId !== null);
+        if (result.assignment) {
+          applyDutyState(field, result.assignment, select);
+          restoreSavedSelection(select, previousId);
+        }
+        if (result.staffing) updateGameStaffing(card, result.staffing);
+        if (result.block) renderCakeBlock(card, result.block);
+        const navigated = mutationFailure(result);
         if (!navigated) await loadCandidateCard(card, true, true);
         return;
       }
-      select.value = newId === null ? "" : String(newId);
-      if (label) label.dataset.occupantId = newId || "";
-      flashCard(select.dataset.game);
-      // the newly assigned person must not be offered for other tasks
+      select.value = newId ? String(newId) : "";
+      const state = {
+        person_id: newId, seeking_replacement: false, replacement_token: null,
+        person_name: incoming?.textContent?.split(" · ")[0] || "",
+        ...(result.assignment || {}),
+      };
+      applyDutyState(field, state, select);
       if (newId) removePersonOption(card, select, newId);
-      // a freed person may be offered again for other tasks
-      if (previousId !== null && previousId !== newId) {
-        addPersonOption(card, select, previous);
-      }
+      if (previousId && previousId !== newId && previous) addPersonOption(card, select, previous);
       if (result.staffing) updateGameStaffing(card, result.staffing);
-      if (select.dataset.releaseOnly === "true" && newId === null) label?.remove();
+      if (select.dataset.block) updateCoverage(card, previousId, newId);
+      if (result.block) renderCakeBlock(card, result.block);
+      if (releaseOnly && newId === null) field?.remove();
+      if (select.dataset.block) flashBlock(select.dataset.block); else flashCard(select.dataset.game);
       const warning = newId !== null && result.warning;
       showFeedback(newId === null ? "Dienst freigegeben." : warning
         ? `Dienst gespeichert. ${warning}` : "Dienst gespeichert.", warning ? "warning" : "success");
       select.classList.toggle("select-warn", Boolean(warning));
       await loadCandidateCard(card, true, true);
       prevOptions.set(select, select.selectedOptions[0]);
-    } finally {
-      setCardMutationPending(card, false);
-    }
+    } finally { setCardMutationPending(card, false); }
   });
-});
+}
 
-function bindBlockSelect(select) {
-  prevOptions.set(select, select.selectedOptions[0]);
-  select.addEventListener("focus", () => {
-    prevOptions.set(select, select.selectedOptions[0]);
-  });
-  select.addEventListener("change", async () => {
-    const previous = prevOptions.get(select);
-    const previousId = previous && previous.value ? Number(previous.value) : null;
-    const newId = select.value ? Number(select.value) : null;
-    const requestBody = {
-      block_id: Number(select.dataset.block),
-      slot: Number(select.dataset.slot),
-      expected_person_id: previousId,
-    };
-    const card = document.getElementById("block-" + select.dataset.block);
-    const label = select.closest?.("[data-occupant-id]");
-    if (card._mutationPending) {
-      select.value = label?.dataset.occupantId || (previousId === null ? "" : String(previousId));
-      return;
-    }
+function bindBlockSelect(select) { bindAssignmentSelect(select); }
+
+function bindReplacementRequest(button) {
+  if (button._replacementBound) return;
+  button._replacementBound = true;
+  button.addEventListener("click", async () => {
+    const field = button.closest("[data-occupant-id]");
+    const card = assignmentCard(button);
+    if (card._mutationPending || card._confirmationPending) return;
+    const expected = Number(field.dataset.occupantId) || null;
+    const cancel = field.dataset.seekingReplacement === "true";
+    const token = field.dataset.replacementToken || null;
+    if (!expected || field.dataset.locked === "true" || (cancel && !token)
+        || field.dataset.canRequestReplacement !== "true") return;
+    const restoreFocus = document.activeElement === button;
     setCardMutationPending(card, true);
     try {
-      let savedId = previousId;
-      let result = { ok: true };
-      if (previousId !== null) {
-        result = await postJSON("/api/block-assignment/release", requestBody);
-        if (result.ok) {
-          savedId = null;
-          select.value = "";
-          if (label) label.dataset.occupantId = "";
-          updateCoverage(card, previousId, null);
-        }
-      }
-      if (result.ok && newId !== null) {
-        result = await postJSON("/api/block-assignment/claim", {
-          ...requestBody, expected_person_id: null, person_id: newId,
-        });
-      }
-      if (!result.ok) {
-        select.value = savedId === null ? "" : String(savedId);
-        prevOptions.set(select, select.selectedOptions[0]);
-        const navigated = mutationFailure(result, previousId !== null && savedId === null && newId !== null);
-        if (!navigated) await loadCandidateCard(card, true, true);
-        return;
-      }
-      select.value = newId === null ? "" : String(newId);
-      if (label) label.dataset.occupantId = newId || "";
-      if (newId) removePersonOption(card, select, newId);
-      if (previousId !== null && previousId !== newId) addPersonOption(card, select, previous);
-      updateCoverage(card, savedId, newId);
-      if (result.block) {
-        invalidateCandidateCard(card);
-        renderCakeBlock(card, result.block);
-      }
-      flashBlock(select.dataset.block);
-      showFeedback(newId === null ? "Tagesdienst freigegeben." : "Tagesdienst gespeichert.", "success");
+      const prefix = button.dataset.block ? "/api/block-assignment/" : "/api/assignment/";
+      const result = await postJSON(prefix + (cancel ? "cancel-replacement" : "request-replacement"), {
+        ...assignmentTarget(button), expected_person_id: expected,
+        ...(cancel ? { expected_request_token: token } : {}),
+      });
+      if (result.assignment) applyDutyState(field, result.assignment);
+      if (result.staffing) updateGameStaffing(card, result.staffing);
+      if (result.block) renderCakeBlock(card, result.block);
+      if (!result.ok) mutationFailure(result);
+      else showFeedback(cancel ? "Ersatzsuche beendet. Die Einteilung bleibt verbindlich."
+        : "Ersatz gesucht. Die bisherige Einteilung bleibt verbindlich.", "success");
       await loadCandidateCard(card, true, true);
-      prevOptions.set(select, select.selectedOptions[0]);
     } finally {
       setCardMutationPending(card, false);
+      if (restoreFocus && (document.activeElement === button || document.activeElement === document.body)) {
+        const current = button.isConnected ? button : Array.from(card.querySelectorAll("[data-request-replacement]"))
+          .find(control => control.dataset.slot === button.dataset.slot && control.dataset.role === button.dataset.role);
+        if (current && !current.hidden) current.focus({ preventScroll: true });
+      }
     }
   });
 }
 
+document.querySelectorAll("select[data-role]").forEach(bindAssignmentSelect);
 document.querySelectorAll("select[data-block-assignment]").forEach(bindBlockSelect);
+document.querySelectorAll("[data-request-replacement]").forEach(bindReplacementRequest);
+globalThis.nuLigaAssignmentTools = { confirmAssignment, applyDutyState, bindAssignmentSelect, bindReplacementRequest };
 
 function invalidateCandidateCard(card) {
   card._candidateRevision = (card._candidateRevision || 0) + 1;
@@ -707,8 +825,9 @@ function setCardMutationPending(card, pending) {
     control.disabled = pending;
   });
   card.querySelectorAll("select[data-role], select[data-block-assignment]").forEach((control) => {
-    control.disabled = pending || !card._candidateLoaded || card._candidateLoading;
+    control.disabled = pending || !card._candidateLoaded || card._candidateLoading || control.dataset.locked === "true";
   });
+  card.querySelectorAll("[data-request-replacement]").forEach((control) => { control.disabled = pending; });
 }
 
 function renderCakeBlock(card, block, resetForm = false) {
@@ -745,6 +864,8 @@ function renderCakeBlock(card, block, resetForm = false) {
     const signature = JSON.stringify([
       slot.label, description, Boolean(slot.editable), slot.person_id || null,
       slot.person_name || "", slot.person_team_label || "",
+      slot.replacement_token || null, Boolean(slot.locked), Boolean(slot.seeking_replacement),
+      Boolean(slot.can_request_replacement),
     ]);
     let field = fieldsBySlot.get(String(slot.slot));
     if (field && !field._cakeSlotSignature) {
@@ -756,22 +877,35 @@ function renderCakeBlock(card, block, resetForm = false) {
       const occupantText = slot.person_id ? `${slot.person_name} · ${slot.person_team_label}` : "";
       if (name?.textContent === slot.label
           && field.querySelector("[data-task-description]")?.textContent === description
-          && Boolean(select) === Boolean(slot.editable)
+          && Boolean(select) === Boolean((slot.editable || slot.can_request_replacement) && !slot.locked)
           && field.dataset.occupantId === (slot.person_id ? String(slot.person_id) : "")
+          && (field.dataset.replacementToken || "") === (slot.replacement_token || "")
+          && (field.dataset.locked === "true") === Boolean(slot.locked)
+          && (field.dataset.seekingReplacement === "true") === Boolean(slot.seeking_replacement)
           && (!slot.person_id || occupant?.textContent === occupantText)) {
         field._cakeSlotSignature = signature;
       }
     }
     if (field?._cakeSlotSignature === signature) return field;
-    field = createTaskHelp(slot.label, description, slot.editable);
+    const editable = (slot.editable || slot.can_request_replacement) && !slot.locked;
+    field = createTaskHelp(slot.label, description, editable);
     field.dataset.blockSlot = String(slot.slot);
+    field.dataset.dutyLabel = slot.label;
     field.dataset.occupantId = slot.person_id ? String(slot.person_id) : "";
     field._cakeSlotSignature = signature;
-    if (slot.editable) {
+    const savedOccupant = document.createElement("strong");
+    savedOccupant.setAttribute("data-duty-occupant", "");
+    field.appendChild(savedOccupant);
+    const dutyStatus = document.createElement("p");
+    dutyStatus.className = "duty-state";
+    dutyStatus.setAttribute("data-duty-state", "");
+    field.appendChild(dutyStatus);
+    if (editable) {
       const select = document.createElement("select");
       select.id = field.querySelector("label").getAttribute("for");
       select.dataset.block = String(block.id);
       select.dataset.slot = String(slot.slot);
+      select.dataset.dutyLabel = slot.label;
       select.setAttribute("data-block-assignment", "");
       select.disabled = true;
       const empty = document.createElement("option");
@@ -787,12 +921,19 @@ function renderCakeBlock(card, block, resetForm = false) {
       }
       bindBlockSelect(select);
       field.appendChild(select);
-    } else {
-      const occupant = document.createElement("strong");
-      occupant.textContent = slot.person_name
-        ? `${slot.person_name} · ${slot.person_team_label}` : "– offen –";
-      field.appendChild(occupant);
     }
+    if ((slot.editable || slot.can_request_replacement) && !slot.locked) {
+      const request = document.createElement("button");
+      request.type = "button";
+      request.className = "btn btn-secondary duty-request";
+      request.textContent = "Ersatz suchen";
+      request.dataset.block = String(block.id);
+      request.dataset.slot = String(slot.slot);
+      request.setAttribute("data-request-replacement", "");
+      bindReplacementRequest(request);
+      field.appendChild(request);
+    }
+    applyDutyState(field, slot);
     return field;
   });
   // Leave unchanged nodes in place: detach/reappend would discard keyboard
@@ -811,7 +952,7 @@ document.querySelectorAll("[data-cake-config]").forEach((form) => {
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const card = form.closest("details");
-    if (card._mutationPending) return;
+    if (card._mutationPending || card._confirmationPending) return;
     const rawQuantity = form.querySelector('[name="cake_quantity"]').value;
     const quantity = Number(rawQuantity);
     const message = form.querySelector("[data-cake-settings-message]");
@@ -885,7 +1026,7 @@ document.querySelectorAll(".mv-select").forEach((select) => {
 document.querySelectorAll("[data-delete-person]").forEach((button) => {
   button.addEventListener("click", async () => {
     const name = button.dataset.name;
-    if (!confirm(`'${name}' wirklich löschen? Alle Diensteinträge werden entfernt. Zum Ausscheiden bitte stattdessen deaktivieren.`)) {
+    if (!confirm(`'${name}' wirklich löschen? Bestehende Einteilungen verhindern das Löschen. Zum Ausscheiden bitte stattdessen deaktivieren; laufende Dienste müssen zuvor übernommen werden.`)) {
       return;
     }
     const form = document.createElement("form");

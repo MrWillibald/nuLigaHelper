@@ -21,11 +21,12 @@ from schema_fixtures import (
 
 def _rows(path, table):
     with sqlite3.connect(path) as connection:
-        return sorted(connection.execute(f'SELECT * FROM "{table}"').fetchall(), key=repr)
+        selected = "id, game_id, person_id, role, slot" if table == "assignments" else "*"
+        return sorted(connection.execute(f'SELECT {selected} FROM "{table}"').fetchall(), key=repr)
 
 
 def test_game_duty_revision_joins_existing_single_head_without_model_drift():
-    assert schema_migrations.head_revisions() == ("0006_game_duty_staffing",)
+    assert schema_migrations.head_revisions() == (schema_migrations.HEAD_REVISION,)
     scripts = ScriptDirectory.from_config(schema_migrations.alembic_config())
     assert scripts.get_revision("0006_game_duty_staffing").down_revision == PRE_GAME_DUTY_REVISION
     engine = h.make_engine()
@@ -175,7 +176,7 @@ def test_head_fingerprints_preserve_new_cleaning_as_a_distinct_current_role():
         engine = create_game_duty_source(path)
         schema_migrations.migrate_to_head(path, engine)
         with sqlite3.connect(path) as connection:
-            connection.execute("INSERT INTO assignments VALUES (404, 101, 15, 'Reinigung', 1)")
+            connection.execute("INSERT INTO assignments (id,game_id,person_id,role,slot) VALUES (404, 101, 15, 'Reinigung', 1)")
         columns, before = schema_migrations._retained_data(path)
         with sqlite3.connect(path) as connection:
             connection.execute("UPDATE assignments SET role='Kasse' WHERE id=404")
