@@ -1,3 +1,4 @@
+import { installConfirmation } from "./js_confirmation_fixture.mjs";
 const feedback = [];
 globalThis.nuLigaFeedback = {
   show: (value) => feedback.push(value),
@@ -87,7 +88,7 @@ class Element {
   closest(selector) {
     let current = this;
     while (current) {
-      if (current.tag === selector) return current;
+      if (current.tag === selector || (selector === "[data-occupant-id]" && "occupantId" in current.dataset)) return current;
       current = current.parent;
     }
     return null;
@@ -148,7 +149,9 @@ card.elements = {
   "[data-candidate-message]": candidateMessage,
 };
 const originalQuery = card.querySelector.bind(card);
-card.querySelectorAll = (selector) => selector === "[data-occupant-id]" ? positions.children
+card.querySelectorAll = (selector) => selector === "[data-request-replacement]"
+  ? positions.children.flatMap((field) => field.children.filter((child) => child.hasAttribute("data-request-replacement")))
+  : selector === "[data-occupant-id]" ? positions.children
   : positions.children.flatMap((label) => label.children.filter((child) => child.tag === "select"));
 card.querySelector = (selector) => ["select[data-role], select[data-block-assignment]", "select[data-block-assignment]"].includes(selector)
   ? card.querySelectorAll(selector)[0] || null : originalQuery(selector);
@@ -167,6 +170,7 @@ globalThis.document = {
 };
 document.body = new Element("body");
 document.body.appendChild(card);
+installConfirmation(document, { autoConfirm: true });
 globalThis.window = { location: { reload() {} }, innerWidth: 360, innerHeight: 640,
   addEventListener() {} };
 globalThis.setTimeout = () => 0;
@@ -186,6 +190,7 @@ function savedBlock(count, occupant = null) {
       person_id: slot === 0 ? occupant : null,
       person_name: slot === 0 && occupant ? person.name : "",
       person_team_label: slot === 0 && occupant ? person.team_label : "",
+      can_request_replacement: slot === 0 && Boolean(occupant),
     })),
   };
 }
@@ -349,7 +354,7 @@ globalThis.fetch = ordinaryFetch;
 current = delayedBlock;
 
 // Configuration and slot writes in one card share a guard. Pending settings
-// disable claims, and a pending release prevents another config POST.
+// disable claims, and a pending replacement request prevents another config POST.
 let finishSettings;
 configurationReply = { status: 200, json: () => new Promise((resolve) => { finishSettings = resolve; }) };
 const beforeGuard = requests.length;
@@ -368,26 +373,29 @@ finishSettings({ ok: true, block: current });
 await pendingSettings;
 check(!card._mutationPending && !time.disabled && !card.querySelectorAll("")[0].disabled, "saved configuration failed to unlock refreshed controls");
 
-let finishRelease;
+let finishRequest;
 globalThis.fetch = async (url, options) => {
-  if (!url.endsWith("/release")) return ordinaryFetch(url, options);
+  if (!url.endsWith("/request-replacement")) return ordinaryFetch(url, options);
   requests.push(url);
-  return { status: 200, json: () => new Promise((resolve) => { finishRelease = resolve; }) };
+  return { status: 200, json: () => new Promise((resolve) => { finishRequest = resolve; }) };
 };
 select = card.querySelectorAll("")[0];
-select.value = "";
-const pendingRelease = select.listeners.change();
+const requestButton = new Element("button");
+requestButton.dataset = { block: "1", slot: "0" };
+requestButton.closest = () => positions.children[0];
+globalThis.nuLigaAssignmentTools.bindReplacementRequest(requestButton);
+const pendingRequest = requestButton.listeners.click();
 await Promise.resolve();
 await Promise.resolve();
 const pendingCount = requests.length;
-check(card._mutationPending && button.disabled && requests.at(-1).endsWith("/release"),
-  "changing a saved occupant without focus failed to send its release or lock configuration");
+check(card._mutationPending && button.disabled && requests.at(-1).endsWith("/request-replacement"),
+  "replacement request did not guard configuration while retaining the occupant");
 await form.listeners.submit({ preventDefault() {} });
-check(requests.length === pendingCount, "configuration ran while the slot release was pending");
-current = savedBlock(9);
-finishRelease({ ok: true, block: current });
-await pendingRelease;
-check(!card._mutationPending && coverage.dataset.progressFilled === "0", "saved release failed to refresh/unlock the card");
+check(requests.length === pendingCount, "configuration ran while the replacement request was pending");
+current = savedBlock(9, 7);
+finishRequest({ ok: true, block: current, assignment: { person_id: 7, seeking_replacement: true, replacement_token: "cake-search" } });
+await pendingRequest;
+check(!card._mutationPending && coverage.dataset.progressFilled === "1", "replacement request changed occupied progress or left controls pending");
 globalThis.fetch = ordinaryFetch;
 
 // A candidate GET started before a mutation must not replace its newer saved

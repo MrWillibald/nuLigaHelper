@@ -158,9 +158,11 @@ def test_admin_can_manage_active_people_and_past_blocks_but_not_inactive(_today)
         admin, token, "claim", IDS["future"], 1, None, IDS["inactive"]
     )
     assert inactive.status_code == 400
-    assert _post(
-        admin, token, "claim", IDS["future"], 1, None, IDS["other"]
-    ).get_json() == {"ok": True, "block_id": IDS["future"]}
+    saved = _post(admin, token, "claim", IDS["future"], 1, None, IDS["other"])
+    assert saved.status_code == 200 and saved.get_json()["ok"]
+    assert saved.get_json()["block_id"] == IDS["future"]
+    assert saved.get_json()["assignment"]["person_id"] == IDS["other"]
+    assert saved.get_json()["block"]["progress"]["filled"] == 2
     assert _post(
         admin, token, "claim", IDS["past"], 0, None, IDS["other"]
     ).status_code == 200

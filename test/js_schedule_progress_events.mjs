@@ -1,3 +1,4 @@
+import { installConfirmation } from "./js_confirmation_fixture.mjs";
 const feedback = [];
 globalThis.nuLigaFeedback = {
   show: (value) => feedback.push(value),
@@ -28,7 +29,7 @@ const card = {
   classList: { add() {}, remove() {}, toggle() {} },
   offsetWidth: 1,
   querySelector: (selector) => selector === ".coverage" ? coverage : null,
-  querySelectorAll: () => [assignmentSelect],
+  querySelectorAll: (selector) => selector === "[data-request-replacement]" ? [] : [assignmentSelect],
 };
 const toast = { classList: { toggle() {}, add() {}, remove() {} } };
 globalThis.document = {
@@ -36,6 +37,7 @@ globalThis.document = {
   querySelector: () => ({ content: "test-csrf" }),
   getElementById: (id) => id === "toast" ? toast : card,
 };
+installConfirmation(document, { autoConfirm: true });
 globalThis.fetch = async () => ({ status: 409, json: async () => ({ ok: false, error: "Stale" }) });
 globalThis.setTimeout = () => 0;
 globalThis.clearTimeout = () => {};
@@ -81,12 +83,10 @@ if (assignmentSelect.value !== "7" || coverage.dataset.progressFilled !== "6") {
 
 listeners.focus();
 assignmentSelect.value = "";
-globalThis.fetch = async () => ({ status: 200, json: async () => ({
-  ok: true, staffing: { required_filled: 5, required_total: 8, deficiencies: [] },
-}) });
+globalThis.fetch = async () => { throw new Error("an offered occupied duty must never be released"); };
 await listeners.change();
-if (assignmentSelect.value !== "" || coverage.dataset.progressFilled !== "5") {
-  throw new Error("saved adult cleaning release did not update progress");
+if (assignmentSelect.value !== "7" || coverage.dataset.progressFilled !== "6") {
+  throw new Error("selecting the empty option withdrew a binding duty");
 }
 
 // A retained youth duty can only be released and disappears after saving.

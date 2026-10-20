@@ -74,7 +74,7 @@ def test_reduction_retries_stale_snapshot_and_keeps_newly_occupied_position():
             try:
                 db.configure_cake_block(editor, cake, "11:00", 2, "10:00", 4)
             except ValueError as refusal:
-                assert "freigegeben" in str(refusal)
+                assert "belegten" in str(refusal)
                 editor.rollback()
             else:
                 raise AssertionError("A saved high-position occupant must prevent reduction.")

@@ -69,7 +69,7 @@ def _candidates(client, ids):
     return client.get(f'/api/games/{ids["game"]}/candidates').get_json()
 
 
-def test_browser_rejected_replacement_preserves_the_saved_release():
+def test_browser_rejected_takeover_preserves_saved_responsibility():
     node = shutil.which("node")
     if node is None:
         return
@@ -99,9 +99,24 @@ def test_sale_candidates_follow_saved_collective_state_and_keep_private_dates(_t
         "game_id": ids["game"], "role": db.ROLE_SALE, "slot": 1,
         "expected_person_id": ids["adult"],
     }, headers=h.csrf_headers())
-    assert release.get_json()["ok"], "the sole adult's authorized withdrawal was refused"
-    assert any(d["code"] == "missing_adult_seller" for d in release.get_json()["staffing"]["deficiencies"])
-    assert ids["unknown"] not in _candidates(admin, ids)["slots"]["Verkauf:1"]["candidate_ids"]
+    assert release.status_code == 400, "ordinary withdrawal must not vacate the sole adult's duty"
+    request = admin.post("/api/assignment/request-replacement", json={
+        "game_id": ids["game"], "role": db.ROLE_SALE, "slot": 1,
+        "expected_person_id": ids["adult"],
+    }, headers=h.csrf_headers())
+    assert request.get_json()["ok"], "the sole adult must be able to seek replacement"
+    assert request.get_json()["assignment"]["person_id"] == ids["adult"]
+    assert not any(d["code"] == "missing_adult_seller" for d in request.get_json()["staffing"]["deficiencies"])
+    takeover_candidates = _candidates(admin, ids)["slots"]["Verkauf:1"]["candidate_ids"]
+    assert ids["unknown"] not in takeover_candidates and ids["young"] not in takeover_candidates
+    assert ids["mv"] in takeover_candidates, "eligible adult takeover disappeared"
+    refused = admin.post("/api/assignment/takeover", json={
+        "game_id": ids["game"], "role": db.ROLE_SALE, "slot": 1,
+        "expected_person_id": ids["adult"], "person_id": ids["unknown"],
+        "expected_request_token": request.get_json()["assignment"]["replacement_token"],
+    }, headers=h.csrf_headers())
+    assert refused.status_code == 400, "takeover counted the outgoing adult toward final coverage"
+    assert _candidates(admin, ids)["slots"]["Verkauf:1"]["occupant_id"] == ids["adult"]
     text = admin.get(f'/api/games/{ids["game"]}/candidates').get_data(as_text=True)
     assert "birth_date" not in text and "1992-01-01" not in text and "2012-01-01" not in text
     with h.Session(engine) as session:
@@ -188,11 +203,25 @@ def test_game_and_birth_corrections_reevaluate_without_rewriting_assignments(_to
     candidates = _candidates(admin, ids)
     assert ids["adult"] in candidates["slots"]["Zeitnehmer:0"]["candidate_ids"], "invalid current occupant disappeared"
     assert ids["adult"] not in candidates["slots"]["Sekretär:0"]["candidate_ids"]
-    release = admin.post("/api/assignment/release", json={
+    request = admin.post("/api/assignment/request-replacement", json={
         "game_id": ids["game"], "role": db.ROLE_TIMEKEEPER, "slot": 0,
         "expected_person_id": ids["adult"],
     }, headers=h.csrf_headers())
-    assert release.get_json()["ok"], "unknown-date current occupant could not be released"
+    assert request.get_json()["ok"], "unknown-date current occupant could not seek replacement"
+    assert request.get_json()["assignment"]["person_id"] == ids["adult"]
+    token = request.get_json()["assignment"]["replacement_token"]
+    with h.Session(engine) as session:
+        assert session.get(db.Assignment, assignment_id).person_id == ids["adult"]
+        assert any(d["code"] == "unknown_birth_date" for d in db.staffing_status(session.get(db.Game, ids["game"]))["deficiencies"])
+    takeover = admin.post("/api/assignment/takeover", json={
+        "game_id": ids["game"], "role": db.ROLE_TIMEKEEPER, "slot": 0,
+        "expected_person_id": ids["adult"], "expected_request_token": token,
+        "person_id": ids["mv"],
+    }, headers=h.csrf_headers())
+    assert takeover.get_json()["ok"], "an eligible incoming helper could not resolve the deficient duty"
+    assert not any(d["role"] == db.ROLE_TIMEKEEPER for d in takeover.get_json()["staffing"]["deficiencies"])
+    with h.Session(engine) as session:
+        assert session.get(db.Assignment, assignment_id).person_id == ids["mv"], "takeover lost assignment identity"
 
 
 if __name__ == "__main__":

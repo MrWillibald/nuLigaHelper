@@ -119,19 +119,58 @@ test/run_tests.sh                          # whole suite, must stay green
   and kept in sync by `static/app.js`); enforced by the unique constraint
   `(game_id, person_id)` on `assignments`, by `db.assign_person` (raises
   `ValueError`) and by the web/CLI entry points.
+- **Assignments are binding; ordinary withdrawal never creates a vacancy.** Before
+  any UI claim or takeover, show German `Bestätigen` / `Abbrechen` confirmation
+  explaining continued responsibility and the day-before lock. Selection, opening,
+  Cancel, Escape and dismissal perform no assignment/request write, successful audit
+  or notification. Only explicit confirmation attempts the current-state-validated
+  write; preserve keyboard/focus access and the non-JavaScript confirmation path.
+  Never save first and compensate with a release on cancellation.
 - **Assignment writes are per-slot compare-and-swap operations.** Claim expects
-  an empty slot; release names the expected occupant. A stale expectation returns
-  a conflict and current occupant without overwriting the winner. Use
-  `db.claim_slot()` / `db.release_slot()` and the matching JSON endpoints, not a
-  read-modify-write of a complete role.
+  an empty slot. Before lock, `db.request_replacement()` or
+  `db.request_block_replacement()` marks an offered occupied duty `Ersatz gesucht`
+  while its helper remains assigned and responsible.
+  `db.cancel_replacement()` / `db.cancel_block_replacement()` let the current active
+  helper end their own open search before cutoff without releasing the duty;
+  existing admin/MV scope is retained. Closure compares the expected occupant and
+  request token under serialization, records one actual-actor `request_close`
+  transition and leaves responsibility/occupancy unchanged. Reopening uses a fresh
+  token; stale closure and takeover requests cannot affect the new generation.
+  `db.takeover_slot()` /
+  `db.takeover_block_slot()` atomically transfer to an eligible replacement, comparing
+  both expected occupant and replacement token; a failed or stale transfer keeps the
+  saved responsibility. Enforce current tier scope, offeredness/capacity, one duty per
+  container and resulting-group Verkauf eligibility under serialization and after
+  retries. Use these helpers and matching JSON endpoints, never browser release-then-
+  claim or whole-role read-modify-write. `db.release_slot()` is only authorized
+  pre-cutoff retirement of a retained removed game duty; block duties have no ordinary
+  release operation.
+- **Occupied duties lock at 09:00 Europe/Berlin on the day before their date.**
+  The fixed cutoff applies even if cron is missed or no reminder can be delivered.
+  Use the shared aware `db.duty_now()` clock (effective date from
+  `common.effective_today()`), recheck inside every writer after serialization and
+  retries, and retain any saved lock after game date/category changes. Due lock
+  persistence records the season/date marker, closes open requests and audits first
+  locks idempotently; `db.lock_due_duties()` runs as an explicit preflight transaction
+  before schedule/API mutations and reminder dispatch, never a hidden commit of
+  unrelated pending work. Read-only pages and candidate requests derive due locked
+  state from the same clock without writing; opening or cancelling confirmation
+  must remain free of mutations. `db.lock_day_before_batch()` must not advance 09:00 on an
+  early reminder call. Missing contacts, provider failure, restart and retry do not
+  reopen commitments; weekly reminders do not lock. Empty offered duties stay
+  claimable within existing rights and lock immediately when claimed after cutoff.
+  No tier, including admin or CLI, may release, request replacement for or change a
+  locked occupied duty. There is no 24-hour window, automatic return, periodic
+  rollback or replacement broadcast. A saved cutoff is not proof of delivery.
+
 - **Day blocks are dated, team-independent containers.** Preparation and cleanup
   keep three positions each; cake delivery uses `db.block_capacity()` and starts
   with quantity/time unset. Only admins configure cakes through
   `db.configure_cake_block()`, with expected saved settings. Zero is an explicit
   request for no cakes. Configuration and assignment writes share serialization;
-  reductions must refuse occupied removed positions until explicit audited
-  releases, without compaction. One person may hold one position in each block
-  independently of game duties. New block audit snapshots preserve season, date
+  reductions must refuse occupied removed positions without force release or
+  compaction; ordinary replacement leaves the position occupied. One person may hold
+  one position in each block independently of game duties. New block audit snapshots preserve season, date
   and original numbered position; existing snapshots stay unchanged.
 - **Game age eligibility uses the scheduled game date** and completed calendar
   years. Youth Zeitnehmer/Sekretär require 14; adult Zeitnehmer requires 18 and
@@ -146,25 +185,41 @@ test/run_tests.sh                          # whole suite, must stay green
   Verkauf claims even while staffing is incomplete. Revalidate saved game,
   person and post-claim group state under write serialization and after retries;
   every tier and CLI/system callers obey the rule, with no admin override.
-  Authorized releases remain possible, including the sole adult seller.
+  A replacement request retains the sole adult seller and their coverage; atomic
+  takeover must validate the resulting group without counting the outgoing helper.
+  Deficiencies never authorize ordinary release or a lock override.
 - **Vacancies and age deficiencies are separate.** Existing assignments survive
   migration, date corrections and game changes; reevaluate current/future staffing
   without rewriting history or audits. Occupancy counts remain physical, while
   schedule, statistics and existing MV follow-up include unresolved/invalid age
-  eligibility. Current occupants remain visible and releasable; refresh affected
-  candidates after saved claims/releases. This adds no age rules for day blocks.
-- Every successful assignment mutation writes an append-only audit snapshot.
-  Deactivation keeps past assignments, releases and audits future assignments,
-  clears MV records and does not restore freed slots on reactivation. Deletion is
-  reserved for erroneous records and must preserve readable audit entries.
+  eligibility. Current occupants remain visible and may seek an eligible replacement
+  before cutoff; a locked deficient assignment stays assigned. Refresh affected
+  candidates after saved claims/takeovers. This adds no age rules for day blocks.
+- Every successful assignment mutation and first request/lock transition writes
+  append-only audit evidence. An atomic takeover records the old and new responsible
+  helpers together; repeated lock enforcement creates no duplicate transition.
+  **Destructive maintenance may not cancel binding commitments.** Deactivation is
+  refused atomically while a current/future game or block assignment would be
+  removed; retain account status, MV appointments, assignments and request state.
+  Past-only deactivation remains possible and preserves past duties/history.
+  Erroneous-record deletion refuses any assigned commitment, including past ones;
+  deleting an empty mistaken record preserves historical audit snapshots. Removal of
+  an occupied game/day/block, including the last game of a date, is refused without
+  partial destructive synchronization or successful-removal audits/notifications.
+  These restrictions apply before and after cutoff and have no administrator/system
+  override. Successful deactivation without blocking duties clears MV appointments;
+  reactivation restores no historically released assignment.
+
 - Roles: `Zeitnehmer`, `Sekretär`, `Verkauf` (**2 slots**), `Ordnungsdienst`
   (**1 slot**), `Kasse`, `Reinigung` (**2 slots**) — see `db.ROLE_SLOT_COUNT`.
   Adults offer all eight positions; youth/SPF and unknown classes offer the
   baseline five without Kasse/Reinigung. All offered positions are required; use
   `db.offered_positions()` / `db.required_positions()` for per-game calculations.
-  Retained assignments outside that set stay visible and releasable under
-  existing rights, count in personal statistics/reminders and prevent a second
-  duty, but cannot accept replacement claims or affect required progress. Any aggregation over roles must iterate
+  Retained assignments outside that set stay visible, count in personal
+  statistics/reminders and prevent a second duty. Existing authorized release-only
+  retirement is available before the actual cutoff; afterward ordinary release is
+  locked. They cannot accept claims, replacement requests or takeovers and never
+  affect required progress. Any aggregation over roles must iterate
   roles once (e.g. `ROLE_SLOT_COUNT.items()`), not `SLOT_LABELS` in `webapp.py`
   (which repeats Verkauf for the two UI dropdowns).
 - **Team MV**: each team can have exactly one Mannschaftsverantwortlicher
@@ -212,6 +267,9 @@ test/run_tests.sh                          # whole suite, must stay green
   and verifies retained data after upgrading. Backfill through self/admin
   maintenance or `set-birth-date PERSON_ID YYYY-MM-DD`; rollback restores the
   validated pre-migration snapshot and previous application with writers stopped.
+  The sticky-duty revision preserves assignments and old audit snapshots while
+  adding replacement tokens, saved locks and a dated cutoff marker. It must not
+  fabricate prior confirmation, replacement requests or historical reminder batches.
 - The newspaper-article feature lives in `Notifier.send_article` but its call
   site in `main.py` is commented out.
 

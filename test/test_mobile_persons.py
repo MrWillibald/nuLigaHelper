@@ -226,7 +226,8 @@ def test_native_maintenance_fallbacks_reuse_authorized_csrf_posts_without_nested
     deletion = maintenance.xpath(f'.//noscript/form[@action="/personen/{ids["duplicate"]}/delete"]')[0]
     assert deletion.get("method") == "post" and deletion.xpath('./input[@name="csrf_token"]')
     assert deletion.xpath('.//input[@type="checkbox" and @required]')
-    assert "Diensteinträge" in deletion.text_content() and "deaktivieren" in deletion.text_content()
+    assert "Bestehende Einteilungen verhindern das Löschen" in deletion.text_content()
+    assert "deaktivieren" in deletion.text_content()
     assert not admin_page.xpath('//form//form'), "native submission forms remain independent"
     mv_page = _page(_client(app, ids, "mv"))
     own_fallback = _maintenance(_card(mv_page, ids["mv"]))[0].xpath('.//noscript//button')[0]

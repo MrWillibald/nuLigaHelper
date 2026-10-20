@@ -127,7 +127,7 @@ def test_01_admin_sign_in_exposes_controls_without_contacts_on_schedule():
     assert not game.xpath('./div//select[@data-role="Kasse"]'), "youth games must not offer Kasse"
 
 
-def test_02_responsible_team_and_claim_release_flow():
+def test_02_responsible_team_and_binding_request_takeover_flow():
     response = _json(f"/api/games/{GAME_ID}/team", {"team_id": RESPONSIBLE_ID})
     assert response.get_json() == {"ok": True}
     claim = _json("/api/assignment/claim", {
@@ -153,8 +153,21 @@ def test_02_responsible_team_and_claim_release_flow():
         "slot": 0,
         "expected_person_id": ALICE_ID,
     })
-    assert release.status_code == 200 and release.get_json()["ok"] is True
-    assert release.get_json()["staffing"]["vacancies"][db.ROLE_SALE] == 2
+    assert release.status_code == 400, "ordinary release must not create a required vacancy"
+    requested = _json("/api/assignment/request-replacement", {
+        "game_id": GAME_ID, "role": db.ROLE_SALE, "slot": 0,
+        "expected_person_id": ALICE_ID,
+    })
+    assert requested.status_code == 200 and requested.get_json()["assignment"]["person_id"] == ALICE_ID
+    assert requested.get_json()["staffing"]["vacancies"][db.ROLE_SALE] == 1
+    takeover = _json("/api/assignment/takeover", {
+        "game_id": GAME_ID, "role": db.ROLE_SALE, "slot": 0,
+        "expected_person_id": ALICE_ID,
+        "expected_request_token": requested.get_json()["assignment"]["replacement_token"],
+        "person_id": ADMIN_ID,
+    })
+    assert takeover.status_code == 200 and takeover.get_json()["assignment"]["person_id"] == ADMIN_ID
+    assert takeover.get_json()["staffing"]["vacancies"][db.ROLE_SALE] == 1
 
 
 def test_02_task_dropdown_groups_all_four_categories_and_keeps_hints():
@@ -336,16 +349,27 @@ def test_08_csrf_is_required_for_json_and_forms():
     assert "insertOptionSorted(s, clone.cloneNode(true))" in javascript
 
 
-def test_09_delete_warns_about_deactivation_and_cascades_with_audit():
+def test_09_delete_refuses_assigned_commitments_and_allows_empty_mistaken_record():
     page = client.get("/personen").get_data(as_text=True)
     assert "Deaktivieren" in page
     assert "stattdessen deaktivieren" in open(
         h.PROJECT_DIR + "/static/app.js", encoding="utf-8"
     ).read()
-    _form(f"/personen/{DUPLICATE_ID}/delete", follow_redirects=True)
     with h.Session(ENGINE) as session:
-        assert session.get(db.Person, DUPLICATE_ID) is None
-        assert session.query(db.AssignmentAudit).count() >= 3
+        before_audits = session.query(db.AssignmentAudit).count()
+        assignments = [(a.id, a.person_id, a.role, a.slot) for a in session.query(db.Assignment).all()]
+        empty_person = session.query(db.Person).filter_by(name="Renamed Test").one()
+        empty_id = empty_person.id
+    refused = _form(f"/personen/{DUPLICATE_ID}/delete", follow_redirects=True)
+    assert refused.status_code == 409 and "verbindlich" in refused.get_data(as_text=True).lower()
+    with h.Session(ENGINE) as session:
+        assert session.get(db.Person, DUPLICATE_ID) is not None, "deletion cancelled an assigned commitment"
+        assert assignments == [(a.id, a.person_id, a.role, a.slot) for a in session.query(db.Assignment).all()]
+        assert session.query(db.AssignmentAudit).count() == before_audits, "refused deletion fabricated a removal audit"
+    assert _form(f"/personen/{empty_id}/delete", follow_redirects=True).status_code == 200
+    with h.Session(ENGINE) as session:
+        assert session.get(db.Person, empty_id) is None, "empty erroneous record cannot be deleted"
+        assert session.query(db.AssignmentAudit).count() == before_audits
 
 
 if __name__ == "__main__":

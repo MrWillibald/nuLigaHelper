@@ -219,7 +219,7 @@ and offer to sign in again rather than reporting a generic error.
 
 ### Requirement: Candidate reads use current assignment authority
 
-Every request for assignment candidates SHALL use the viewer's current account status, tier, managed teams, game or block date, responsible team, and slot occupant to determine which candidates may be returned. Candidate responses SHALL contain no e-mail addresses or phone numbers. Guests and verified but unapproved registrants SHALL receive no candidate list. Candidate reads SHALL never grant or imply authority to write; assignment mutations SHALL continue to enforce their own checks.
+Every request for assignment candidates SHALL use the viewer's current account status, tier, managed teams, game or block date, responsible team, slot occupant, active replacement request, and cutoff/locked state to determine which candidates may be returned. Candidate responses SHALL contain no e-mail addresses or phone numbers. Guests and verified but unapproved registrants SHALL receive no candidate list. Locked occupied duties SHALL return no replacement candidates. Takeover candidates SHALL be scoped to the incoming person the caller may assign; only active requests on unlocked offered positions SHALL permit takeovers. A member taking over for themselves SHALL not need authority to request withdrawal for the outgoing helper. Candidate reads SHALL never grant or imply authority to write; assignment mutations SHALL continue to enforce their own checks.
 
 #### Scenario: Member requests candidates
 
@@ -235,7 +235,8 @@ Every request for assignment candidates SHALL use the viewer's current account s
 #### Scenario: Admin requests candidates
 
 - **WHEN** an admin requests candidates for a game or day-task block, including a past one
-- **THEN** the active assignable roster is returned for the editable slots without contact data
+- **THEN** the active assignable roster is returned only for editable slots without contact data
+- **AND** admin status grants no candidates or write permission for locked occupied slots
 
 #### Scenario: Guest or pending registration requests candidates
 

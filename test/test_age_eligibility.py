@@ -3,6 +3,7 @@
 from datetime import date, datetime
 import json
 import threading
+from unittest.mock import patch
 
 import helpers as h
 import age_eligibility as age
@@ -118,9 +119,14 @@ def test_timing_minimums_are_evaluated_on_game_date_without_admin_or_system_over
         game.ak = "BL M"
         younger.birth_date = date(2010, 1, 1)
         session.commit()
+        admin = _person(session, "Actual admin", date(1980, 1, 1))
+        admin.is_admin = True
+        session.commit()
         for tier in ("member", "mv", "admin", "system"):
-            _refused(lambda: db.claim_slot(session, game, db.ROLE_TIMEKEEPER,
-                                          0, None, younger, actor_tier=tier), "underage")
+            acting = None if tier == "system" else admin if tier == "admin" else younger
+            with patch("common.effective_today", return_value=date(2026,9,1)):
+                _refused(lambda: db.claim_slot(session, game, db.ROLE_TIMEKEEPER,
+                                              0, None, younger, actor=acting, actor_tier=tier), "underage")
         assert session.query(db.Assignment).count() == 0
         assert session.query(db.AssignmentAudit).count() == 0
         game.date = "invalid"
@@ -139,15 +145,19 @@ def test_future_game_allows_upcoming_birthday_and_past_admin_correction_uses_pas
         person = _person(session, "Turns adult next year", date(2009, 10, 5))
         db.claim_slot(session, game, db.ROLE_TIMEKEEPER, 0, None, person)
         session.commit()
-        db.release_slot(session, game, db.ROLE_TIMEKEEPER, 0, person.id)
+        db.request_replacement(session, game, db.ROLE_TIMEKEEPER, 0, person.id)
+        candidate = _person(session, "Replacement with same birthday", person.birth_date)
+        admin = _person(session, "Real administrator", date(1980,1,1))
+        admin.is_admin = True
+        token = game.assignment_by_role(db.ROLE_TIMEKEEPER).replacement_token
         game.date = "04.10.2027"
         session.commit()
-        _refused(lambda: db.assign_person(session, game, person, db.ROLE_TIMEKEEPER,
-                                          actor_tier="admin"), "underage")
+        _refused(lambda: db.takeover_slot(session, game, db.ROLE_TIMEKEEPER, 0, person.id, token, candidate,
+                                          actor=admin, actor_tier="admin"), "underage")
         game.date = "04.10.2025"
         session.commit()
-        _refused(lambda: db.assign_person(session, game, person, db.ROLE_SECRETARY,
-                                          actor_tier="admin"), "underage")
+        _refused(lambda: db.assign_person(session, game, candidate, db.ROLE_SECRETARY,
+                                          actor=admin, actor_tier="admin"), "underage")
 
 
 def test_sale_group_permits_young_or_unknown_first_seller_and_requires_an_assigned_adult():
@@ -168,7 +178,7 @@ def test_sale_group_permits_young_or_unknown_first_seller_and_requires_an_assign
         db.claim_slot(session, game, db.ROLE_SALE, 1, None, adult)
         session.commit()
         assert db.staffing_status(game)["deficiencies"] == []
-        db.release_slot(session, game, db.ROLE_SALE, 1, adult.id)
+        db.request_replacement(session, game, db.ROLE_SALE, 1, adult.id)
         session.commit()
         assert db.claim_eligibility(game, db.ROLE_SALE, young, 1)["code"] == "missing_adult_seller"
         assert db.claim_eligibility(game, db.ROLE_SALE, adult, 1) is None
@@ -198,10 +208,12 @@ def test_refused_role_replacement_rolls_back_previous_releases_claims_and_audits
                         for name in ("First younger", "Second younger")]
         session.commit()
         db.set_role_assignments(session, game, db.ROLE_SALE, [adult.id, original_young.id])
+        request = db.request_replacement(session, game, db.ROLE_SALE, 0, adult.id)
+        session.commit()
         ids_before = [(assignment.id, assignment.person_id) for assignment in game.assignments]
         audits_before = [entry.id for entry in session.query(db.AssignmentAudit)]
-        _refused(lambda: db.set_role_assignments(session, game, db.ROLE_SALE,
-                                                [person.id for person in replacements]),
+        _refused(lambda: db.takeover_slot(session, game, db.ROLE_SALE, 0, adult.id,
+                                          request.replacement_token, replacements[0]),
                  "missing_adult_seller")
         session.commit()
         assert [(assignment.id, assignment.person_id) for assignment in game.assignments] == ids_before
@@ -235,10 +247,12 @@ def test_staffing_rechecks_changed_dates_and_category_without_altering_rows_or_a
         payload = json.dumps(status)
         assert "2008-10-05" not in payload and "2012-10-05" not in payload
         assert "birth_date" not in payload and '"age"' not in payload
-        db.release_slot(session, game, db.ROLE_TIMEKEEPER, 0, people[0].id)
+        db.request_replacement(session, game, db.ROLE_TIMEKEEPER, 0, people[0].id)
         session.commit()
         assert db.staffing_status(game)["vacancies"] == {
-            db.ROLE_TIMEKEEPER: 1, db.ROLE_CASH: 1, db.ROLE_CLEANING: 2}
+            db.ROLE_CASH: 1, db.ROLE_CLEANING: 2}
+        assert game.assignment_by_role(db.ROLE_TIMEKEEPER).person_id == people[0].id
+        assert game.assignment_by_role(db.ROLE_TIMEKEEPER).replacement_token
 
 
 def test_loaded_person_game_and_seller_dates_are_refreshed_before_claim():

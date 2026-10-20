@@ -1267,8 +1267,50 @@ def create_app() -> Flask:
     # Schedule overview
     # ------------------------------------------------------------------
 
+    @app.before_request
+    def persist_scheduled_duty_locks():
+        # Materialize independently due locks before a requested mutation. Reads,
+        # opening a confirmation, and Cancel remain strictly free of writes.
+        endpoint = request.endpoint or ""
+        api_write = request.method == "POST" and endpoint.startswith(("api_assignment_", "api_block_"))
+        html_write = (endpoint == "assignment_form" and request.method == "POST"
+                      and (request.form.get("decision") == "confirm"
+                           or request.form.get("action") in {"request-replacement", "cancel-replacement", "release"})
+                      and request.form.get("decision") != "cancel")
+        if not (api_write or html_write) or g.viewer is None or g.tier == "guest":
+            return None
+        try:
+            with db.Session(engine) as cutoff_session:
+                db.lock_due_duties(cutoff_session)
+                cutoff_session.commit()
+        except db.AssignmentTemporarilyUnavailableError as exc:
+            if request.path.startswith("/api/"):
+                return _assignment_unavailable_response(exc)
+            return api_error(str(exc), 503)
+        get_session().rollback()
+        return None
+
+    def duty_state(container, assignment):
+        locked = db.duty_is_locked(get_session(), container, assignment)
+        return {
+            "person_id": assignment.person_id if assignment else None,
+            "person_name": assignment.person.name if assignment else "",
+            "person_team_label": db.membership_label(assignment.person) if assignment else "",
+            "locked": bool(assignment and locked),
+            "late_claim_locked": bool(locked),
+            "replacement_token": assignment.replacement_token if assignment else None,
+            "seeking_replacement": bool(assignment and assignment.replacement_token and not locked),
+            "can_request_replacement": bool(assignment and not locked and (
+                (isinstance(container, db.Game) and (assignment.role, assignment.slot) in db.offered_positions(container)
+                 and may_request_game(container, assignment))
+                or (isinstance(container, db.DayBlock) and may_request_block(container, assignment))
+            )),
+            "release_only": bool(assignment and isinstance(container, db.Game)
+                                 and (assignment.role, assignment.slot) not in db.offered_positions(container)),
+        }
+
     def game_slot_scope(game: db.Game, occupant: db.Person | None) -> tuple[str | None, int | None]:
-        """Return the viewer's editable scope and managed team for one slot."""
+        """Scope for the incoming helper, independently of outgoing ownership."""
         if g.tier == "admin":
             return "all", None
         if g.viewer is None or g.tier not in {"member", "mv"}:
@@ -1277,13 +1319,9 @@ def create_app() -> Flask:
         if game_date is not None and game_date < common.effective_today():
             return None, None
         mv_team_id = game.team_id if game.team_id in g.mv_team_ids else None
-        if mv_team_id is not None and (
-            occupant is None or db.has_team(occupant, mv_team_id)
-        ):
+        if mv_team_id is not None:
             return "team", mv_team_id
-        if occupant is None or occupant.id == g.viewer.id:
-            return "self", None
-        return None, None
+        return "self", None
 
     def block_slot_scope(block: db.DayBlock, occupant: db.Person | None) -> str | None:
         if g.tier == "admin":
@@ -1293,7 +1331,15 @@ def create_app() -> Flask:
         block_date = parse_date(block.date)
         if block_date is not None and block_date < common.effective_today():
             return None
-        return "self" if occupant is None or occupant.id == g.viewer.id else None
+        return "self"
+
+    def may_request_game(game, assignment):
+        return bool(assignment and game_slot_scope(game, assignment.person)[0]
+                    and _may_manage_assignment(game, assignment.person))
+
+    def may_request_block(block, assignment):
+        return bool(assignment and block_slot_scope(block, assignment.person)
+                    and (g.tier == "admin" or assignment.person_id == g.viewer.id))
 
     def candidates_for_scope(persons: list[dict], scope: str, team_id: int | None):
         if scope == "all":
@@ -1318,40 +1364,41 @@ def create_app() -> Flask:
             return api_error("Spiel nicht gefunden.", 404)
         assignments = {(a.role, a.slot): a for a in game.assignments}
         offered = set(db.offered_positions(game))
-        slot_scopes = {}
-        for role, count in db.ROLE_SLOT_COUNT.items():
-            for slot in range(count):
-                assignment = assignments.get((role, slot))
-                if (role, slot) not in offered and assignment is None:
-                    continue
-                occupant = assignment.person if assignment else None
-                scope, team_id = game_slot_scope(game, occupant)
-                if scope is not None:
-                    slot_scopes[f"{role}:{slot}"] = (scope, team_id, occupant.id if occupant else None)
-        if not slot_scopes:
-            return candidate_response([], {})
-
-        # Load eligibility inputs once; never serialize private birth dates.
         person_records = {p.id: p for p in db.get_all_persons(session_db)}
         persons = person_options(session_db, person_records.values())
         assigned_ids = {a.person_id for a in game.assignments}
-        allowed = {}
-        used_ids = set()
-        for key, (scope, team_id, occupant_id) in slot_scopes.items():
-            role, raw_slot = key.rsplit(":", 1)
-            retained = (role, int(raw_slot)) not in offered
-            ids = [
-                p["id"] for p in candidates_for_scope(persons, scope, team_id)
-                if p["id"] == occupant_id or (
-                    not retained
-                    and
-                    p["id"] not in assigned_ids
-                    and db.claim_eligibility(game, role, person_records[p["id"]], int(raw_slot)) is None
-                )
-            ]
-            used_ids.update(ids)
-            allowed[key] = {"candidate_ids": ids, "occupant_id": occupant_id,
-                            "release_only": retained}
+        allowed, used_ids = {}, set()
+        for role, count in db.ROLE_SLOT_COUNT.items():
+            for slot in range(count):
+                assignment = assignments.get((role, slot))
+                retained = (role, slot) not in offered
+                if retained and assignment is None:
+                    continue
+                occupant = assignment.person if assignment else None
+                scope, team_id = game_slot_scope(game, occupant)
+                state = duty_state(game, assignment)
+                can_request = (not retained and not state["locked"]
+                               and may_request_game(game, assignment))
+                can_release = (retained and not state["locked"]
+                               and may_request_game(game, assignment))
+                ids = []
+                if scope and not state["locked"] and not retained and (
+                    assignment is None or state["seeking_replacement"]
+                ):
+                    ids = [
+                        p["id"] for p in candidates_for_scope(persons, scope, team_id)
+                        if p["id"] not in assigned_ids
+                        and db.claim_eligibility(game, role, person_records[p["id"]], slot) is None
+                    ]
+                # The occupant remains readable even if inactive or no longer eligible.
+                if assignment is not None and (can_request or can_release):
+                    ids.insert(0, assignment.person_id)
+                used_ids.update(ids)
+                allowed[f"{role}:{slot}"] = {
+                    **state, "occupant_id": state["person_id"], "candidate_ids": ids,
+                    "can_request_replacement": can_request, "release_only": retained,
+                    "editable": bool(ids or can_release),
+                }
         support = db.get_support_team(session_db)
         playing = session_db.scalar(select(db.Team).where(db.Team.name == (game.ak or "")))
         ordered = _ordered_person_options(
@@ -1362,14 +1409,11 @@ def create_app() -> Flask:
         for person in ordered:
             team_ids = person["team_ids"]
             is_playing = playing is not None and playing.id in team_ids
-            is_outside = (
-                not is_playing and game.team_id is not None
-                and game.team_id not in team_ids
-                and (support is None or support.id not in team_ids)
-            )
+            is_outside = (not is_playing and game.team_id is not None
+                          and game.team_id not in team_ids
+                          and (support is None or support.id not in team_ids))
             people.append({
-                "id": person["id"], "name": person["name"],
-                "team_label": person["team_label"],
+                "id": person["id"], "name": person["name"], "team_label": person["team_label"],
                 "sort_group": person["sort_group"], "sort_name": person["sort_name"],
                 "hint": "playing" if is_playing else "outside" if is_outside else "",
             })
@@ -1381,41 +1425,32 @@ def create_app() -> Flask:
         block = session_db.get(db.DayBlock, block_id)
         if block is None:
             return api_error("Tagesblock nicht gefunden.", 404)
-        slot_scopes = {}
+        persons = person_options(session_db)
+        assigned_ids = {a.person_id for a in block.assignments}
+        allowed, used_ids = {}, set()
         for slot in range(db.block_capacity(block)):
             assignment = block.assignment_for_slot(slot)
-            occupant = assignment.person if assignment else None
-            scope = block_slot_scope(block, occupant)
-            if scope is not None:
-                slot_scopes[str(slot)] = (scope, occupant.id if occupant else None)
-        if not slot_scopes:
-            return candidate_response([], {}, **(
-                {"block": block_view(block)}
-                if block.phase == db.BLOCK_CAKE_DELIVERY else {}
-            ))
-
-        persons = person_options(session_db)
-        assigned_ids = {assignment.person_id for assignment in block.assignments}
-        allowed = {}
-        used_ids = set()
-        for key, (scope, occupant_id) in slot_scopes.items():
-            ids = [
-                p["id"] for p in candidates_for_scope(persons, scope, None)
-                if p["id"] == occupant_id or p["id"] not in assigned_ids
-            ]
+            scope = block_slot_scope(block, assignment.person if assignment else None)
+            state = duty_state(block, assignment)
+            can_request = not state["locked"] and may_request_block(block, assignment)
+            ids = []
+            if scope and not state["locked"] and (assignment is None or state["seeking_replacement"]):
+                ids = [p["id"] for p in candidates_for_scope(persons, scope, None)
+                       if p["id"] not in assigned_ids]
+            if assignment is not None and can_request:
+                ids.insert(0, assignment.person_id)
             used_ids.update(ids)
-            allowed[key] = {"candidate_ids": ids, "occupant_id": occupant_id}
-        people = [
-            {
-                "id": p["id"], "name": p["name"], "team_label": p["team_label"],
-                "sort_group": 0, "sort_name": p["name"].casefold(), "hint": "",
+            allowed[str(slot)] = {
+                **state, "occupant_id": state["person_id"], "candidate_ids": ids,
+                "can_request_replacement": can_request, "release_only": False,
+                "editable": bool(ids),
             }
-            for p in persons if p["id"] in used_ids
-        ]
+        people = [{"id": p["id"], "name": p["name"], "team_label": p["team_label"],
+                   "sort_group": 0, "sort_name": p["name"].casefold(), "hint": ""}
+                  for p in persons if p["id"] in used_ids]
         people.sort(key=lambda p: (p["sort_name"], p["id"]))
         return candidate_response(people, allowed, **(
-            {"block": block_view(block)}
-            if block.phase == db.BLOCK_CAKE_DELIVERY else {}
+            {"block": block_view(block)} if block.phase == db.BLOCK_CAKE_DELIVERY else {}
         ))
 
     def progress_data(filled: int, total: int) -> dict[str, int]:
@@ -1443,7 +1478,12 @@ def create_app() -> Flask:
                 "person_id": occupant.id if occupant else None,
                 "person_name": occupant.name if occupant else "",
                 "person_team_label": db.membership_label(occupant) if occupant else "",
-                "editable": block_slot_scope(block, occupant) is not None,
+                **duty_state(block, assignment),
+                "can_request_replacement": bool(not db.duty_is_locked(get_session(), block, assignment)
+                                                and may_request_block(block, assignment)),
+                "editable": bool(block_slot_scope(block, occupant) is not None
+                                 and (assignment is None or not db.duty_is_locked(get_session(), block, assignment))
+                                 ),
             })
         return {
             "id": block.id, "phase": block.phase, "label": block.label,
@@ -1536,7 +1576,13 @@ def create_app() -> Flask:
                     "person_name": occupant.name if occupant else "",
                     "person_team_label": db.membership_label(occupant) if occupant else "",
                     "status": status,
-                    "editable": scope is not None,
+                    **duty_state(game, assignment),
+                    "can_request_replacement": bool((role, slot) in required
+                                                    and not db.duty_is_locked(get_session(), game, assignment)
+                                                    and may_request_game(game, assignment)),
+                    "editable": bool(scope is not None
+                                     and (assignment is None or not db.duty_is_locked(get_session(), game, assignment))
+                                     and ((role, slot) in required or may_request_game(game, assignment))),
                 })
             d = parse_date(game.date)
             staffing = db.staffing_status(game)
@@ -2097,8 +2143,12 @@ def create_app() -> Flask:
         person = session.get(db.Person, person_id)
         if person is not None:
             name = person.name
-            db.delete_person(session, person, g.viewer, "admin")
-            flash(f"'{name}' wurde gelöscht (inkl. Diensteinträge).", "success")
+            try:
+                db.delete_person(session, person, g.viewer, "admin")
+            except ValueError as exc:
+                session.rollback()
+                return api_error(str(exc), 409)
+            flash(f"'{name}' wurde gelöscht.", "success")
         return redirect(url_for("persons"))
 
     @app.post("/personen/<int:person_id>/deactivate")
@@ -2108,7 +2158,11 @@ def create_app() -> Flask:
         person = get_session().get(db.Person, person_id)
         if person is None:
             return api_error("Person nicht gefunden.", 404)
-        db.deactivate_person(get_session(), person, g.viewer, "admin")
+        try:
+            db.deactivate_person(get_session(), person, g.viewer, "admin")
+        except ValueError as exc:
+            get_session().rollback()
+            return api_error(str(exc), 409)
         flash(f"'{person.name}' wurde deaktiviert.", "success")
         return redirect(url_for("persons"))
 
@@ -2165,7 +2219,7 @@ def create_app() -> Flask:
                        **({"field_errors": {field: message}} if field else {})), status
 
     def _assignment_request():
-        data = request.get_json(silent=True) or {}
+        data = (request.get_json(silent=True) or {}) if request.is_json else request.form.to_dict()
         session = get_session()
         try:
             game_id = int(data.get("game_id"))
@@ -2215,7 +2269,7 @@ def create_app() -> Flask:
         return None
 
     def _conflict_response(exc: db.SlotConflictError):
-        current = get_session().get(db.Person, exc.current_person_id)
+        current = get_session().get(db.Person, exc.current_person_id) if exc.current_person_id is not None else None
         return jsonify(
             ok=False,
             code="conflict",
@@ -2238,7 +2292,7 @@ def create_app() -> Flask:
         data, session_db, game, role, slot, error = _assignment_request()
         if error is not None:
             return error
-        if "expected_person_id" not in data or data.get("expected_person_id") is not None:
+        if "expected_person_id" not in data or data.get("expected_person_id") not in (None, ""):
             return api_error("Ein freier Platz muss erwartet werden.")
         try:
             raw_person_id = int(data.get("person_id", g.viewer.id))
@@ -2271,7 +2325,9 @@ def create_app() -> Flask:
         except ValueError as exc:
             session_db.rollback()
             return api_error(str(exc))
-        return jsonify(ok=True, warning=_warning_for(game, person), staffing=db.staffing_status(game))
+        assignment = next((a for a in game.assignments if a.role == role and a.slot == slot), None)
+        return jsonify(ok=True, warning=_warning_for(game, person), staffing=db.staffing_status(game),
+                       assignment=duty_state(game, assignment))
 
     @app.post("/api/assignment/release")
     def api_assignment_release():
@@ -2306,10 +2362,13 @@ def create_app() -> Flask:
                 exc,
             )
             return _assignment_unavailable_response(exc)
+        except ValueError as exc:
+            session_db.rollback()
+            return api_error(str(exc))
         return jsonify(ok=True, staffing=db.staffing_status(game))
 
     def _block_assignment_request():
-        data = request.get_json(silent=True) or {}
+        data = (request.get_json(silent=True) or {}) if request.is_json else request.form.to_dict()
         session_db = get_session()
         try:
             block_id = int(data.get("block_id"))
@@ -2341,7 +2400,7 @@ def create_app() -> Flask:
         data, session_db, block, slot, error = _block_assignment_request()
         if error is not None:
             return error
-        if "expected_person_id" not in data or data.get("expected_person_id") is not None:
+        if "expected_person_id" not in data or data.get("expected_person_id") not in (None, ""):
             return api_error("Ein freier Platz muss erwartet werden.")
         try:
             person_id = int(data.get("person_id", g.viewer.id))
@@ -2367,8 +2426,10 @@ def create_app() -> Flask:
             session_db.rollback()
             return api_error(str(exc))
         if block.phase == db.BLOCK_CAKE_DELIVERY:
-            return jsonify(ok=True, block_id=block.id, block=block_view(block))
-        return jsonify(ok=True, block_id=block.id)
+            return jsonify(ok=True, block_id=block.id, block=block_view(block),
+                           assignment=duty_state(block, block.assignment_for_slot(slot)))
+        return jsonify(ok=True, block_id=block.id, block=block_view(block),
+                       assignment=duty_state(block, block.assignment_for_slot(slot)))
 
     @app.post("/api/block-assignment/release")
     def api_block_assignment_release():
@@ -2396,8 +2457,160 @@ def create_app() -> Flask:
             session_db.rollback()
             return api_error(str(exc))
         if block.phase == db.BLOCK_CAKE_DELIVERY:
-            return jsonify(ok=True, block_id=block.id, block=block_view(block))
-        return jsonify(ok=True, block_id=block.id)
+            return jsonify(ok=True, block_id=block.id, block=block_view(block),
+                           assignment=duty_state(block, block.assignment_for_slot(slot)))
+        return jsonify(ok=True, block_id=block.id, block=block_view(block),
+                       assignment=duty_state(block, block.assignment_for_slot(slot)))
+
+    def replacement_change(is_block: bool, takeover: bool, cancel: bool = False):
+        if is_block:
+            data, session_db, container, slot, error = _block_assignment_request()
+            role = None
+        else:
+            data, session_db, container, role, slot, error = _assignment_request()
+        if error is not None:
+            return error
+        try:
+            expected_id = int(data.get("expected_person_id"))
+            incoming_id = int(data.get("person_id", g.viewer.id)) if takeover else expected_id
+        except (ValueError, TypeError):
+            return api_error("Die erwartete oder neue Person fehlt.")
+        person = session_db.get(db.Person, incoming_id)
+        if person is None:
+            return api_error("Person nicht gefunden.", 404)
+        if ((is_block and g.tier != "admin" and incoming_id != g.viewer.id)
+                or (not is_block and not _may_manage_assignment(container, person))):
+            return api_error("Keine Berechtigung für diese Einteilung.", 403)
+        try:
+            args = [session_db, container] + ([] if is_block else [role]) + [slot, expected_id]
+            if takeover or cancel:
+                token = data.get("expected_request_token")
+                if not isinstance(token, str) or not token:
+                    return api_error("Die erwartete Ersatzsuche fehlt.")
+                args += [token]
+                if takeover:
+                    args += [person]
+                    func = db.takeover_block_slot if is_block else db.takeover_slot
+                else:
+                    func = db.cancel_block_replacement if is_block else db.cancel_replacement
+            else:
+                func = db.request_block_replacement if is_block else db.request_replacement
+            assignment = func(*args, actor=g.viewer, actor_tier=g.tier)
+            session_db.commit()
+        except db.SlotConflictError as exc:
+            session_db.rollback()
+            return _conflict_response(exc)
+        except db.AssignmentTemporarilyUnavailableError as exc:
+            session_db.rollback()
+            return _assignment_unavailable_response(exc)
+        except ValueError as exc:
+            session_db.rollback()
+            return api_error(str(exc))
+        extra = {"block_id": container.id, "block": block_view(container)} if is_block else {
+            "staffing": db.staffing_status(container), "warning": _warning_for(container, person) if takeover else None,
+        }
+        return jsonify(ok=True, assignment=duty_state(container, assignment), **extra)
+
+    @app.post("/api/assignment/request-replacement")
+    def api_assignment_request_replacement():
+        return replacement_change(False, False)
+
+    @app.post("/api/assignment/cancel-replacement")
+    def api_assignment_cancel_replacement():
+        return replacement_change(False, False, cancel=True)
+
+    @app.post("/api/assignment/takeover")
+    def api_assignment_takeover():
+        return replacement_change(False, True)
+
+    @app.post("/api/block-assignment/request-replacement")
+    def api_block_request_replacement():
+        return replacement_change(True, False)
+
+    @app.post("/api/block-assignment/cancel-replacement")
+    def api_block_cancel_replacement():
+        return replacement_change(True, False, cancel=True)
+
+    @app.post("/api/block-assignment/takeover")
+    def api_block_takeover():
+        return replacement_change(True, True)
+
+    @app.route("/dienst", methods=["GET", "POST"])
+    def assignment_form():
+        """HTML equivalent: selection and cancellation never mutate assignments."""
+        values = request.form if request.method == "POST" else request.args
+        if request.method == "POST" and values.get("decision") == "cancel":
+            return redirect(url_for("schedule"))
+        is_block = bool(values.get("block_id"))
+        try:
+            target_id = int(values.get("block_id" if is_block else "game_id"))
+            slot = int(values.get("slot"))
+        except (TypeError, ValueError):
+            return api_error("Dienst nicht gefunden.", 404)
+        container = get_session().get(db.DayBlock if is_block else db.Game, target_id)
+        if container is None:
+            return api_error("Dienst nicht gefunden.", 404)
+        role = None if is_block else values.get("role")
+        if ((is_block and not 0 <= slot < db.block_capacity(container)) or
+                (not is_block and (role not in db.ROLE_SLOT_COUNT or not 0 <= slot < db.ROLE_SLOT_COUNT[role]))):
+            return api_error("Ungültiger Dienst.")
+        action = values.get("action", "claim")
+        if request.method == "POST" and (values.get("decision") == "confirm" or action in {"request-replacement", "cancel-replacement", "release"}):
+            if action in {"claim", "takeover"} and values.get("decision") != "confirm":
+                return api_error("Bitte bestätige die verbindliche Einteilung.")
+            handler = {
+                (False, "claim"): api_assignment_claim,
+                (False, "takeover"): api_assignment_takeover,
+                (False, "request-replacement"): api_assignment_request_replacement,
+                (False, "cancel-replacement"): api_assignment_cancel_replacement,
+                (False, "release"): api_assignment_release,
+                (True, "claim"): api_block_assignment_claim,
+                (True, "takeover"): api_block_takeover,
+                (True, "request-replacement"): api_block_request_replacement,
+                (True, "cancel-replacement"): api_block_cancel_replacement,
+            }.get((is_block, action))
+            if handler is None:
+                return api_error("Ungültige Aktion.")
+            response = app.make_response(handler())
+            if not response.is_json:
+                return response
+            result = response.get_json()
+            if not result.get("ok"):
+                return render_template("message.html", message=result.get("error", "Dienst konnte nicht gespeichert werden.")), response.status_code
+            flash("Ersatz gesucht. Die bisherige Person bleibt verantwortlich." if action == "request-replacement"
+                  else "Ersatzsuche beendet. Die Einteilung bleibt verbindlich." if action == "cancel-replacement"
+                  else "Bestehender Dienst freigegeben." if action == "release" else "Verbindliche Einteilung gespeichert.", "success")
+            return redirect(url_for("schedule"))
+        response = api_block_candidates(target_id) if is_block else api_game_candidates(target_id)
+        response = app.make_response(response)
+        if response.status_code != 200:
+            return response
+        payload = response.get_json()
+        key = str(slot) if is_block else f"{role}:{slot}"
+        state = payload["slots"].get(key)
+        if state is None:
+            return api_error("Dieser Dienst wird nicht angeboten.", 403)
+        people = [p for p in payload["people"] if p["id"] in state["candidate_ids"]
+                  and p["id"] != state["occupant_id"]]
+        confirming = request.method == "POST"
+        selected = next((p for p in people if str(p["id"]) == values.get("person_id")), None)
+        if confirming and selected is None:
+            return api_error("Diese Person kann nicht eingeteilt werden.")
+        target = {"block_id" if is_block else "game_id": target_id, "slot": slot}
+        if not is_block:
+            target["role"] = role
+        if confirming:
+            # Preserve the selection page's CAS expectations, not refreshed values.
+            target.update(expected_person_id=values.get("expected_person_id", ""),
+                          expected_request_token=values.get("expected_request_token", ""))
+        else:
+            target.update(expected_person_id=state["occupant_id"] or "",
+                          expected_request_token=state["replacement_token"] or "")
+        return render_template("assignment_form.html", target=target, state=state, people=people,
+                               selected=selected, confirming=confirming,
+                               action="takeover" if state["occupant_id"] else "claim",
+                               label=db.block_slot_label(container, slot) if is_block else db.position_label(role, slot),
+                               date=container.date)
 
     @app.post("/api/blocks/<int:block_id>/cake-settings")
     def api_cake_settings(block_id: int):

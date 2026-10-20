@@ -133,7 +133,7 @@ responsible-team name or an open placeholder when unset, and a staffing progress
 A collapsed block card SHALL show its calculated time, block
 label, and staffing progress bar. Each card SHALL have a labeled control that expands
 and collapses that card independently. The expanded game SHALL reveal the responsible
-team and all existing task fields, according to the game's offered set, plus occupied removed duties marked as existing assignments with release-only maintenance; the expanded
+team and all existing task fields, according to the game's offered set, plus occupied removed duties marked as existing assignments subject to binding protection and the explicit legacy retirement policy; the expanded
 preparation or cleanup block SHALL reveal all three numbered assignment fields. All viewers SHALL be able to
 expand cards, while assignment controls and private data SHALL continue to depend on
 their existing access rights. Expansion SHALL be usable with a keyboard.
@@ -162,14 +162,14 @@ their existing access rights. Expansion SHALL be usable with a keyboard.
 - **WHEN** a viewer expands a youth game
 - **THEN** only the five offered baseline positions appear as game duty fields
 - **AND** empty Kasse and Reinigung fields and optional markers are absent
-- **AND** any retained removed-duty occupant appears separately as an existing assignment with release-only controls according to existing rights
+- **AND** any retained removed-duty occupant appears separately as an existing assignment with only controls allowed by binding protection and the explicit legacy retirement policy
 
 ### Requirement: Compact cards show accurate staffing progress
 
 Each game progress bar SHALL count occupied positions in that game's offered/required-position set and SHALL exclude retained removed-duty positions and responsible-team selection from both numerator and denominator. Adult games SHALL have eight required positions; youth games SHALL have five. Each preparation and cleanup progress bar SHALL count
 occupied slots among that block's three slots. Every bar SHALL have a readable count
 and whole-number percentage, including at zero and full coverage, so meaning does not
-depend on color alone. A successful assignment or release SHALL update the affected
+depend on color alone. A successful permitted occupancy change SHALL update the affected
 card's progress without requiring a page reload; an unsuccessful or stale operation
 SHALL not show uncommitted progress.
 
@@ -185,7 +185,7 @@ SHALL not show uncommitted progress.
 
 #### Scenario: Assignment changes progress
 
-- **WHEN** a viewer successfully claims or releases an assignment on an expanded card
+- **WHEN** a viewer successfully claims a position or completes an atomic takeover on an expanded card
 - **THEN** that card's count, percentage, and bar length reflect the saved assignment
 - **AND** a rejected assignment leaves the displayed progress at its saved value
 
@@ -196,9 +196,15 @@ SHALL not show uncommitted progress.
 
 #### Scenario: Retained removed duty released
 
-- **WHEN** a retained Kasse or Reinigung assignment of a youth game is released
+- **WHEN** a retained Kasse or Reinigung assignment of a youth game is explicitly retired by an authorized caller before the fixed day-before cutoff
 - **THEN** its required-duty progress is unchanged and the removed duty field disappears
 - **AND** changing its sole Ordnungsdienst position updates progress
+
+#### Scenario: Replacement wanted is still occupied
+
+- **WHEN** a replacement request opens or closes without takeover
+- **THEN** physical occupancy and the progress bar stay unchanged
+- **AND** an atomic takeover changes responsibility without reducing progress
 
 ### Requirement: Filters are usable by all schedule viewers
 
@@ -393,3 +399,23 @@ The existing schedule filter form SHALL start collapsed behind "Filter" on viewp
 - **WHEN** the schedule is opened on desktop, or filters are used without JavaScript
 - **THEN** the existing GET submission and clear-filter behavior remain usable
 - **AND** desktop filters start expanded
+
+### Requirement: Assignment commitment and replacement state are visible
+
+Every game and day-block duty SHALL show its assigned helper and persistent `Ersatz gesucht` status while an unlocked request is active, and SHALL explain when an occupied assignment is fixed. Guests SHALL receive only public names and read-only duty status without person IDs, roster payloads, contacts, full birth dates, exact ages or editing controls. Authorized claim and takeover flows SHALL provide the pre-save commitment confirmation defined by task self-service. Locked occupied duties SHALL not expose a release or replacement action; genuinely empty offered positions SHALL retain permitted claim actions. Existing filters, expansion behavior, responsive presentation and staffing-deficiency indications SHALL remain intact.
+
+#### Scenario: Guest sees a replacement request
+
+- **WHEN** a guest views an assignment seeking replacement
+- **THEN** its helper name and `Ersatz gesucht` status remain visible
+- **AND** no private identifiers, candidates or editing controls appear
+
+#### Scenario: Cancel confirmation on any card
+
+- **WHEN** a user cancels a claim confirmation in a game or any block phase
+- **THEN** the card displays authoritative saved state without suggesting a claim succeeded
+
+#### Scenario: Fixed and empty positions coexist
+
+- **WHEN** a date has reached cutoff with some occupied and some genuinely empty duties
+- **THEN** occupied duties show fixed state and permitted empty duties remain claimable

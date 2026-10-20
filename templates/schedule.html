@@ -4,11 +4,16 @@
 {% set task_help_ids = namespace(index=0) %}
 {% macro task_help(s, index) %}
 <div class="assign-task-heading">
-  {% if s.editable %}<label for="task-assignment-{{ index }}">{{ s.label }}</label>{% else %}<span>{{ s.label }}</span>{% endif %}
+{% if s.editable or s.can_request_replacement %}<label for="task-assignment-{{ index }}">{{ s.label }}</label>{% else %}<span>{{ s.label }}</span>{% endif %}
   <button class="task-help" type="button" data-task-help aria-label="Informationen zu {{ s.label }}"
           aria-expanded="false" aria-controls="task-description-{{ index }}" aria-describedby="task-description-{{ index }}"><span aria-hidden="true">i</span></button>
 </div>
 <p class="task-description" id="task-description-{{ index }}" data-task-description popover="manual" tabindex="0" hidden>{{ s.description }}</p>
+{% endmacro %}
+
+{% macro duty_state(s) %}
+<strong data-duty-occupant{% if not s.person_name %} hidden{% endif %}>{{ s.person_name }}{% if s.person_name and viewer and s.person_team_label %} · {{ s.person_team_label }}{% endif %}</strong>
+<p class="duty-state{% if s.seeking_replacement %} duty-state-seeking{% endif %}{% if s.locked %} duty-state-locked{% endif %}" data-duty-state{% if not s.person_id and not s.person_name %} hidden{% endif %}>{% if s.locked %}Fest eingeteilt – Änderungen im Webdienst sind geschlossen.{% elif s.seeking_replacement %}Ersatz gesucht – {{ s.person_name }} bleibt bis zur Übernahme verantwortlich.{% elif s.person_name %}Verbindlich eingeteilt.{% endif %}</p>
 {% endmacro %}
 
 {% macro coverage(progress, kind, hidden=false) %}
@@ -62,17 +67,25 @@
     </label>
     {% for s in g.slots %}
     {% set task_help_ids.index = task_help_ids.index + 1 %}
-    <div class="assign-field" data-required="{{ 'true' if s.required else 'false' }}"{% if viewer %} data-occupant-id="{{ s.person_id or '' }}"{% endif %}>
+    <div class="assign-field" data-duty-label="{{ s.label }}" data-required="{{ 'true' if s.required else 'false' }}"{% if viewer %} data-occupant-id="{{ s.person_id or '' }}"
+         data-replacement-token="{{ s.replacement_token or '' }}" data-locked="{{ 'true' if s.locked else 'false' }}"
+         data-seeking-replacement="{{ 'true' if s.seeking_replacement else 'false' }}" data-can-request-replacement="{{ 'true' if s.can_request_replacement else 'false' }}"
+         data-release-only="{{ 'true' if s.retained else 'false' }}" data-late-claim-locked="{{ 'true' if s.late_claim_locked else 'false' }}"{% endif %}>
       {{ task_help(s, task_help_ids.index) }}
-      {% if s.retained %}<small class="retained-duty">Bestehende Einteilung – nur Freigabe</small>{% endif %}
-      {% if s.editable %}<select id="task-assignment-{{ task_help_ids.index }}" data-game="{{ g.id }}" data-role="{{ s.role }}" data-slot="{{ s.slot }}"
+      {{ duty_state(s) }}
+      {% if s.retained %}<small class="retained-duty">Bestehende Einteilung – {% if s.locked %}fest eingeteilt{% else %}nur Freigabe{% endif %}</small>{% endif %}
+      {% if (s.editable or s.can_request_replacement) and not s.locked %}<select id="task-assignment-{{ task_help_ids.index }}" data-game="{{ g.id }}" data-role="{{ s.role }}" data-slot="{{ s.slot }}"
               data-required="{{ 'true' if s.required else 'false' }}"
+              data-replacement-token="{{ s.replacement_token or '' }}" data-seeking-replacement="{{ 'true' if s.seeking_replacement else 'false' }}"
+              data-locked="false" data-late-claim-locked="{{ 'true' if s.late_claim_locked else 'false' }}" data-duty-label="{{ s.label }}"
               {% if s.retained %}data-release-only="true"{% endif %}
-              disabled {% if s.status in ("playing", "outside") %}class="select-warn"{% endif %}>
-        <option value="">{% if s.retained %}&ndash; freigeben &ndash;{% else %}&ndash; offen &ndash;{% endif %}</option>
+              disabled{% if s.person_id and not s.seeking_replacement and not s.retained %} hidden{% endif %} {% if s.status in ("playing", "outside") %}class="select-warn"{% endif %}>
+        <option value=""{% if s.person_id and not s.retained %} disabled{% endif %}>{% if s.retained %}&ndash; freigeben &ndash;{% elif s.person_id %}&ndash; Ersatz auswählen &ndash;{% else %}&ndash; offen &ndash;{% endif %}</option>
         {% if s.person_id %}<option value="{{ s.person_id }}" selected>{{ s.person_name }} · {{ s.person_team_label }}</option>{% endif %}
       </select>
-      {% else %}<strong>{{ s.person_name or '– offen –' }}{% if s.person_name %} · {{ s.person_team_label }}{% endif %}</strong>{% endif %}
+      {% elif not s.person_name %}<strong>– offen –</strong>{% endif %}
+      {% if viewer and (s.editable or s.can_request_replacement) and not s.retained and not s.locked %}<button class="btn btn-secondary duty-request" type="button" data-request-replacement data-game="{{ g.id }}" data-role="{{ s.role }}" data-slot="{{ s.slot }}"{% if not s.person_id or not s.can_request_replacement %} hidden{% endif %}>{% if s.seeking_replacement %}Ersatzsuche beenden{% else %}Ersatz suchen{% endif %}</button>{% endif %}
+      {% if viewer and (s.editable or s.can_request_replacement) %}<noscript><a href="{{ url_for('assignment_form', game_id=g.id, role=s.role, slot=s.slot) }}">Dienst bearbeiten</a></noscript>{% endif %}
     </div>
     {% endfor %}
   </div>
@@ -109,7 +122,7 @@
     <label for="cake-time-{{ b.id }}">Lieferzeit (24 h) <input id="cake-time-{{ b.id }}" name="delivery_time" type="text" value="{{ b.delivery_time or '' }}" placeholder="HH:MM" pattern="([01][0-9]|2[0-3]):[0-5][0-9]" maxlength="5" title="24-Stunden-Format, z. B. 14:30" autocomplete="off" spellcheck="false" required></label>
     <label for="cake-quantity-{{ b.id }}">Kuchenanzahl <input id="cake-quantity-{{ b.id }}" name="cake_quantity" type="number" min="0" step="1" value="{{ b.cake_quantity if b.cake_quantity is not none else '' }}" required></label>
     <button class="btn btn-primary" type="submit">Einstellungen speichern</button>
-    <p class="hint">Belegte Plätze vor einer Verringerung ausdrücklich freigeben.</p>
+    <p class="hint">Belegte Plätze bleiben erhalten. Eine Verringerung ist nur für freie Plätze möglich.</p>
     <p class="cake-settings-message" data-cake-settings-message role="alert" hidden></p>
   </form>
   {% endif %}
@@ -117,14 +130,20 @@
   <div class="game-assign task-block-assign"{% if cake %} data-cake-slots{% endif %}>
     {% for s in b.slots %}
     {% set task_help_ids.index = task_help_ids.index + 1 %}
-    <div class="assign-field"{% if viewer %} data-block-slot="{{ s.slot }}" data-occupant-id="{{ s.person_id or '' }}"{% endif %}>
+    <div class="assign-field" data-duty-label="{{ s.label }}"{% if viewer %} data-block-slot="{{ s.slot }}" data-occupant-id="{{ s.person_id or '' }}"
+         data-replacement-token="{{ s.replacement_token or '' }}" data-locked="{{ 'true' if s.locked else 'false' }}"
+         data-seeking-replacement="{{ 'true' if s.seeking_replacement else 'false' }}" data-can-request-replacement="{{ 'true' if s.can_request_replacement else 'false' }}" data-late-claim-locked="{{ 'true' if s.late_claim_locked else 'false' }}"{% endif %}>
       {{ task_help(s, task_help_ids.index) }}
-      {% if s.editable %}
-      <select id="task-assignment-{{ task_help_ids.index }}" data-block="{{ b.id }}" data-slot="{{ s.slot }}" data-block-assignment disabled>
-        <option value="">&ndash; offen &ndash;</option>
+      {{ duty_state(s) }}
+      {% if (s.editable or s.can_request_replacement) and not s.locked %}
+      <select id="task-assignment-{{ task_help_ids.index }}" data-block="{{ b.id }}" data-slot="{{ s.slot }}" data-block-assignment
+              data-duty-label="{{ s.label }}" data-replacement-token="{{ s.replacement_token or '' }}" data-seeking-replacement="{{ 'true' if s.seeking_replacement else 'false' }}" data-locked="false" data-late-claim-locked="{{ 'true' if s.late_claim_locked else 'false' }}" disabled{% if s.person_id and not s.seeking_replacement %} hidden{% endif %}>
+        <option value=""{% if s.person_id %} disabled{% endif %}>{% if s.person_id %}&ndash; Ersatz auswählen &ndash;{% else %}&ndash; offen &ndash;{% endif %}</option>
         {% if s.person_id %}<option value="{{ s.person_id }}" selected>{{ s.person_name }} · {{ s.person_team_label }}</option>{% endif %}
       </select>
-      {% else %}<strong>{{ s.person_name or '– offen –' }}{% if s.person_name and viewer %} · {{ s.person_team_label }}{% endif %}</strong>{% endif %}
+      {% elif not s.person_name %}<strong>– offen –</strong>{% endif %}
+      {% if viewer and (s.editable or s.can_request_replacement) and not s.locked %}<button class="btn btn-secondary duty-request" type="button" data-request-replacement data-block="{{ b.id }}" data-slot="{{ s.slot }}"{% if not s.person_id or not s.can_request_replacement %} hidden{% endif %}>{% if s.seeking_replacement %}Ersatzsuche beenden{% else %}Ersatz suchen{% endif %}</button>{% endif %}
+      {% if viewer and (s.editable or s.can_request_replacement) %}<noscript><a href="{{ url_for('assignment_form', block_id=b.id, slot=s.slot) }}">Dienst bearbeiten</a></noscript>{% endif %}
     </div>
     {% endfor %}
   </div>
@@ -143,14 +162,15 @@
     <div class="disclosure-content">
   <p class="hint">
     Alle Heimspiele des TuS Raubling mit den eingeteilten Helferinnen und Helfern.
-    {% if viewer %}Freigegebene Dienste können direkt eingetragen oder freigegeben werden.
+    {% if viewer %}Ein bestätigter Dienst ist verbindlich. Suche bei Bedarf rechtzeitig Ersatz; bis zur gültigen Übernahme bleibt die eingeteilte Person verantwortlich.
     Helfer anderer Mannschaften sowie die Spieler des eigenen Spiels werden mit Hinweis markiert.{% else %}
     Melde dich an, um freie Dienste zu übernehmen.{% endif %}
     Kontaktdaten werden hier bewusst nicht angezeigt.
   </p>
   {% if viewer %}<p class="hint">Zeitnehmer und Sekretär benötigen ein bekanntes Geburtsdatum und das Mindestalter am Spieltag.
     Im vollständig besetzten Verkauf muss mindestens eine eingeteilte Person 18 Jahre oder älter sein.
-    Freigaben bleiben möglich; offene Altersanforderungen werden gesondert angezeigt.</p>{% endif %}
+    Am Vortag um 09:00 Uhr (Europe/Berlin) werden besetzte Dienste fest: Änderungen im Webdienst sind dann geschlossen.
+    Freie Dienste bleiben übernehmbar und werden bei der Zusage sofort fest. Offene Altersanforderungen werden gesondert angezeigt.</p>{% endif %}
     </div>
   </details>
 
@@ -258,4 +278,16 @@
   </details>
   {% endif %}
 </section>
+{% if viewer %}
+<dialog id="assignment-confirmation" class="assignment-confirmation" aria-labelledby="assignment-confirmation-title" aria-describedby="assignment-confirmation-context assignment-confirmation-notice">
+  <h3 id="assignment-confirmation-title">Dienst verbindlich bestätigen</h3>
+  <p id="assignment-confirmation-context" data-confirmation-context></p>
+  <p class="duty-state duty-state-locked" data-confirmation-late hidden>Die Frist am Vortag um 09:00 Uhr (Europe/Berlin) ist bereits erreicht. Diese Zusage ist sofort fest; eine Änderung im Webdienst ist danach ausgeschlossen.</p>
+  <p id="assignment-confirmation-notice">Mit der Bestätigung wird diese Einteilung verbindlich. Die eingeteilte Person bleibt verantwortlich, bis eine berechtigte und geeignete Person den Dienst übernimmt. Ersatz ist nur bis zum Vortag um 09:00 Uhr (Europe/Berlin) möglich. Ab diesem Zeitpunkt können besetzte Dienste im Webdienst weder freigegeben noch geändert werden. Wird ein dann noch freier Dienst übernommen, ist diese Zusage sofort fest. Die Frist gilt auch, wenn keine Erinnerung zugestellt wird.</p>
+  <div class="assignment-confirmation-actions">
+    <button class="btn btn-secondary" type="button" data-confirmation-cancel autofocus>Abbrechen</button>
+    <button class="btn btn-primary" type="button" data-confirmation-confirm>Bestätigen</button>
+  </div>
+</dialog>
+{% endif %}
 {% endblock %}

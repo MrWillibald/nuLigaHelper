@@ -19,7 +19,7 @@ import backup
 
 
 BASELINE_REVISION = "0001_current_schema_baseline"
-HEAD_REVISION = "0006_game_duty_staffing"
+HEAD_REVISION = "0007_binding_duty_assignments"
 
 # Only historical source revisions may translate the former per-game cleaning
 # role. Reinigung is a distinct, assignable role starting at the current head.
@@ -401,12 +401,30 @@ def _check_constraint_drift(engine, metadata) -> bool:
     return False
 
 
-def _verify_pre_cake_schema(engine, revision: str, inherited_defaults: dict) -> None:
-    """Verify the two reviewed predecessors against their actual storage shape."""
+def _pre_binding_metadata():
+    """Reviewed storage before durable request and cutoff state existed."""
     import db
     metadata = MetaData()
     for table in db.Base.metadata.tables.values():
-        table.to_metadata(metadata)
+        if table.name != "duty_cutoffs":
+            table.to_metadata(metadata)
+    for name in ("assignments", "block_assignments"):
+        table = metadata.tables[name]
+        for column in ("replacement_token", "locked_at"):
+            table._columns.remove(table.c[column])
+    return metadata
+
+
+def _verify_pre_binding_schema(engine, inherited_defaults: dict) -> None:
+    metadata = _pre_binding_metadata()
+    if (_unreviewed_metadata_drift(engine, metadata, inherited_defaults)
+            or _check_constraint_drift(engine, metadata)):
+        raise SchemaMigrationError("The binding-duty source schema does not match its reviewed revision")
+
+
+def _verify_pre_cake_schema(engine, revision: str, inherited_defaults: dict) -> None:
+    """Verify the two reviewed predecessors against their actual storage shape."""
+    metadata = _pre_binding_metadata()
     blocks = metadata.tables["day_blocks"]
     for name in ("cake_quantity", "delivery_time"):
         blocks._columns.remove(blocks.c[name])
@@ -458,11 +476,11 @@ def migrate_to_head(database_path: str | Path, engine) -> MigrationResult:
     inherited_defaults = _historical_defaults(engine)
     if state.revision in {"0003_game_day_task_blocks", "0004_person_birth_dates"}:
         _verify_pre_cake_schema(engine, state.revision, inherited_defaults)
-    elif state.revision == "0005_cake_delivery_blocks":
+    elif state.revision in {"0005_cake_delivery_blocks", "0006_game_duty_staffing"}:
         # This data-only revision has the same storage shape as its predecessor.
         # The version label must not authorize unreviewed columns or CHECKs.
         try:
-            verify_head_schema(engine, inherited_defaults=inherited_defaults)
+            _verify_pre_binding_schema(engine, inherited_defaults)
         except SchemaMigrationError as exc:
             raise SchemaMigrationError(
                 f"The game-duty source schema does not match its reviewed revision: {exc}"

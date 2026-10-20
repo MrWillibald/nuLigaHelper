@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Dienst bestätigen{% endblock %}
+{% block content %}
+<section class="section">
+  <h2>{{ label }} · {{ date }}</h2>
+  {% if state.person_name %}<p>Eingeteilt: <strong>{{ state.person_name }}</strong></p>{% endif %}
+  {% if state.locked %}
+  <p>Diese Einteilung ist seit dem Vortag um 09:00 Uhr (Europe/Berlin) fest. Änderungen sind hier nicht mehr möglich.</p>
+  {% elif confirming %}
+  <h3>Verbindliche Einteilung bestätigen</h3>
+  <p><strong>{{ selected.name }} · {{ selected.team_label }}</strong></p>
+  <p>Die Einteilung ist verbindlich. Die eingeteilte Person bleibt verantwortlich, bis eine geeignete Ersatzperson den Dienst übernimmt. Am Vortag um 09:00 Uhr (Europe/Berlin) werden belegte Dienste fest, auch wenn die Erinnerung ausfällt; danach sind hier weder Freigabe noch Wechsel möglich.</p>
+  {% if state.late_claim_locked %}<p>Die Sperre am Vortag um 09:00 Uhr (Europe/Berlin) ist bereits erreicht. Dieser noch freie Dienst wird mit der Bestätigung sofort fest.</p>{% endif %}
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    {% for name, value in target.items() %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
+    <input type="hidden" name="person_id" value="{{ selected.id }}">
+    <input type="hidden" name="action" value="{{ action }}">
+    <button class="btn btn-primary" name="decision" value="confirm">Bestätigen</button>
+    <button class="btn btn-secondary" name="decision" value="cancel" formnovalidate>Abbrechen</button>
+  </form>
+  {% else %}
+  {% if state.seeking_replacement %}<p>Ersatz gesucht. Die bisherige Person bleibt bis zu einer bestätigten Übernahme verantwortlich.</p>{% endif %}
+  {% if people %}
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    {% for name, value in target.items() %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
+    <label>Helfer auswählen
+      <select name="person_id" required>
+        <option value="">Bitte auswählen</option>
+        {% for person in people %}<option value="{{ person.id }}">{{ person.name }} · {{ person.team_label }}</option>{% endfor %}
+      </select>
+    </label>
+    <button class="btn btn-primary" name="decision" value="review">Weiter zur Bestätigung</button>
+    <button class="btn btn-secondary" name="decision" value="cancel" formnovalidate>Abbrechen</button>
+  </form>
+  {% endif %}
+  {% if state.can_request_replacement %}
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    {% for name, value in target.items() %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
+    <button class="btn btn-secondary" name="action" value="{{ 'cancel-replacement' if state.seeking_replacement else 'request-replacement' }}">{{ 'Ersatzsuche beenden' if state.seeking_replacement else 'Ersatz suchen' }}</button>
+    <p>{% if state.seeking_replacement %}Die Ersatzsuche wird beendet. Die eingeteilte Person bleibt verantwortlich.{% else %}Du bleibst eingeteilt und verantwortlich, bis eine geeignete Ersatzperson übernimmt.{% endif %}</p>
+  </form>
+  {% elif state.release_only and state.editable %}
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    {% for name, value in target.items() %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
+    <button class="btn btn-secondary" name="action" value="release">Nicht mehr angebotenen Altdienst freigeben</button>
+  </form>
+  {% elif not people and not state.seeking_replacement %}<p>Für diesen Dienst ist derzeit keine Einteilung möglich.</p>{% endif %}
+  {% endif %}
+  <p><a href="{{ url_for('schedule') }}">Zurück zum Heimspielplan</a></p>
+</section>
+{% endblock %}

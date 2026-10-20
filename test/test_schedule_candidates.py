@@ -120,10 +120,12 @@ def test_candidate_reads_enforce_current_tier_and_do_not_expose_contacts(_today)
     assert "@fixture.test" not in response.get_data(as_text=True)
     admin_block = admin.get(f'/api/blocks/{ids["past_block"]}/candidates')
     assert admin_block.status_code == 200 and admin_block.get_json()["slots"]
-    assert not member.get(f'/api/blocks/{ids["past_block"]}/candidates').get_json()["slots"]
+    past_block_slots = member.get(f'/api/blocks/{ids["past_block"]}/candidates').get_json()["slots"]
+    assert past_block_slots and all(not slot["candidate_ids"] for slot in past_block_slots.values()), "past block state must carry no assignment candidates"
     assert admin.get(f'/api/games/{ids["past"]}/candidates').get_json()["slots"][f'{db.ROLE_TIMEKEEPER}:0']["occupant_id"] == ids["outsider"]
     assert ids["outsider"] not in {person["id"] for person in admin.get(f'/api/games/{ids["past"]}/candidates').get_json()["people"]}
-    assert not member.get(f'/api/games/{ids["past"]}/candidates').get_json()["slots"]
+    past_game_slots = member.get(f'/api/games/{ids["past"]}/candidates').get_json()["slots"]
+    assert past_game_slots and all(not slot["candidate_ids"] for slot in past_game_slots.values()), "past game state must carry no assignment candidates"
 
 
 @patch("common.effective_today", return_value=date(2026, 9, 1))

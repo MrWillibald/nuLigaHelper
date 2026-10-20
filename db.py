@@ -9,12 +9,14 @@ from __future__ import annotations
 
 import logging
 import re
+import secrets
 import time
 
 import contact_validation as contacts
 import age_eligibility
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import Boolean, CheckConstraint, Column, Date, DateTime, Index, Integer, String, ForeignKey, Table, UniqueConstraint, create_engine, delete, event, select, update
 from sqlalchemy.exc import IntegrityError, OperationalError
@@ -606,6 +608,8 @@ class Assignment(Base):
     person_id: Mapped[int] = mapped_column(ForeignKey("persons.id"))
     role: Mapped[str] = mapped_column(String(40))
     slot: Mapped[int] = mapped_column(Integer, default=0)
+    replacement_token: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    locked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     game: Mapped[Game] = relationship(back_populates="assignments")
     person: Mapped[Person] = relationship(back_populates="assignments")
@@ -673,9 +677,25 @@ class BlockAssignment(Base):
     block_id: Mapped[int] = mapped_column(ForeignKey("day_blocks.id"))
     person_id: Mapped[int] = mapped_column(ForeignKey("persons.id"))
     slot: Mapped[int] = mapped_column(Integer)
+    replacement_token: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    locked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     block: Mapped[DayBlock] = relationship(back_populates="assignments")
     person: Mapped[Person] = relationship(back_populates="block_assignments")
+
+
+class DutyCutoff(Base):
+    """Durable actual day-before reminder event, including then-empty positions."""
+
+    __tablename__ = "duty_cutoffs"
+    __table_args__ = (
+        UniqueConstraint("season_year", "date", name="uq_duty_cutoff_season_date"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    season_year: Mapped[int] = mapped_column(Integer)
+    date: Mapped[str] = mapped_column(String(20))
+    locked_at: Mapped[datetime] = mapped_column(DateTime)
 
 
 class AssignmentAudit(Base):
@@ -816,6 +836,20 @@ def sync_games(session: Session, scraped: list[dict], season_year: int) -> SyncE
         raise ValueError(
             f"Mehrdeutige Spielidentität {duplicate_keys}: {conflicts!r}"
         )
+    # Serialize the preflight with claims before inspecting any disappearing
+    # container. A previously loaded empty relationship cannot authorize removal.
+    with session.no_autoflush:
+        session.execute(update(Game).where(Game.season_year == season_year).values(id=Game.id)
+                        .execution_options(synchronize_session=False))
+    session.flush()
+    active_dates = {str(rec.get("date") or "").strip() for rec in scraped if rec.get("date")}
+    disappearing = list(session.scalars(select(DayBlock).where(
+        DayBlock.season_year == season_year
+    ).execution_options(populate_existing=True)))
+    for block in disappearing:
+        session.expire(block, ["assignments"])
+    if any(block.date not in active_dates and block.assignments for block in disappearing):
+        raise ValueError("Ein Heimspieltag mit verbindlichen Einteilungen kann nicht entfernt werden.")
     existing = {
         g.game_nr: g
         for g in session.scalars(select(Game).where(Game.season_year == season_year))
@@ -855,6 +889,7 @@ def sync_games(session: Session, scraped: list[dict], season_year: int) -> SyncE
                 )
             )
 
+        enforce_due_duty_locks(session, game)
         for f in ("day", "date", "time", "hall", "ak", "home", "guest", "score"):
             setattr(game, f, rec[f])
 
@@ -1225,6 +1260,13 @@ class SlotConflictError(ValueError):
         self.current_person_id = current_person_id
 
 
+class DutyLockedError(ValueError):
+    """The saved reminder event made this occupied commitment immutable."""
+
+    def __init__(self):
+        super().__init__("Diese Einteilung ist seit der Vortagserinnerung verbindlich gesperrt.")
+
+
 class CakeConfigurationConflictError(ValueError):
     """A stale settings edit, with the currently saved public configuration."""
 
@@ -1272,7 +1314,7 @@ def _stored_slot(
             Assignment.game_id == game_id,
             Assignment.role == role,
             Assignment.slot == slot,
-        )
+        ).execution_options(populate_existing=True)
     ).first()
 
 
@@ -1317,6 +1359,306 @@ def _audit_assignment(
     )
 
 
+def _lock_game(session: Session, game_id: int) -> Game:
+    """Obtain writer serialization before reading any duty decision."""
+    with session.no_autoflush:
+        session.execute(
+            update(Game).where(Game.id == game_id).values(id=Game.id)
+            .execution_options(synchronize_session=False)
+        )
+    session.flush()
+    stored = session.get(Game, game_id, populate_existing=True)
+    if stored is None:
+        raise ValueError("Spiel wurde nicht gefunden.")
+    return stored
+
+
+def _cutoff_time(session: Session, container: Game | DayBlock) -> datetime | None:
+    return session.scalar(select(DutyCutoff.locked_at).where(
+        DutyCutoff.season_year == container.season_year,
+        DutyCutoff.date == container.date,
+    ))
+
+
+def duty_now() -> datetime:
+    """Berlin wall time with the shared effective date for debug and test clocks."""
+    import common
+    current = datetime.now(ZoneInfo("Europe/Berlin"))
+    effective = common.effective_today()
+    return current.replace(year=effective.year, month=effective.month, day=effective.day)
+
+
+def duty_cutoff_at(container_or_date: Game | DayBlock | str) -> datetime | None:
+    value = container_or_date if isinstance(container_or_date, str) else container_or_date.date
+    scheduled = age_eligibility.parse_game_date(value)
+    if scheduled is None:
+        return None
+    before = scheduled - timedelta(days=1)
+    return datetime(before.year, before.month, before.day, 9, tzinfo=ZoneInfo("Europe/Berlin"))
+
+
+def duty_is_locked(
+    session: Session, container: Game | DayBlock,
+    assignment: Assignment | BlockAssignment | None = None,
+) -> bool:
+    """The fixed Berlin cutoff applies even when no reminder job has run."""
+    cutoff = duty_cutoff_at(container)
+    return bool((assignment is not None and assignment.locked_at is not None)
+                or _cutoff_time(session, container) is not None
+                or (cutoff is not None and duty_now() >= cutoff))
+
+
+def enforce_due_duty_locks(session: Session, container: Game | DayBlock):
+    """Stage due cohort locks; request boundaries commit this before mutation."""
+    if duty_is_locked(session, container):
+        return lock_day_before_batch(session, container.season_year, container.date)
+    return None
+
+
+def _claim_lock_time(session: Session, container: Game | DayBlock) -> datetime | None:
+    saved = _cutoff_time(session, container)
+    if saved is not None:
+        return saved
+    cutoff = duty_cutoff_at(container)
+    return cutoff.replace(tzinfo=None) if cutoff is not None and duty_now() >= cutoff else None
+
+
+def lock_due_duties(session: Session) -> int:
+    """Stage all due dated cohorts for a separately committed request preflight."""
+    cohorts = set(session.execute(select(Game.season_year, Game.date)).all())
+    cohorts.update(session.execute(select(DayBlock.season_year, DayBlock.date)).all())
+    locked = 0
+    current = duty_now()
+    for season_year, duty_date in cohorts:
+        cutoff = duty_cutoff_at(duty_date)
+        if cutoff is not None and current >= cutoff:
+            lock_day_before_batch(session, season_year, duty_date)
+            locked += 1
+    return locked
+
+
+def _authorize_duty_write(
+    session: Session, container: Game | DayBlock, person_id: int,
+    actor_id: int | None, actor_tier: str,
+) -> Person | None:
+    """Recheck current account and tier/team authority inside writer serialization."""
+    if actor_tier in {"system", "cli"} and actor_id is None:
+        return None
+    actor = session.get(Person, actor_id, populate_existing=True) if actor_id else None
+    if actor is None or actor.account_status != ACCOUNT_ACTIVE:
+        raise ValueError("Für diese Änderung ist eine aktive Anmeldung erforderlich.")
+    if actor_tier not in {"member", "mv", "admin"}:
+        raise ValueError("Keine Berechtigung für diese Änderung.")
+    if actor_tier == "admin":
+        if not actor.is_admin:
+            raise ValueError("Keine Administratorberechtigung für diese Änderung.")
+        return actor
+    import common
+    duty_date = age_eligibility.parse_game_date(container.date)
+    if duty_date is not None and duty_date < common.effective_today():
+        raise ValueError("Vergangene Einteilungen können nicht geändert werden.")
+    if actor.id == person_id:
+        return actor
+    if actor_tier == "mv" and isinstance(container, Game) and container.team_id:
+        managed = session.scalar(select(Team.id).join(
+            person_teams, person_teams.c.team_id == Team.id
+        ).where(
+            Team.id == container.team_id,
+            Team.mv_person_id == actor.id,
+            person_teams.c.person_id == person_id,
+        ))
+        own_membership = session.scalar(select(person_teams.c.person_id).where(
+            person_teams.c.team_id == container.team_id,
+            person_teams.c.person_id == actor.id,
+        ))
+        if managed is not None and own_membership is not None:
+            return actor
+    raise ValueError("Keine Berechtigung für diese Einteilung.")
+
+
+def _validate_retirement(
+    session: Session, container: Game | DayBlock,
+    assignment: Assignment | BlockAssignment, action: str,
+    actor_id: int | None, actor_tier: str,
+) -> None:
+    """Only an obsolete, unlocked game duty may be explicitly retired."""
+    if action != "release":
+        raise ValueError("Ungültiger Grund für die Freigabe.")
+    if duty_is_locked(session, container, assignment):
+        raise DutyLockedError()
+    if isinstance(container, Game) and (assignment.role, assignment.slot) not in offered_positions(container):
+        return  # Explicit release-only retirement of an obsolete game duty.
+    raise ValueError("Die Einteilung bleibt verbindlich. Bitte Ersatz suchen lassen.")
+
+
+def lock_day_before_batch(session: Session, season_year: int, date: str) -> DutyCutoff | None:
+    """Persist a due fixed cutoff for the whole dated cohort; caller commits."""
+    cutoff = duty_cutoff_at(date)
+    if cutoff is not None and duty_now() < cutoff:
+        return None
+    if age_eligibility.parse_game_date(date) is None:
+        raise ValueError("Ungültiges Datum für die Vortagserinnerung.")
+    deadline = time.monotonic() + SQLITE_TIMEOUT_SECONDS
+    while True:
+        try:
+            with session.no_autoflush:
+                session.execute(update(DutyCutoff).where(
+                    DutyCutoff.season_year == season_year, DutyCutoff.date == date,
+                ).values(id=DutyCutoff.id).execution_options(synchronize_session=False))
+            session.flush()
+            marker = session.scalars(select(DutyCutoff).where(
+                DutyCutoff.season_year == season_year, DutyCutoff.date == date,
+            ).execution_options(populate_existing=True)).first()
+            if marker is None:
+                marker = DutyCutoff(season_year=season_year, date=date, locked_at=cutoff.replace(tzinfo=None))
+                session.add(marker)
+                session.flush()
+            games = list(session.scalars(select(Game).where(
+                Game.season_year == season_year, Game.date == date,
+            ).execution_options(populate_existing=True)))
+            blocks = list(session.scalars(select(DayBlock).where(
+                DayBlock.season_year == season_year, DayBlock.date == date,
+            ).execution_options(populate_existing=True)))
+            for container in [*games, *blocks]:
+                session.expire(container, ["assignments"])
+                audit = _audit_assignment if isinstance(container, Game) else _audit_block_assignment
+                for assignment in container.assignments:
+                    session.refresh(assignment)
+                    if assignment.replacement_token is not None:
+                        assignment.replacement_token = None
+                        audit(session, assignment, "request_close", None, "system")
+                    if assignment.locked_at is None:
+                        assignment.locked_at = marker.locked_at
+                        audit(session, assignment, "lock", None, "system")
+            session.flush()
+            return marker
+        except OperationalError as exc:
+            session.rollback()
+            _wait_for_assignment_retry(deadline, exc)
+
+
+def _replacement_change(
+    session: Session, container: Game | DayBlock, role: str | None, slot: int,
+    expected_person_id: int | None, expected_request_token: str | None,
+    person: Person | None, actor: Person | None, actor_tier: str,
+    *, cancel: bool = False,
+) -> Assignment | BlockAssignment:
+    is_game = isinstance(container, Game)
+    if is_game:
+        _validate_slot(role, slot)
+    elif type(slot) is not int or slot < 0:
+        raise ValueError("Ungültiger Aufgabenplatz.")
+    container_id, actor_id = container.id, actor.id if actor else None
+    person_id = person.id if person else None
+    deadline = time.monotonic() + SQLITE_TIMEOUT_SECONDS
+    while True:
+        try:
+            stored = (_lock_game(session, container_id) if is_game
+                      else _lock_day_block(session, container_id))
+            enforce_due_duty_locks(session, stored)
+            current = (_stored_slot(session, container_id, role, slot) if is_game
+                       else _stored_block_slot(session, container_id, slot))
+            current_id = current.person_id if current else None
+            if current_id != expected_person_id or current is None:
+                raise SlotConflictError(current_id)
+            if (person_id is not None or cancel) and (
+                not expected_request_token or current.replacement_token != expected_request_token
+            ):
+                raise SlotConflictError(current_id)
+            if duty_is_locked(session, stored, current):
+                raise DutyLockedError()
+            if is_game:
+                if (role, slot) not in offered_positions(stored):
+                    raise ValueError("Diese Aufgabe wird für dieses Spiel nicht angeboten.")
+            else:
+                _validate_block_slot(stored, slot)
+            stored_actor = _authorize_duty_write(
+                session, stored, person_id if person_id is not None else current_id,
+                actor_id, actor_tier,
+            )
+            audit = _audit_assignment if is_game else _audit_block_assignment
+            if cancel:
+                current.replacement_token = None
+                audit(session, current, "request_close", stored_actor, actor_tier)
+                session.flush()
+                return current
+            if person_id is None:
+                if current.replacement_token is None:
+                    current.replacement_token = secrets.token_hex(24)
+                    audit(session, current, "request_open", stored_actor, actor_tier)
+                    session.flush()
+                return current
+            replacement = session.get(Person, person_id, populate_existing=True)
+            if replacement is None or replacement.account_status != ACCOUNT_ACTIVE:
+                raise ValueError("Diese Person kann nicht eingeteilt werden.")
+            assignment_type = Assignment if is_game else BlockAssignment
+            owner_column = Assignment.game_id if is_game else BlockAssignment.block_id
+            other = session.scalars(select(assignment_type).where(
+                owner_column == container_id, assignment_type.person_id == person_id,
+            )).first()
+            if other is not None:
+                raise ValueError("Diese Person ist für dieses Spiel oder diesen Tagesblock bereits eingeteilt.")
+            if is_game:
+                session.expire(stored, ["assignments"])
+                for sibling in stored.assignments:
+                    session.refresh(sibling.person, ["birth_date"])
+                reason = claim_eligibility(stored, role, replacement, slot)
+                if reason is not None:
+                    raise AgeEligibilityError(reason)
+            audit(session, current, "takeover_out", stored_actor, actor_tier)
+            audit(session, current, "request_close", stored_actor, actor_tier)
+            current.person = replacement
+            current.person_id = person_id
+            current.replacement_token = None
+            audit(session, current, "takeover_in", stored_actor, actor_tier)
+            session.flush()
+            session.expire(stored, ["assignments"])
+            return current
+        except OperationalError as exc:
+            session.rollback()
+            _wait_for_assignment_retry(deadline, exc)
+        except IntegrityError:
+            session.rollback()
+            raise SlotConflictError(None) from None
+
+
+def request_replacement(session, game, role, slot, expected_person_id,
+                        actor=None, actor_tier="system"):
+    return _replacement_change(session, game, role, slot, expected_person_id,
+                               None, None, actor, actor_tier)
+
+
+def request_block_replacement(session, block, slot, expected_person_id,
+                              actor=None, actor_tier="system"):
+    return _replacement_change(session, block, None, slot, expected_person_id,
+                               None, None, actor, actor_tier)
+
+
+def cancel_replacement(session, game, role, slot, expected_person_id,
+                       expected_request_token, actor=None, actor_tier="system"):
+    """End this request generation while retaining the assigned responsibility."""
+    return _replacement_change(session, game, role, slot, expected_person_id,
+                               expected_request_token, None, actor, actor_tier, cancel=True)
+
+
+def cancel_block_replacement(session, block, slot, expected_person_id,
+                             expected_request_token, actor=None, actor_tier="system"):
+    return _replacement_change(session, block, None, slot, expected_person_id,
+                               expected_request_token, None, actor, actor_tier, cancel=True)
+
+
+def takeover_slot(session, game, role, slot, expected_person_id,
+                  expected_request_token, person, actor=None, actor_tier="system"):
+    return _replacement_change(session, game, role, slot, expected_person_id,
+                               expected_request_token, person, actor, actor_tier)
+
+
+def takeover_block_slot(session, block, slot, expected_person_id,
+                        expected_request_token, person, actor=None, actor_tier="system"):
+    return _replacement_change(session, block, None, slot, expected_person_id,
+                               expected_request_token, person, actor, actor_tier)
+
+
 def claim_slot(
     session: Session,
     game: Game,
@@ -1344,11 +1686,16 @@ def claim_slot(
                     .execution_options(synchronize_session=False)
                 )
             session.flush()
+            stored_game = session.get(Game, game_id, populate_existing=True)
+            if stored_game is None:
+                raise ValueError("Spiel wurde nicht gefunden.")
+            enforce_due_duty_locks(session, stored_game)
             current = _stored_slot(session, game_id, role, slot)
             current_id = current.person_id if current else None
             if current_id != expected_person_id:
                 raise SlotConflictError(current_id)
             if current is not None:
+                _authorize_duty_write(session, stored_game, person_id, actor_id, actor_tier)
                 if current.person_id == person_id:
                     return current
                 raise SlotConflictError(current.person_id)
@@ -1361,6 +1708,9 @@ def claim_slot(
                 raise ValueError("Diese Aufgabe wird für dieses Spiel nicht angeboten.")
             if stored_person.account_status != ACCOUNT_ACTIVE:
                 raise ValueError("Diese Person kann nicht eingeteilt werden.")
+            stored_actor = _authorize_duty_write(
+                session, stored_game, person_id, actor_id, actor_tier
+            )
             other = session.scalars(
                 select(Assignment).where(
                     Assignment.game_id == game_id,
@@ -1382,18 +1732,20 @@ def claim_slot(
             if reason is not None:
                 raise AgeEligibilityError(reason)
 
-            stored_actor = session.get(Person, actor_id) if actor_id else None
             assignment = Assignment(
                 game=stored_game,
                 person=stored_person,
                 role=role,
                 slot=slot,
+                locked_at=_claim_lock_time(session, stored_game),
             )
             session.add(assignment)
             session.flush()
             _audit_assignment(
                 session, assignment, "claim", stored_actor, actor_tier
             )
+            if assignment.locked_at is not None:
+                _audit_assignment(session, assignment, "lock", None, "system")
             session.flush()
             return assignment
         except OperationalError as exc:
@@ -1428,6 +1780,7 @@ def release_slot(
     expected_person_id: int | None,
     actor: Person | None = None,
     actor_tier: str = "system",
+    action: str = "release",
 ) -> Person | None:
     """Release one slot using bounded, freshly revalidated compare-and-swap."""
     _validate_slot(role, slot)
@@ -1438,6 +1791,8 @@ def release_slot(
 
     while True:
         try:
+            stored_game = _lock_game(session, game_id)
+            enforce_due_duty_locks(session, stored_game)
             current = _stored_slot(session, game_id, role, slot)
             current_id = current.person_id if current else None
             if current_id != expected_person_id:
@@ -1446,10 +1801,12 @@ def release_slot(
                 return None
 
             person = current.person
+            _authorize_duty_write(session, stored_game, current.person_id, actor_id, actor_tier)
+            _validate_retirement(session, stored_game, current, action, actor_id, actor_tier)
             audit = AssignmentAudit(
                 actor_person_id=actor_id,
                 actor_tier=actor_tier,
-                action="release",
+                action=action,
                 affected_person_id=current.person_id,
                 game_id=current.game_id,
                 role=current.role,
@@ -1477,6 +1834,8 @@ def release_slot(
             session.add(audit)
             session.flush()
             session.expire(current.game, ["assignments"])
+            session.expire(person, ["assignments"])
+            session.expunge(current)
             return person
         except OperationalError as exc:
             session.rollback()
@@ -1529,6 +1888,7 @@ def configure_cake_block(
     while True:
         try:
             stored_block = _lock_day_block(session, block_id)
+            enforce_due_duty_locks(session, stored_block)
             if stored_block.phase != BLOCK_CAKE_DELIVERY:
                 raise ValueError("Nur Kuchenlieferungen haben Lieferzeit und Kuchenanzahl.")
             if (
@@ -1546,8 +1906,7 @@ def configure_cake_block(
             ).first()
             if removed_occupant is not None:
                 raise ValueError(
-                    "Belegte Kuchenplätze müssen vor dem Verringern der Kuchenanzahl "
-                    "ausdrücklich freigegeben werden."
+                    "Die Kuchenanzahl kann keine belegten Kuchenplätze entfernen."
                 )
             stored_block.delivery_time = delivery_time
             stored_block.cake_quantity = cake_quantity
@@ -1618,12 +1977,14 @@ def claim_block_slot(
     while True:
         try:
             stored_block = _lock_day_block(session, block_id)
+            enforce_due_duty_locks(session, stored_block)
             _validate_block_slot(stored_block, slot)
             current = _stored_block_slot(session, block_id, slot)
             current_id = current.person_id if current else None
             if current_id != expected_person_id:
                 raise SlotConflictError(current_id)
             if current is not None:
+                _authorize_duty_write(session, stored_block, person_id, actor_id, actor_tier)
                 if current.person_id == person_id:
                     return current
                 raise SlotConflictError(current.person_id)
@@ -1632,6 +1993,9 @@ def claim_block_slot(
                 raise ValueError("Tagesblock oder Person wurde nicht gefunden.")
             if stored_person.account_status != ACCOUNT_ACTIVE:
                 raise ValueError("Diese Person kann nicht eingeteilt werden.")
+            stored_actor = _authorize_duty_write(
+                session, stored_block, person_id, actor_id, actor_tier
+            )
             other = session.scalars(
                 select(BlockAssignment).where(
                     BlockAssignment.block_id == block_id,
@@ -1644,7 +2008,8 @@ def claim_block_slot(
                     f"'{stored_block.label}' eingeteilt."
                 )
             assignment = BlockAssignment(
-                block=stored_block, person=stored_person, slot=slot
+                block=stored_block, person=stored_person, slot=slot,
+                locked_at=_claim_lock_time(session, stored_block),
             )
             session.add(assignment)
             session.flush()
@@ -1652,9 +2017,11 @@ def claim_block_slot(
                 session,
                 assignment,
                 "claim",
-                session.get(Person, actor_id) if actor_id else None,
+                stored_actor,
                 actor_tier,
             )
+            if assignment.locked_at is not None:
+                _audit_block_assignment(session, assignment, "lock", None, "system")
             session.flush()
             return assignment
         except OperationalError as exc:
@@ -1690,72 +2057,44 @@ def release_block_slot(
     actor_tier: str = "system",
     action: str = "release",
 ) -> Person | None:
-    """Release one day-block slot with bounded compare-and-swap semantics."""
+    """Compatibility refusal endpoint; occupied block duties cannot be released."""
     if type(slot) is not int or slot < 0:
         raise ValueError("Ungültiger Aufgabenplatz.")
-    block_id = block.id
-    actor_id = actor.id if actor else None
+    block_id, actor_id = block.id, actor.id if actor else None
     deadline = time.monotonic() + SQLITE_TIMEOUT_SECONDS
     while True:
         try:
             stored_block = _lock_day_block(session, block_id)
+            enforce_due_duty_locks(session, stored_block)
             current = _stored_block_slot(session, block_id, slot)
-            # Retained occupants remain releasable even if stored cake setup is
-            # invalid; an empty position must be part of the saved capacity.
-            if current is None:
-                _validate_block_slot(stored_block, slot)
             current_id = current.person_id if current else None
             if current_id != expected_person_id:
                 raise SlotConflictError(current_id)
             if current is None:
+                _validate_block_slot(stored_block, slot)
                 return None
-            person = current.person
-            audit = AssignmentAudit(
-                actor_person_id=actor_id,
-                actor_tier=actor_tier,
-                action=action,
-                affected_person_id=current.person_id,
-                block_id=current.block_id,
-                role=current.block.label,
-                slot=current.slot,
-                actor_name=actor.name if actor else "System",
-                affected_person_name=person.name,
-                block_snapshot=_block_snapshot(current.block, current.slot),
-            )
-            result = session.execute(
-                delete(BlockAssignment).where(
-                    BlockAssignment.id == current.id,
-                    BlockAssignment.block_id == block_id,
-                    BlockAssignment.slot == slot,
-                    BlockAssignment.person_id == expected_person_id,
-                ).execution_options(synchronize_session=False)
-            )
-            if getattr(result, "rowcount", None) != 1:
-                session.rollback()
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    raise AssignmentTemporarilyUnavailableError()
-                time.sleep(min(0.05, remaining))
-                continue
-            session.add(audit)
-            session.flush()
-            session.expire(current.block, ["assignments"])
-            return person
+            _authorize_duty_write(session, stored_block, current.person_id, actor_id, actor_tier)
+            _validate_retirement(session, stored_block, current, action, actor_id, actor_tier)
         except OperationalError as exc:
             session.rollback()
             _wait_for_assignment_retry(deadline, exc)
-        except IntegrityError:
-            session.rollback()
-            raise
 
 
 def reconcile_day_blocks(
     session: Session, season_year: int, active_dates: set[str]
 ) -> None:
-    """Ensure all dated phases and audit removal for vanished dates."""
-    existing = list(
-        session.scalars(select(DayBlock).where(DayBlock.season_year == season_year))
-    )
+    """Ensure dated phases and remove only genuinely empty vanished blocks."""
+    with session.no_autoflush:
+        session.execute(update(DayBlock).where(DayBlock.season_year == season_year)
+                        .values(id=DayBlock.id).execution_options(synchronize_session=False))
+    session.flush()
+    existing = list(session.scalars(select(DayBlock).where(
+        DayBlock.season_year == season_year
+    ).execution_options(populate_existing=True)))
+    for block in existing:
+        session.expire(block, ["assignments"])
+    if any(block.date not in active_dates and block.assignments for block in existing):
+        raise ValueError("Ein Heimspieltag mit verbindlichen Einteilungen kann nicht entfernt werden.")
     by_key = {(block.date, block.phase): block for block in existing}
     for block_date in sorted(active_dates):
         for phase in BLOCK_PHASES:
@@ -1767,23 +2106,12 @@ def reconcile_day_blocks(
     for block in existing:
         if block.date in active_dates:
             continue
-        removed = 0
-        for assignment in list(block.assignments):
-            release_block_slot(
-                session,
-                block,
-                assignment.slot,
-                assignment.person_id,
-                actor_tier="system",
-                action="remove",
-            )
-            removed += 1
         logging.info(
             "day_block_removed season_year=%s date=%s phase=%s removed_assignments=%s",
             block.season_year,
             block.date,
             block.phase,
-            removed,
+            0,
         )
         session.delete(block)
     session.flush()
@@ -1792,13 +2120,13 @@ def reconcile_day_blocks(
 def set_role_assignments(session: Session, game: Game, role: str,
                           person_ids: list[int], actor: Person | None = None,
                           actor_tier: str = "system") -> None:
-    """Replace all assignments of `role` on `game` with the given slot order."""
+    """Legacy seeding helper: fill empty positions, refusing changed commitments."""
     _validate_slot(role, 0)
     if len(person_ids) > ROLE_SLOT_COUNT[role]:
         raise ValueError("Zu viele Personen für diese Aufgabe.")
     try:
-        # Release changed slots first so moving a person between slots does not
-        # temporarily violate the one-task-per-game constraint.
+        # Offered commitments cannot be replaced by a whole-role edit.
+        # Only explicit pre-cutoff retirement of obsolete duties can remove rows.
         for slot in range(ROLE_SLOT_COUNT[role]):
             current = _slot_assignment(game, role, slot)
             desired_id = person_ids[slot] if slot < len(person_ids) else None
@@ -1831,18 +2159,15 @@ def delete_person(
     actor: Person | None = None,
     actor_tier: str = "system",
 ) -> None:
-    """Delete a person together with all their assignments and MV roles."""
-    for team in session.scalars(
-        select(Team).where(Team.mv_person_id == person.id)
-    ):
-        team.mv_person_id = None
-    for assignment in list(person.assignments):
-        _audit_assignment(session, assignment, "unassign", actor, actor_tier)
-        assignment.game.assignments.remove(assignment)
-    for assignment in list(person.block_assignments):
-        _audit_block_assignment(session, assignment, "unassign", actor, actor_tier)
-        assignment.block.assignments.remove(assignment)
+    """Delete an erroneous unassigned record while retaining audit snapshots."""
+    with session.no_autoflush:
+        session.execute(update(Person).where(Person.id == person.id).values(id=Person.id))
     session.flush()
+    session.expire(person, ["assignments", "block_assignments"])
+    if person.assignments or person.block_assignments:
+        raise ValueError("Die Person hat verbindliche Einteilungen und kann nicht gelöscht werden.")
+    for team in session.scalars(select(Team).where(Team.mv_person_id == person.id)):
+        team.mv_person_id = None
     for entry in session.scalars(
         select(AssignmentAudit).where(AssignmentAudit.actor_person_id == person.id)
     ):
@@ -1856,46 +2181,29 @@ def delete_person(
 
 
 def deactivate_person(
-    session: Session,
-    person: Person,
-    actor: Person | None = None,
+    session: Session, person: Person, actor: Person | None = None,
     actor_tier: str = "admin",
 ) -> None:
-    """Deactivate a person, retaining history while freeing future assignments."""
+    """Refuse cancellation of current/future commitments; preserve past history."""
     import common
-
+    with session.no_autoflush:
+        session.execute(update(Person).where(Person.id == person.id).values(id=Person.id))
+    session.flush()
+    session.expire(person, ["assignments", "block_assignments"])
     today = common.effective_today()
+    # Read scalar dates after serialization: cached containers may predate a
+    # separately committed reschedule from the past into the current season.
+    duty_dates = list(session.scalars(select(Game.date).join(
+        Assignment, Assignment.game_id == Game.id
+    ).where(Assignment.person_id == person.id)))
+    duty_dates.extend(session.scalars(select(DayBlock.date).join(
+        BlockAssignment, BlockAssignment.block_id == DayBlock.id
+    ).where(BlockAssignment.person_id == person.id)))
+    if any((age_eligibility.parse_game_date(value) or date.max) >= today
+           for value in duty_dates):
+        raise ValueError("Die Person hat verbindliche Einteilungen und kann nicht deaktiviert werden.")
     for team in session.scalars(select(Team).where(Team.mv_person_id == person.id)):
         team.mv_person_id = None
-    for assignment in list(person.assignments):
-        try:
-            game_date = datetime.strptime(assignment.game.date or "", "%d.%m.%Y").date()
-        except ValueError:
-            game_date = date.max
-        if game_date >= today:
-            release_slot(
-                session,
-                assignment.game,
-                assignment.role,
-                assignment.slot,
-                person.id,
-                actor,
-                actor_tier,
-            )
-    for assignment in list(person.block_assignments):
-        try:
-            block_date = datetime.strptime(assignment.block.date, "%d.%m.%Y").date()
-        except ValueError:
-            block_date = date.max
-        if block_date >= today:
-            release_block_slot(
-                session,
-                assignment.block,
-                assignment.slot,
-                person.id,
-                actor,
-                actor_tier,
-            )
     person.account_status = ACCOUNT_INACTIVE
     session.commit()
 

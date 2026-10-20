@@ -46,7 +46,7 @@ class TextRecorder:
         return "\n".join(parts)
 
 
-def _setup(fully_assigned: bool = False):
+def _setup(fully_assigned: bool = False, missing_roles=(), missing_preparation_slots=()):
     """Build the scenario database and return (session, game, notifier, recorder)."""
     engine = h.make_engine()
     session = h.Session(engine)
@@ -74,7 +74,7 @@ def _setup(fully_assigned: bool = False):
         (db.ROLE_SALE, caro), (db.ROLE_SALE, dora),
         (db.ROLE_SECURITY, ed), (db.ROLE_CASH, cash_helper),
     ]:
-        if person is not None:
+        if person is not None and role not in missing_roles:
             if role == db.ROLE_CASH:
                 # Synthetic migrated legacy assignment, now release-only on youth.
                 session.add(db.Assignment(game=game, person=person, role=role, slot=0))
@@ -83,8 +83,10 @@ def _setup(fully_assigned: bool = False):
     blocks = db.get_day_blocks(session, h.SEASON, GAME_DATE)
     preparation = next(b for b in blocks if b.phase == db.BLOCK_PREPARATION)
     cleanup = next(b for b in blocks if b.phase == db.BLOCK_CLEANUP)
-    db.claim_block_slot(session, preparation, 0, None, caro)
-    db.claim_block_slot(session, preparation, 1, None, dora)
+    if 0 not in missing_preparation_slots:
+        db.claim_block_slot(session, preparation, 0, None, caro)
+    if 1 not in missing_preparation_slots:
+        db.claim_block_slot(session, preparation, 1, None, dora)
     db.claim_block_slot(session, cleanup, 0, None, ed)
     session.commit()
 
@@ -131,9 +133,7 @@ def test_mv_notification_only_while_tasks_are_open():
 
 
 def test_mv_notification_contains_judge_team_and_both_judges():
-    session, game, n, rec = _setup()
-    security = game.assignment_by_role(db.ROLE_SECURITY)
-    db.release_slot(session, game, db.ROLE_SECURITY, 0, security.person_id)
+    session, game, n, rec = _setup(missing_roles=(db.ROLE_SECURITY,))
     session.commit()
     n.notify_game_day(GAME_DATE)
 
@@ -444,11 +444,9 @@ def test_preparation_uses_existing_sender_partner_names_and_meeting_time():
 
 
 def test_spielfest_selects_day_before_weekly_mv_and_shift_keys_explicitly():
-    session, game, sender, recorder = _setup()
+    session, game, sender, recorder = _setup(missing_roles=(db.ROLE_SECURITY,))
     game.ak = "SPF Mini"
     game.home = game.guest = ""
-    security = game.assignment_by_role(db.ROLE_SECURITY)
-    db.release_slot(session, game, db.ROLE_SECURITY, 0, security.person_id)
     session.commit()
     assert sender.notify_game_day(GAME_DATE) == 5, "four helpers and incomplete-staffing MV need a reminder"
     assert "morgen" in recorder.all_text() and "Spielfest SPF Mini" in recorder.all_text()
@@ -468,13 +466,10 @@ def test_spielfest_selects_day_before_weekly_mv_and_shift_keys_explicitly():
 def test_mv_zero_and_one_timing_occupant_have_readable_labels_and_vacancy_status():
     for age_class in ("BL mD", "SPF Mini"):
         for release_roles in ((db.ROLE_TIMEKEEPER,), (db.ROLE_TIMEKEEPER, db.ROLE_SECRETARY)):
-            session, game, sender, recorder = _setup()
+            session, game, sender, recorder = _setup(missing_roles=release_roles)
             game.ak = age_class
             if db.is_spielfest(game):
                 game.home = game.guest = ""
-            for role in release_roles:
-                assignment = game.assignment_by_role(role)
-                db.release_slot(session, game, role, 0, assignment.person_id)
             session.commit()
             assert sender.notify_game_day(GAME_DATE) == 6 - len(release_roles)
             mv_body = next(body for phone, body in recorder.smss if phone == "+491700000002")
@@ -502,11 +497,9 @@ def test_mv_full_but_age_deficient_staffing_keeps_named_occupants_and_follow_up(
 
 
 def test_block_time_fallback_and_cross_date_time_come_from_catalog_fragments():
-    session, game, sender, recorder = _setup()
+    session, game, sender, recorder = _setup(missing_preparation_slots=(1,))
     preparation = next(block for block in sender._blocks_for_date(GAME_DATE)
                        if block.phase == db.BLOCK_PREPARATION)
-    dora = session.query(db.Person).filter_by(name="Dora").one()
-    db.release_block_slot(session, preparation, 1, dora.id)
     game.time = "00:30"
     session.commit()
     assert sender.notify_service_early(GAME_DATE) == 1

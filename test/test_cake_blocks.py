@@ -54,47 +54,41 @@ def test_four_cakes_allow_four_slots_but_keep_one_task_per_block():
             db.claim_block_slot(session, cake, 4, None, people[4])
         with pytest.raises(ValueError, match="Aufgabenplatz"):
             db.claim_block_slot(session, preparation, 3, None, people[4])
-        db.release_block_slot(session, cake, 1, people[1].id)
+        request = db.request_block_replacement(session, cake, 1, people[1].id)
         with pytest.raises(ValueError, match="bereits"):
-            db.claim_block_slot(session, cake, 1, None, people[0])
+            db.takeover_block_slot(session, cake, 1, people[1].id, request.replacement_token, people[0])
         db.claim_block_slot(session, preparation, 0, None, people[0])
         db.claim_block_slot(session, cleanup, 0, None, people[0])
         game = session.query(db.Game).one()
         db.claim_slot(session, game, db.ROLE_SECURITY, 0, None, people[0])
-        assert len(cake.assignments) == 3
+        assert len(cake.assignments) == 4
 
 
-def test_quantity_edits_preserve_numbered_occupants_and_require_explicit_release():
+def test_quantity_edits_preserve_numbered_occupants_and_refuse_removal_of_commitments():
     with h.Session(h.make_engine()) as session:
         _data, _preparation, cake, _cleanup, people = _setup(session)
         db.configure_cake_block(session, cake, "10:00", 2, None, None)
         first = db.claim_block_slot(session, cake, 0, None, people[0])
         first_id = first.id
         db.configure_cake_block(session, cake, "11:00", 4, "10:00", 2)
-        assert cake.assignment_for_slot(0).id == first_id
-        assert cake.assignment_for_slot(2) is None
         db.claim_block_slot(session, cake, 3, None, people[1])
         before_audits = session.query(db.AssignmentAudit).count()
-        with pytest.raises(ValueError, match="ausdrücklich freigegeben"):
+        with pytest.raises(ValueError, match="belegten"):
             db.configure_cake_block(session, cake, "12:00", 2, "11:00", 4)
+        with pytest.raises(ValueError, match="verbindlich"):
+            db.release_block_slot(session, cake, 3, people[1].id)
         assert (cake.delivery_time, cake.cake_quantity) == ("11:00", 4)
         assert session.query(db.AssignmentAudit).count() == before_audits
-        assert cake.assignment_for_slot(3).person_id == people[1].id
-        db.release_block_slot(session, cake, 3, people[1].id)
-        db.configure_cake_block(session, cake, "12:00", 2, "11:00", 4)
         assert cake.assignment_for_slot(0).id == first_id
-        assert cake.assignment_for_slot(1) is None
-        release = session.query(db.AssignmentAudit).filter_by(action="release").one()
-        assert release.role == "Kuchenlieferung" and release.slot == 3
-        assert "Kuchenlieferung 4" in release.block_snapshot
-        assert str(h.SEASON) in release.block_snapshot
-        assert cake.date in release.block_snapshot
-        assert db.block_slot_label(db.BLOCK_CAKE_DELIVERY, release.slot) == "Kuchenlieferung 4"
+        assert cake.assignment_for_slot(3).person_id == people[1].id
+        # Removing only genuinely empty added capacity remains safe.
+        db.configure_cake_block(session, cake, "12:00", 5, "11:00", 4)
+        db.configure_cake_block(session, cake, "12:00", 4, "12:00", 5)
+        assert cake.assignment_for_slot(0).id == first_id
+        assert cake.assignment_for_slot(3).person_id == people[1].id
         with pytest.raises(ValueError):
-            db.configure_cake_block(session, cake, "12:00", 0, "12:00", 2)
-        db.release_block_slot(session, cake, 0, people[0].id)
-        db.configure_cake_block(session, cake, "12:00", 0, "12:00", 2)
-        assert db.block_capacity(cake) == 0 and db.block_is_configured(cake)
+            db.configure_cake_block(session, cake, "12:00", 0, "12:00", 4)
+        assert session.query(db.AssignmentAudit).count() == before_audits
 
 
 def test_invalid_settings_and_stale_edits_leave_saved_settings_and_history_unchanged():
@@ -136,18 +130,13 @@ def test_same_date_sync_keeps_cake_configuration_and_moved_date_removes_with_aud
             db.sync_games(session, [changed, changed], h.SEASON)
         assert session.get(db.DayBlock, block_id) is retained
         moved = {**data, "date": "04.10.2026"}
-        db.sync_games(session, [moved], h.SEASON)
-        session.commit()
-        removal = session.query(db.AssignmentAudit).filter_by(action="remove").one()
-        assert removal.block_id is None
-        assert removal.block_snapshot == "Saison 2026 | 03.10.2026 | Kuchenlieferung 4"
-        assert removal.actor_tier == "system"
-        new_cake = next(block for block in db.get_day_blocks(
-            session, h.SEASON, moved["date"]
-        ) if block.phase == db.BLOCK_CAKE_DELIVERY)
-        assert new_cake.id != block_id
-        assert new_cake.delivery_time is None and new_cake.cake_quantity is None
-        assert not new_cake.assignments
+        before_audits = session.query(db.AssignmentAudit).count()
+        with pytest.raises(ValueError, match="verbindlichen"):
+            db.sync_games(session, [moved], h.SEASON)
+        session.rollback()
+        assert session.get(db.DayBlock, block_id).assignment_for_slot(3).id == assignment_id
+        assert session.query(db.AssignmentAudit).count() == before_audits
+        assert session.query(db.Game).filter_by(game_nr=data["game_nr"]).one().date == data["date"]
 
 
 def test_inactive_people_cannot_claim_cakes_and_stale_release_preserves_occupant():

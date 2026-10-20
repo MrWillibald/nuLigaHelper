@@ -74,3 +74,15 @@ PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs \
   synthetic SQLite files and fake Dropbox clients.
 - File-backed test databases use the same WAL/foreign-key/busy-timeout profile as
   the application so contention tests exercise the supported runtime behavior.
+
+
+The optional `browser_binding_assignments.mjs` check uses the same preinstalled
+Playwright/Chromium runtime and a synthetic loopback-only Flask fixture. It verifies
+native confirmation, Cancel/Escape/focus return, every duty container, replacement
+requests and atomic takeovers, concurrent claims, immediate late locking and the
+non-JavaScript confirmation path. It installs nothing and never uses real providers:
+
+```bash
+PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs \
+  BROWSER_EXECUTABLE=/absolute/path/to/chromium node test/browser_binding_assignments.mjs
+```
