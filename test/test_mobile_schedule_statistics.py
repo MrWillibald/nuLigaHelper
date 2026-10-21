@@ -96,7 +96,7 @@ def test_schedule_intro_and_filters_use_native_expanded_fallback_without_candida
         assert form.get("method") == "get" and form.get("action") == "/"
         assert not tree.xpath('//p[@aria-label="Aktive Spielplanfilter"]')
         if viewer:
-            assert "Mindestalter am Spieltag" in disclosures[0].text_content()
+            assert "am Spieltag mindestens 14 Jahre bei Jugend/SPF und 16 Jahre bei Erwachsenen" in disclosures[0].text_content()
         assert tree.xpath('//div[@data-eligibility-status and not(@hidden)]')
         assert not disclosures[0].xpath('.//*[@data-eligibility-status or @data-cake-status]'), (
             "operational warnings must keep their game/day-block context"

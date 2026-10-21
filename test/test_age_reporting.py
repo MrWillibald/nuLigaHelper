@@ -226,5 +226,175 @@ def test_game_and_birth_corrections_reevaluate_without_rewriting_assignments(_to
         assert session.get(db.Assignment, assignment_id).person_id == ids["mv"], "takeover lost assignment identity"
 
 
+@patch("common.effective_today", return_value=date(2026, 9, 1))
+def test_security_candidates_claims_and_takeovers_enforce_age_for_every_web_tier(_today):
+    app, engine, ids = _site()
+    admin = _client(app, ids["admin"])
+    candidates = _candidates(admin, ids)["slots"]["Ordnungsdienst:0"]["candidate_ids"]
+    assert ids["adult"] in candidates
+    assert ids["young"] not in candidates and ids["unknown"] not in candidates
+    for actor in ("young", "mv", "admin"):
+        response = _claim(_client(app, ids[actor]), ids, db.ROLE_SECURITY, "young")
+        assert response.status_code == 400, f"{actor} bypassed Ordnungsdienst age"
+        assert "mindestens 18 Jahre" in response.get_json()["error"]
+    assert _claim(admin, ids, db.ROLE_SECURITY, "adult").get_json()["ok"]
+    target = dict(game_id=ids["game"], role=db.ROLE_SECURITY, slot=0, expected_person_id=ids["adult"])
+    request = admin.post("/api/assignment/request-replacement", json=target, headers=h.csrf_headers()).get_json()
+    token = request["assignment"]["replacement_token"]
+    with h.Session(engine) as session:
+        before = session.query(db.AssignmentAudit).count()
+    for actor in ("young", "mv", "admin"):
+        response = _client(app, ids[actor]).post("/api/assignment/takeover", json={
+            **target, "person_id": ids["young"], "expected_request_token": token,
+        }, headers=h.csrf_headers())
+        assert response.status_code == 400
+    with h.Session(engine) as session:
+        saved = session.get(db.Game, ids["game"]).assignment_by_role(db.ROLE_SECURITY)
+        assert saved.person_id == ids["adult"] and saved.replacement_token == token
+        assert session.query(db.AssignmentAudit).count() == before
+
+
+@patch("common.effective_today", return_value=date(2026, 9, 1))
+def test_revised_policy_html_confirmation_rechecks_saved_age_and_youth_category(_today):
+    for role in (db.ROLE_TIMEKEEPER, db.ROLE_SECURITY, db.ROLE_SALE):
+        app, engine, ids = _site()
+        admin = _client(app, ids["admin"])
+        person = "unknown" if role == db.ROLE_SALE else "adult"
+        slot = 1 if role == db.ROLE_SALE else 0
+        with h.Session(engine) as session:
+            game = session.get(db.Game, ids["game"])
+            if role == db.ROLE_SALE:
+                game.ak = "SPF Mini"
+                db.claim_slot(session, game, db.ROLE_SALE, 0, None, session.get(db.Person, ids["young"]))
+            else:
+                session.get(db.Person, ids[person]).birth_date = date(2010 if role == db.ROLE_TIMEKEEPER else 2008, 11, 1)
+            session.commit()
+            before = session.query(db.AssignmentAudit).count()
+        target = dict(game_id=ids["game"], role=role, slot=slot, person_id=ids[person],
+                      expected_person_id="", action="claim")
+        assert ids[person] in _candidates(admin, ids)["slots"][f"{role}:{slot}"]["candidate_ids"]
+        review = admin.post("/dienst", data=h.csrf_data({**target, "decision": "review"}))
+        assert review.status_code == 200 and "Bestätigen" in review.get_data(as_text=True)
+        assert admin.post("/dienst", data=h.csrf_data({**target, "decision": "cancel"})).status_code == 302
+        with h.Session(engine) as session:
+            assert session.query(db.AssignmentAudit).count() == before
+            assert session.get(db.Game, ids["game"]).assignment_by_role(role, slot) is None
+        assert admin.post("/dienst", data=h.csrf_data({**target, "decision": "review"})).status_code == 200
+        with h.Session(engine) as session:
+            if role == db.ROLE_SALE:
+                session.get(db.Game, ids["game"]).ak = "BL M"
+            else:
+                session.get(db.Person, ids[person]).birth_date = date(2012, 11, 1)
+            session.commit()
+        refused = admin.post("/dienst", data=h.csrf_data({**target, "decision": "confirm"}))
+        assert refused.status_code == 400, "HTML confirmation trusted a stale age/category"
+        with h.Session(engine) as session:
+            assert session.query(db.AssignmentAudit).count() == before
+            assert session.get(db.Game, ids["game"]).assignment_by_role(role, slot) is None
+        # A new, eligible confirmation must work with the revised policy.
+        with h.Session(engine) as session:
+            if role == db.ROLE_SALE:
+                session.get(db.Game, ids["game"]).ak = "SPF Mini"
+            else:
+                session.get(db.Person, ids[person]).birth_date = date(2010 if role == db.ROLE_TIMEKEEPER else 2008, 11, 1)
+            session.commit()
+        saved = admin.post("/dienst", data=h.csrf_data({**target, "decision": "confirm"}))
+        assert saved.status_code == 302
+        candidates = _candidates(admin, ids)
+        assert candidates["slots"][f"{role}:{slot}"]["occupant_id"] == ids[person]
+        assert not any(d["role"] == role for d in candidates["staffing"]["deficiencies"])
+
+
+@patch("common.effective_today", return_value=date(2026, 9, 1))
+def test_youth_sale_web_takeover_and_refresh_remove_only_adult_without_warning(_today):
+    app, engine, ids = _site()
+    with h.Session(engine) as session:
+        session.get(db.Game, ids["game"]).ak = "BL mD"
+        session.commit()
+    admin = _client(app, ids["admin"])
+    assert _claim(admin, ids, db.ROLE_SALE, "adult").get_json()["ok"]
+    assert _claim(admin, ids, db.ROLE_SALE, "young", 1).get_json()["ok"]
+    target = dict(game_id=ids["game"], role=db.ROLE_SALE, slot=0, expected_person_id=ids["adult"])
+    wanted = admin.post("/api/assignment/request-replacement", json=target, headers=h.csrf_headers()).get_json()
+    assert ids["unknown"] in _candidates(admin, ids)["slots"]["Verkauf:0"]["candidate_ids"]
+    saved = admin.post("/api/assignment/takeover", json={
+        **target, "person_id": ids["unknown"],
+        "expected_request_token": wanted["assignment"]["replacement_token"],
+    }, headers=h.csrf_headers()).get_json()
+    assert saved["ok"] and saved["assignment"]["person_id"] == ids["unknown"]
+    assert not any(d["role"] == db.ROLE_SALE for d in saved["staffing"]["deficiencies"])
+    refreshed = _candidates(admin, ids)
+    assert refreshed["slots"]["Verkauf:0"]["occupant_id"] == ids["unknown"]
+    assert refreshed["staffing"] == saved["staffing"]
+
+
+@patch("common.effective_today", return_value=date(2026, 9, 1))
+def test_retained_security_deficiencies_and_relaxed_rules_agree_across_reporting(_today):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    for born, code in ((date(2012, 1, 1), "underage"), (None, "unknown_birth_date")):
+        app, engine, ids = _site()
+        with h.Session(engine) as session:
+            game = session.get(db.Game, ids["game"])
+            # Synthetic pre-policy roster, including retained locks/requests.
+            for index, (role, slot) in enumerate(db.required_positions(game)):
+                birthday = (born if role == db.ROLE_SECURITY else date(2010, 11, 1)
+                            if role == db.ROLE_TIMEKEEPER else None if role == db.ROLE_SALE
+                            else h.ADULT_BIRTH_DATE)
+                person = db.Person(name=f"Retained helper {index}", birth_date=birthday)
+                session.add(person)
+                session.flush()
+                session.add(db.Assignment(game=game, person=person, role=role, slot=slot,
+                                          locked_at=datetime(2026, 8, 30, 9, tzinfo=ZoneInfo("Europe/Berlin")),
+                                          replacement_token=f"retained-token-{index}"))
+            game.ak = "SPF Mini"
+            session.commit()
+            def snapshot(session):
+                return [(a.id, a.person_id, a.role, a.slot, a.locked_at, a.replacement_token)
+                        for a in session.query(db.Assignment).order_by(db.Assignment.id)]
+            before = snapshot(session)
+            audits = session.query(db.AssignmentAudit).count()
+            status = db.staffing_status(game)
+            assert status["required_filled"] == status["required_total"] == 5
+            assert [(d["role"], d["code"]) for d in status["deficiencies"]] == [(db.ROLE_SECURITY, code)]
+            service = notifier.Notifier(h.load_club_config(), session, h.SEASON)
+            with patch.object(service, "_notify_game_helpers", return_value=0), patch.object(service, "_dispatch", return_value=1) as dispatch:
+                assert service.notify_game_day(game.date) == 1, "retained security deficiency missed MV follow-up"
+                assert "Ordnungsdienst" in dispatch.call_args.kwargs["mail_body"]
+            for category in ("BL M", "GE", "SPF Mini"):
+                game.ak = category
+                result = db.staffing_status(game)
+                assert any(d["role"] == db.ROLE_SALE for d in result["deficiencies"]) == (category != "SPF Mini")
+                if category != "GE":
+                    assert not any(d["role"] == db.ROLE_TIMEKEEPER for d in result["deficiencies"])
+            session.commit()
+        guest_text = app.test_client().get("/").get_data(as_text=True)
+        tree = html.fromstring(guest_text)
+        assert tree.xpath('//details[@class="game-card"]//*[@data-progress-count]/text()') == ["5/5"]
+        assert not tree.xpath('//details[@class="game-card"]//*[@data-vacancies]/span')
+        warnings = tree.xpath('//div[@data-eligibility-status]')[0].text_content()
+        assert "Ordnungsdienst" in warnings and "Verkauf" not in warnings
+        admin = _client(app, ids["admin"])
+        stats = admin.get("/statistik").get_data(as_text=True)
+        assert "Ordnungsdienst" in stats and "SPF Mini" in html.fromstring(stats).text_content()
+        candidates_text = admin.get(f'/api/games/{ids["game"]}/candidates').get_data(as_text=True)
+        for response in (guest_text, stats, candidates_text):
+            assert "2010-11-01" not in response and "2012-01-01" not in response and '"age"' not in response
+            assert '"birth_date":' not in response
+        with h.Session(engine) as session:
+            assert snapshot(session) == before, "reporting changed a binding duty, lock or request"
+            assert session.query(db.AssignmentAudit).count() == audits, "policy reevaluation fabricated audits"
+            game = session.get(db.Game, ids["game"])
+            game.assignment_by_role(db.ROLE_SECURITY).person.birth_date = h.ADULT_BIRTH_DATE
+            session.commit()
+            assert db.staffing_status(game)["complete"], "youth sale or 16-year-old timing still deficient"
+            service = notifier.Notifier(h.load_club_config(), session, h.SEASON)
+            with patch.object(service, "_notify_game_helpers", return_value=0), patch.object(service, "_dispatch", return_value=1) as dispatch:
+                assert service.notify_game_day(game.date) == 0
+                dispatch.assert_not_called()
+        warnings = html.fromstring(app.test_client().get("/").get_data(as_text=True)).xpath('//div[@data-eligibility-status]')[0]
+        assert warnings.get("hidden") is not None
+
+
 if __name__ == "__main__":
     h.run_all(dict(globals()))

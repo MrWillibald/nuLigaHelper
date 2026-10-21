@@ -97,7 +97,7 @@ BLOCK_PHASE_LABELS = {
 # Keep coverage in sync with ROLE_SLOT_COUNT and BLOCK_PHASES.
 TASK_DESCRIPTIONS = {
     ROLE_TIMEKEEPER: (
-        "Mindestalter am Spieltag: 14 Jahre bei Jugendspielen, 18 Jahre bei Erwachsenenspielen. "
+        "Mindestalter am Spieltag: 14 Jahre bei Jugendspielen einschließlich SPF, 16 Jahre bei Erwachsenenspielen. "
         "Mindestens eine Stunde vor dem angesetzten Spielbeginn am Spielort sein. "
         "An den technischen Besprechungen mit den Schiedsrichtern spätestens 30 Minuten "
         "vor dem Spiel und direkt nach dem Spiel teilnehmen. "
@@ -106,7 +106,7 @@ TASK_DESCRIPTIONS = {
         "Eine offizielle Zeitnehmer-Schulung ist nicht erforderlich."
     ),
     ROLE_SECRETARY: (
-        "Mindestalter am Spieltag: 14 Jahre bei Jugendspielen, 16 Jahre bei Erwachsenenspielen. "
+        "Mindestalter am Spieltag: 14 Jahre bei Jugendspielen einschließlich SPF, 16 Jahre bei Erwachsenenspielen. "
         "Mindestens eine Stunde vor dem angesetzten Spielbeginn am Spielort sein. "
         "An den technischen Besprechungen mit den Schiedsrichtern spätestens 30 Minuten "
         "vor dem Spiel und direkt nach dem Spiel teilnehmen. "
@@ -115,11 +115,14 @@ TASK_DESCRIPTIONS = {
     ),
     ROLE_SALE: (
         "Mindestens eine Stunde vor dem angesetzten Spielbeginn am Spielort sein. "
-        "Mindestens eine der eingeteilten Verkaufspersonen muss am Spieltag 18 Jahre "
-        "oder älter sein. Bei der Vorbereitung von Speisen und Getränken für den "
+        "Bei Jugendspielen einschließlich SPF gelten im Verkauf keine Altersanforderungen. "
+        "Bei Erwachsenenspielen und ungeklärten Altersklassen muss im vollständig besetzten "
+        "Verkauf mindestens eine eingeteilte Person am Spieltag 18 Jahre oder älter sein. "
+        "Bei der Vorbereitung von Speisen und Getränken für den "
         "Verkaufsstand helfen und diese während des Spiels verkaufen."
     ),
     ROLE_SECURITY: (
+        "Mindestalter am Spieltag: 18 Jahre bei allen Spielen; ein bekanntes Geburtsdatum ist erforderlich. "
         "Mindestens eine Stunde vor dem angesetzten Spielbeginn am Spielort sein. "
         "An den technischen Besprechungen mit den Schiedsrichtern spätestens 30 Minuten "
         "vor dem Spiel und direkt nach dem Spiel teilnehmen. Für einen sicheren Spielablauf "
@@ -2243,9 +2246,11 @@ def claim_eligibility(game: Game, role: str, person: Person, slot: int = 0) -> d
     if (role, slot) not in offered_positions(game):
         return {"role": role, "slot": slot, "code": "duty_not_offered",
                 "message": "Diese Aufgabe wird für dieses Spiel nicht angeboten."}
-    reason = age_eligibility.timing_eligibility(game, role, person, slot)
+    reason = age_eligibility.individual_eligibility(game, role, person, slot)
     if reason is not None or role != ROLE_SALE:
         return reason
+    if classify_game_category(game.ak) == age_eligibility.YOUTH:
+        return None
     if age_eligibility.parse_game_date(game.date) is None:
         return age_eligibility.deficiency(
             ROLE_SALE, "unresolved_game_date", minimum_age=18
@@ -2264,9 +2269,9 @@ def staffing_status(game: Game) -> dict:
     """Keep physical vacancies distinct from invalid or unresolved eligibility."""
     vacancies = missing_slots(game)
     deficiencies = []
-    for role in (ROLE_TIMEKEEPER, ROLE_SECRETARY):
+    for role in (ROLE_TIMEKEEPER, ROLE_SECRETARY, ROLE_SECURITY):
         for assignment in game.assignments_by_role(role):
-            reason = age_eligibility.timing_eligibility(
+            reason = age_eligibility.individual_eligibility(
                 game, role, assignment.person, assignment.slot
             )
             if reason is not None:

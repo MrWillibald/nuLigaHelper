@@ -376,5 +376,32 @@ def test_launchers_validate_the_mandatory_secret():
         os.environ["NULIGAHELPER_SECRET"] = secret
 
 
+def test_cli_security_and_adult_timing_follow_revised_minimums_without_override():
+    from datetime import date
+    path = os.path.join(h._TEST_DIR, f"cli-ages-{next(tempfile._get_candidate_names())}.db")
+    engine = db.make_engine(path)
+    db.initialize_db(engine)
+    with h.Session(engine) as session:
+        game = db.Game(season_year=h.SEASON, game_nr="9201", date="01.11.2026", ak="BL M")
+        people = [db.Person(name="Timing sixteen", birth_date=date(2010, 11, 1)),
+                  db.Person(name="Security seventeen", birth_date=date(2008, 11, 2)),
+                  db.Person(name="Security unknown"),
+                  db.Person(name="Security eighteen", birth_date=date(2008, 11, 1))]
+        session.add_all([game, *people])
+        session.commit()
+        game_id, ids = game.id, [person.id for person in people]
+    for person_id in ids[1:3]:
+        error = _expect_system_exit(lambda: _run(path, "assign", game_id, db.ROLE_SECURITY, person_id))
+        assert "Ordnungsdienst" in str(error)
+        with h.Session(engine) as session:
+            assert session.query(db.Assignment).count() == 0
+            assert session.query(db.AssignmentAudit).count() == 0
+    _run(path, "assign", game_id, db.ROLE_TIMEKEEPER, ids[0])
+    _run(path, "assign", game_id, db.ROLE_SECURITY, ids[3])
+    with h.Session(engine) as session:
+        assert session.query(db.Assignment).count() == 2
+        assert session.query(db.AssignmentAudit).filter_by(action="claim").count() == 2
+
+
 if __name__ == "__main__":
     h.run_all(dict(globals()))

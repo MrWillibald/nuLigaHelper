@@ -104,7 +104,7 @@ def test_timing_minimums_are_evaluated_on_game_date_without_admin_or_system_over
         person = _person(session, "Boundary", date(2008, 10, 5))
         younger = _person(session, "Birthday tomorrow", date(2008, 10, 6))
         unknown = _person(session, "Legacy unknown")
-        for role, minimum in ((db.ROLE_TIMEKEEPER, 18), (db.ROLE_SECRETARY, 16)):
+        for role, minimum in ((db.ROLE_TIMEKEEPER, 16), (db.ROLE_SECRETARY, 16)):
             game.ak = "BL M"
             person.birth_date = date(2026 - minimum, 10, 5)
             younger.birth_date = date(2026 - minimum, 10, 6)
@@ -117,7 +117,7 @@ def test_timing_minimums_are_evaluated_on_game_date_without_admin_or_system_over
             assert db.claim_eligibility(game, role, person) is None
             assert db.claim_eligibility(game, role, younger)["code"] == "underage"
         game.ak = "BL M"
-        younger.birth_date = date(2010, 1, 1)
+        younger.birth_date = date(2011, 1, 1)
         session.commit()
         admin = _person(session, "Actual admin", date(1980, 1, 1))
         admin.is_admin = True
@@ -134,7 +134,7 @@ def test_timing_minimums_are_evaluated_on_game_date_without_admin_or_system_over
         game.date = "05.10.2026"
         game.ak = "GE"
         assert db.claim_eligibility(game, db.ROLE_TIMEKEEPER, person)["code"] == "unresolved_category"
-        assert db.claim_eligibility(game, db.ROLE_SECURITY, unknown) is None
+        assert db.claim_eligibility(game, db.ROLE_SECURITY, unknown)["code"] == "unknown_birth_date"
         assert db.claim_eligibility(game, db.ROLE_CASH, unknown)["code"] == "duty_not_offered"
 
 
@@ -142,7 +142,7 @@ def test_future_game_allows_upcoming_birthday_and_past_admin_correction_uses_pas
     engine = h.make_engine()
     with h.Session(engine) as session:
         game = _game(session, scheduled="05.10.2027")
-        person = _person(session, "Turns adult next year", date(2009, 10, 5))
+        person = _person(session, "Reaches timing minimum next year", date(2011, 10, 5))
         db.claim_slot(session, game, db.ROLE_TIMEKEEPER, 0, None, person)
         session.commit()
         db.request_replacement(session, game, db.ROLE_TIMEKEEPER, 0, person.id)
@@ -286,10 +286,10 @@ def test_loaded_person_game_and_seller_dates_are_refreshed_before_claim():
                                        stale.get(db.Person, young_id)), "unresolved_category")
 
 
-def test_concurrent_young_sale_claims_to_different_slots_revalidate_after_serialization():
+def _concurrent_young_sale_claims(category):
     engine = h.make_engine()
     with h.Session(engine) as setup:
-        game = _game(setup)
+        game = _game(setup, category=category)
         people = [_person(setup, name, date(2012, 1, 1)) for name in ("First", "Second")]
         setup.commit()
         game_id, ids = game.id, [person.id for person in people]
@@ -325,6 +325,219 @@ def test_concurrent_young_sale_claims_to_different_slots_revalidate_after_serial
     with h.Session(engine) as session:
         assert session.query(db.Assignment).count() == 1
         assert session.query(db.AssignmentAudit).count() == 1
+
+
+def test_concurrent_young_sale_claims_to_different_slots_revalidate_after_serialization():
+    for category in ("BL M", "GE", "", "unsupported"):
+        _concurrent_young_sale_claims(category)
+
+
+def test_individual_policy_boundaries_unknown_dates_and_categories():
+    # Keep the full policy matrix explicit: unknown categories only block timing.
+    from types import SimpleNamespace
+    for category in ("BL M", "BL F", "BL mA", "BK wE", "SPF Mini", "GE", None, "unsupported"):
+        game = SimpleNamespace(ak=category, date="05.10.2026")
+        youth = age.classify_game_category(category) == age.YOUTH
+        for role in (db.ROLE_TIMEKEEPER, db.ROLE_SECRETARY, db.ROLE_SECURITY):
+            minimum = 18 if role == db.ROLE_SECURITY else 14 if youth else 16
+            person = SimpleNamespace(birth_date=date(2026 - minimum, 10, 5))
+            if role != db.ROLE_SECURITY and age.classify_game_category(category) == age.UNKNOWN:
+                assert age.individual_eligibility(game, role, person)["code"] == "unresolved_category"
+                continue
+            assert age.individual_eligibility(game, role, person) is None, (category, role)
+            game.date = "04.10.2026"
+            reason = age.individual_eligibility(game, role, person, 0)
+            assert reason["code"] == "underage" and reason["minimum_age"] == minimum
+            game.date = "05.10.2026"
+            person.birth_date = None
+            assert age.individual_eligibility(game, role, person)["code"] == "unknown_birth_date"
+            for invalid in ("invalid", "", None):
+                game.date = invalid
+                assert age.individual_eligibility(game, role, person)["code"] == "unresolved_game_date"
+            game.date = "05.10.2026"
+    for role, born, year in ((db.ROLE_TIMEKEEPER, date(2008, 2, 29), 2025),
+                             (db.ROLE_SECURITY, date(2008, 2, 29), 2026)):
+        game = SimpleNamespace(ak="BL M", date=f"28.02.{year}")
+        person = SimpleNamespace(birth_date=born)
+        # Zeitnehmer is already 16 in 2025, Ordnungsdienst is still 17.
+        reason = age.individual_eligibility(game, role, person)
+        assert (reason is None) == (role == db.ROLE_TIMEKEEPER)
+        game.date = f"01.03.{year}"
+        assert age.individual_eligibility(game, role, person) is None
+    # The revised adult timing threshold is met on the leap birthday itself.
+    game = SimpleNamespace(ak="BL M", date="28.02.2024")
+    person = SimpleNamespace(birth_date=date(2008, 2, 29))
+    assert age.individual_eligibility(game, db.ROLE_TIMEKEEPER, person)["code"] == "underage"
+    game.date = "29.02.2024"
+    assert age.individual_eligibility(game, db.ROLE_TIMEKEEPER, person) is None
+
+
+def test_sale_exemption_is_only_for_recognized_youth_including_invalid_dates():
+    for category in ("BL mA", "BK wE", "SPF Mini", "BL M", "GE", "", "unsupported"):
+        engine = h.make_engine()
+        with h.Session(engine) as session:
+            game = _game(session, category=category)
+            young = _person(session, "Younger", date(2013, 1, 1))
+            unknown = _person(session, "Unknown")
+            session.commit()
+            youth = age.classify_game_category(category) == age.YOUTH
+            db.claim_slot(session, game, db.ROLE_SALE, 0, None, young)
+            session.commit()
+            if youth:
+                db.claim_slot(session, game, db.ROLE_SALE, 1, None, unknown)
+                session.commit()
+                assert not db.staffing_status(game)["deficiencies"]
+            else:
+                _refused(lambda: db.claim_slot(session, game, db.ROLE_SALE, 1, None, unknown),
+                         "missing_adult_seller")
+                session.rollback()
+            for invalid in (None, "", "invalid"):
+                game.date = invalid
+                reason = db.claim_eligibility(game, db.ROLE_SALE, unknown, 1)
+                assert (reason is None) == youth, (category, invalid, reason)
+                coverage = age.sale_coverage(game, [young, unknown])
+                assert (coverage is None) == youth
+                if not youth:
+                    assert reason["code"] == coverage["code"] == "unresolved_game_date"
+                # Even first-slot age checking must honor the exemption.
+                assert (db.claim_eligibility(game, db.ROLE_SALE, unknown, 0) is None) == youth
+
+
+def test_youth_takeover_can_remove_only_adult_but_non_youth_preserves_request():
+    for category in ("BL mD", "SPF Mini", "BL M", "GE", "", "unsupported"):
+        engine = h.make_engine()
+        with h.Session(engine) as session:
+            game = _game(session, category=category)
+            adult = _person(session, "Outgoing adult", date(1980, 1, 1))
+            young = _person(session, "Younger sibling", date(2012, 1, 1))
+            unknown = _person(session, "Unknown incoming")
+            session.commit()
+            db.claim_slot(session, game, db.ROLE_SALE, 0, None, adult)
+            db.claim_slot(session, game, db.ROLE_SALE, 1, None, young)
+            request = db.request_replacement(session, game, db.ROLE_SALE, 0, adult.id)
+            session.commit()
+            token, assignment_id = request.replacement_token, request.id
+            audits = session.query(db.AssignmentAudit).count()
+            if age.classify_game_category(category) == age.YOUTH:
+                saved = db.takeover_slot(session, game, db.ROLE_SALE, 0, adult.id, token, unknown)
+                session.commit()
+                assert saved.id == assignment_id and saved.person_id == unknown.id
+                assert saved.replacement_token is None
+                assert not db.staffing_status(game)["deficiencies"]
+            else:
+                _refused(lambda: db.takeover_slot(session, game, db.ROLE_SALE, 0, adult.id, token, unknown),
+                         "missing_adult_seller")
+                session.rollback()
+                assert request.person_id == adult.id and request.replacement_token == token
+                assert session.query(db.AssignmentAudit).count() == audits
+
+
+def test_stale_security_claim_and_takeover_refresh_person_and_game_after_retry():
+    from sqlalchemy.exc import OperationalError
+    for takeover in (False, True):
+        for correction in ("birth", "date"):
+            engine = h.make_engine()
+            with h.Session(engine) as setup:
+                game = _game(setup, category="GE")
+                outgoing = _person(setup, "Outgoing", date(1980, 1, 1))
+                incoming = _person(setup, "Incoming", date(2008, 10, 5))
+                setup.commit()
+                token = None
+                if takeover:
+                    db.assign_person(setup, game, outgoing, db.ROLE_SECURITY)
+                    request = db.request_replacement(setup, game, db.ROLE_SECURITY, 0, outgoing.id)
+                    token = request.replacement_token
+                    setup.commit()
+                game_id, incoming_id, outgoing_id = game.id, incoming.id, outgoing.id
+                audit_count = setup.query(db.AssignmentAudit).count()
+            with h.Session(engine) as stale:
+                game = stale.get(db.Game, game_id)
+                incoming = stale.get(db.Person, incoming_id)
+                assert db.claim_eligibility(game, db.ROLE_SECURITY, incoming) is None
+                original = stale.execute
+                attempted = False
+
+                def execute(statement, *args, **kwargs):
+                    nonlocal attempted
+                    if not attempted and getattr(statement, "is_update", False):
+                        attempted = True
+                        with h.Session(engine) as concurrent:
+                            if correction == "birth":
+                                concurrent.get(db.Person, incoming_id).birth_date = date(2008, 10, 6)
+                            else:
+                                concurrent.get(db.Game, game_id).date = "04.10.2026"
+                            concurrent.commit()
+                        raise OperationalError("synthetic contention", {}, Exception("database is locked"))
+                    return original(statement, *args, **kwargs)
+
+                with patch.object(stale, "execute", side_effect=execute):
+                    if takeover:
+                        _refused(lambda: db.takeover_slot(stale, game, db.ROLE_SECURITY, 0,
+                                                          outgoing_id, token, incoming), "underage")
+                    else:
+                        _refused(lambda: db.claim_slot(stale, game, db.ROLE_SECURITY, 0, None, incoming), "underage")
+                stale.rollback()
+                assert attempted, "test must exercise the serialized retry"
+                assert stale.query(db.AssignmentAudit).count() == audit_count
+                if takeover:
+                    saved = game.assignment_by_role(db.ROLE_SECURITY)
+                    assert saved.person_id == outgoing_id and saved.replacement_token == token
+                else:
+                    assert game.assignments == []
+
+
+def test_stale_youth_sale_category_and_sibling_state_are_rechecked_after_retry():
+    from sqlalchemy.exc import OperationalError
+    for takeover in (False, True):
+        for category in ("BL M", "GE", ""):
+            engine = h.make_engine()
+            with h.Session(engine) as setup:
+                game = _game(setup, category="BL mD")
+                sibling = _person(setup, "Sibling adult", date(1980, 1, 1))
+                outgoing = _person(setup, "Outgoing adult", date(1981, 1, 1))
+                incoming = _person(setup, "Unknown incoming")
+                setup.commit()
+                db.claim_slot(setup, game, db.ROLE_SALE, 0, None, sibling)
+                token = None
+                if takeover:
+                    db.claim_slot(setup, game, db.ROLE_SALE, 1, None, outgoing)
+                    token = db.request_replacement(setup, game, db.ROLE_SALE, 1, outgoing.id).replacement_token
+                setup.commit()
+                game_id, sibling_id, outgoing_id, incoming_id = game.id, sibling.id, outgoing.id, incoming.id
+                audit_count = setup.query(db.AssignmentAudit).count()
+            with h.Session(engine) as stale:
+                game = stale.get(db.Game, game_id)
+                incoming = stale.get(db.Person, incoming_id)
+                assert db.claim_eligibility(game, db.ROLE_SALE, incoming, 1) is None
+                original = stale.execute
+                attempted = False
+
+                def execute(statement, *args, **kwargs):
+                    nonlocal attempted
+                    if not attempted and getattr(statement, "is_update", False):
+                        attempted = True
+                        with h.Session(engine) as concurrent:
+                            concurrent.get(db.Game, game_id).ak = category
+                            concurrent.get(db.Person, sibling_id).birth_date = date(2012, 1, 1)
+                            concurrent.commit()
+                        raise OperationalError("synthetic contention", {}, Exception("database is locked"))
+                    return original(statement, *args, **kwargs)
+
+                with patch.object(stale, "execute", side_effect=execute):
+                    if takeover:
+                        _refused(lambda: db.takeover_slot(stale, game, db.ROLE_SALE, 1,
+                                                          outgoing_id, token, incoming), "missing_adult_seller")
+                    else:
+                        _refused(lambda: db.claim_slot(stale, game, db.ROLE_SALE, 1, None, incoming), "missing_adult_seller")
+                stale.rollback()
+                assert attempted
+                assert stale.query(db.AssignmentAudit).count() == audit_count
+                assert game.assignment_by_role(db.ROLE_SALE, 0).person_id == sibling_id
+                saved = game.assignment_by_role(db.ROLE_SALE, 1)
+                if takeover:
+                    assert saved.person_id == outgoing_id and saved.replacement_token == token
+                else:
+                    assert saved is None
 
 
 if __name__ == "__main__":

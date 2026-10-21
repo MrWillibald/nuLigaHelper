@@ -198,5 +198,27 @@ def test_saved_cake_responses_supply_description_for_every_dynamic_position(_tod
         )
 
 
+@patch("common.effective_today", return_value=date(2026, 9, 1))
+def test_task_guidance_and_no_javascript_schedule_explain_revised_age_policy(_today):
+    app, ids = _site()
+    for role in (db.ROLE_TIMEKEEPER, db.ROLE_SECRETARY):
+        text = db.TASK_DESCRIPTIONS[role]
+        assert "14 Jahre bei Jugendspielen einschließlich SPF" in text
+        assert "16 Jahre bei Erwachsenenspielen" in text
+        assert "18 Jahre bei Erwachsenenspielen" not in text
+    assert "18 Jahre bei allen Spielen" in db.TASK_DESCRIPTIONS[db.ROLE_SECURITY]
+    sale = db.TASK_DESCRIPTIONS[db.ROLE_SALE]
+    assert "Bei Jugendspielen einschließlich SPF gelten im Verkauf keine Altersanforderungen" in sale
+    assert "Bei Erwachsenenspielen und ungeklärten Altersklassen" in sale
+    tree = html.fromstring(_client(app, ids["admin"]).get("/").get_data(as_text=True))
+    notice = tree.xpath('//details[summary="Hinweise"]')[0]
+    assert notice.get("open") is not None, "age guidance must remain available without JavaScript"
+    text = " ".join(notice.text_content().split())
+    assert "14 Jahre bei Jugend/SPF und 16 Jahre bei Erwachsenen" in text
+    assert "Für Ordnungsdienst sind bei allen Spielen mindestens 18 Jahre erforderlich" in text
+    assert "Bei Jugend/SPF gelten im Verkauf keine Altersanforderungen" in text
+    assert "Bei Erwachsenen und ungeklärten Altersklassen" in text
+
+
 if __name__ == "__main__":
     h.run_all(dict(globals()))
