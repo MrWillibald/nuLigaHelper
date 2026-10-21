@@ -109,7 +109,7 @@ for (const kind of ["preparation", "cleanup"]) {
   }
 }
 const adult = progressFixture();
-setCoverage(adult.coverage, 6, 8);
-if (adult.count.textContent !== "6/8" || adult.arc.attrs["stroke-dashoffset"] !== "25") {
-  throw new Error("adult ring lost its eight-position denominator");
+setCoverage(adult.coverage, 7, 7);
+if (adult.count.textContent !== "7/7" || adult.arc.attrs["stroke-dashoffset"] !== "0") {
+  throw new Error("adult ring lost its seven-position denominator");
 }

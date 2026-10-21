@@ -9,7 +9,7 @@ Host-specific deployment configuration and operator records are maintained priva
 - Read home games from Hallenspielplan website of nuLiga
 - Games, persons and task assignments are stored in a SQLite database (`nuliga_helper.db`)
 - The database is backed up to a dropbox account after every run
-- Game tasks (Zeitnehmer, Sekretär, Verkauf, Ordnungsdienst, Kasse, Reinigung) offer eight required positions for adults and five for youth and unresolved categories
+- Game tasks (Zeitnehmer, Sekretär, Verkauf, Ordnungsdienst, Kasse, Wischer) offer seven required positions for adults and five for youth and unresolved categories
 - Every home-game date has three-slot Vorbereitung and Aufräumen blocks, timed 90 minutes before the first and 60 minutes after the last game start; slot numbers are display positions while statistics, reminders and audits use the shared task name, just like Verkauf
 - Every home-game date also has a Kuchenlieferung block; admins set its delivery time and requested quantity, with one volunteer position per cake
 - nuLigaHelper keeps track of all game shifts
@@ -35,7 +35,7 @@ It is then reachable in the local network at `http://<device-ip>:8080`.
 Public hosting requires a separately maintained production deployment with TLS,
 restricted secrets, monitoring and a reviewed launch procedure.
 
-- **Heimspielplan**: public, read-only schedule with assigned helper names. Use **Datum** to show one game day or all days, together with **Spielende Mannschaft**, **Verantwortliche Mannschaft** and **Eingeteilte Person**. A person search keeps only games and day-task blocks where that person is assigned; selecting a responsible team hides day-task blocks because they have no responsible team. **Filter löschen** restores the full plan. Every game and day-task block starts compact; cake cards awaiting setup or requesting zero cakes show their status, while configured duties show a ring with an occupied/required fraction (for example **5/8**) and grouped red badges for missing duties (for example **Verkauf (2×)**); compact game cards also show the responsible team or **– offen –**. The triangle beside **Details** points right when closed and down when open, including without JavaScript. Expand a card through **Details** to see the game's offered positions and any retained assignments in removed duties and, when permitted, the editable responsible-team field. Assignment candidates load when an editable card opens; a loading error leaves its dropdowns disabled and offers a retry. Unopened cards carry no candidate lists, so registrations do not multiply the initial page size. Game progress counts eight required positions for adult games and five for youth/unknown games; retained removed duties allow authorized retirement only before the day-before cutoff and do not affect the ring or vacancy badges. Each preparation and cleanup ring counts three slots; cake rings count promised contributions out of the configured positive quantity. The ring measures physical occupancy: age/classification warnings remain separate even with a full ring. Unconfigured cakes show **Admin-Einrichtung erforderlich**, and zero cakes show **Keine Kuchen angefragt**, both without a ring or invented vacancies. Rings and badges are available without JavaScript and update together from saved state; seeking a replacement keeps the duty occupied and binding. Past game days appear muted under **Vergangene Spieltage**; selecting a past date opens that section. Signed-in members can claim their own future tasks and seek a replacement while keeping responsibility before the day-before cutoff. MVs can additionally staff their own team on games for which that team is responsible; admins retain roster-wide staffing and responsible-team settings, subject to the same binding and lock rules. Concurrent stale changes are rejected rather than overwriting another person's work.
+- **Heimspielplan**: public, read-only schedule with assigned helper names. Use **Datum** to show one game day or all days, together with **Spielende Mannschaft**, **Verantwortliche Mannschaft** and **Eingeteilte Person**. A person search keeps only games and day-task blocks where that person is assigned; selecting a responsible team hides day-task blocks because they have no responsible team. **Filter löschen** restores the full plan. Every game and day-task block starts compact; cake cards awaiting setup or requesting zero cakes show their status, while configured duties show a ring with an occupied/required fraction (for example **5/7**) and grouped red badges for missing duties (for example **Verkauf (2×)**); compact game cards also show the responsible team or **– offen –**. The triangle beside **Details** points right when closed and down when open, including without JavaScript. Expand a card through **Details** to see the game's offered positions and any retained assignments in removed duties and, when permitted, the editable responsible-team field. Assignment candidates load when an editable card opens; a loading error leaves its dropdowns disabled and offers a retry. Unopened cards carry no candidate lists, so registrations do not multiply the initial page size. Game progress counts seven required positions for adult games and five for youth/unknown games; retained removed duties allow authorized retirement only before the day-before cutoff and do not affect the ring or vacancy badges. Each preparation and cleanup ring counts three slots; cake rings count promised contributions out of the configured positive quantity. The ring measures physical occupancy: age/classification warnings remain separate even with a full ring. Unconfigured cakes show **Admin-Einrichtung erforderlich**, and zero cakes show **Keine Kuchen angefragt**, both without a ring or invented vacancies. Rings and badges are available without JavaScript and update together from saved state; seeking a replacement keeps the duty occupied and binding. Past game days appear muted under **Vergangene Spieltage**; selecting a past date opens that section. Signed-in members can claim their own future tasks and seek a replacement while keeping responsibility before the day-before cutoff. MVs can additionally staff their own team on games for which that team is responsible; admins retain roster-wide staffing and responsible-team settings, subject to the same binding and lock rules. Concurrent stale changes are rejected rather than overwriting another person's work.
 - **Helfer verwalten**: members see names and complete team memberships but only their own contact data and birth date. Admins create, edit, deactivate/reactivate or delete erroneous entries, replace membership sets, complete missing birth dates, approve user registrations and appoint team MVs. MVs can create people with a birth date and add or remove active people only in rosters they manage; they do not see another existing person's birth date or decide pending registrations.
 - **Statistik**: games covered per team, jobs per person (incl. role breakdown) and upcoming games and day blocks with missing assignments, unresolved age eligibility or cake setup still needed.
 - **Änderungsprotokoll**: admin-only, append-only history of claims, replacement requests, atomic takeovers, first locks and permitted obsolete-duty retirement with actor, tier, person, duty, slot and timestamp.
@@ -147,7 +147,8 @@ keep the description open; click or tap again, or press **Escape**, to close it.
 The description floats over the underlying content without moving the page or
 changing an assignment. It wraps within the viewport on narrow screens; longer
 text scrolls inside the help bubble. Numbered positions of the same task share
-one description.
+one description. The single Wischer explains floor wiping during play; Aufräumen
+remains the separate day-wide cleanup duty.
 
 Developers maintain the public text in `db.TASK_DESCRIPTIONS`, keyed by semantic
 game roles and day-block phases. Add or rename descriptions alongside
@@ -159,11 +160,11 @@ catalog, repeated-position wording, rendering and public-response privacy.
 ## Game duty positions
 
 All offered game duties are mandatory. Position numbers distinguish occupants of
-one semantic role: **Verkauf 1/2** and **Reinigung 1/2** count as Verkauf or Reinigung
-in personal statistics and reminders. There is exactly one independent **Ordnungsdienst**
+one semantic role: **Verkauf 1/2** both count as Verkauf in personal statistics
+and reminders. There is exactly one independent **Ordnungsdienst**
 and one adult **Kasse** role. Kasse additionally takes the ordering/security work
 originally intended for a second Ordner. A person still holds at most one task per game.
-Per-game Reinigung remains separate from the day-wide Aufräumen block.
+Per-game Wischer remains separate from the day-wide Aufräumen block.
 
 | Duty | Positions | Adult games | Youth games and unresolved categories |
 | --- | --- | --- | --- |
@@ -172,7 +173,7 @@ Per-game Reinigung remains separate from the day-wide Aufräumen block.
 | Verkauf | 2 | Both required | Both required |
 | Ordnungsdienst | 1 | Required | Required |
 | Kasse | 1 | Required | Not offered |
-| Reinigung | 2 | Both required | Not offered |
+| Wischer | 1 | Required | Not offered |
 
 Adult M/F and youth mA–mE/wA–wE tokens are recognized with league prefixes; SPF is youth.
 GE, missing, conflicting and unsupported classes retain the five-position baseline
@@ -180,15 +181,15 @@ and show that classification needs review. The same explicit classifier also det
 timing-duty age eligibility below.
 
 The schedule bar, open-duty statistics and responsible-team MV reminders use the same
-offered/required positions. Five baseline occupants produce **5/8** (63%) for an adult
-game, with Kasse and both Reinigung places still open; an age-eligible youth roster
-shows **5/5** (100%). There are no optional game duties or empty Kasse/Reinigung fields
+offered/required positions. Five baseline occupants produce **5/7** (71%) for an adult
+game, with Kasse and one Wischer place still open; an age-eligible youth roster
+shows **5/5** (100%). There are no optional game duties or empty Kasse/Wischer fields
 for youth/unknown games. New claims for these removed duties are refused for all tiers,
 including admin, CLI and system callers. Claims recheck the saved game category under
 write serialization, so a stale adult classification cannot authorize a youth duty.
 
 A migrated Unterstützung assignment becomes Kasse even on a youth/unknown game.
-An adult game changing category can also leave retained Kasse/Reinigung occupants.
+An adult game changing category can also leave retained Kasse/Wischer occupants.
 These assignments keep their IDs, original positions and history and appear as
 **Bestehende Einteilung – nur Freigabe**. Existing member/MV/admin rights and past-date
 rules allow explicit retirement only before the fixed day-before cutoff; afterward
@@ -271,7 +272,7 @@ Age means completed calendar years on the scheduled game date, including future 
 | Sekretär | 14 or older | 16 or older |
 | Verkauf | At least one assigned seller is 18 or older | At least one assigned seller is 18 or older |
 
-Adult M/F and youth mA–mE/wA–wE classes are recognized even with league prefixes; SPF is youth. GE, missing and unsupported classes leave timing eligibility unresolved, so new timing claims are refused. An invalid game date also prevents a new age-restricted claim; today's date is never substituted. Ordnungsdienst, Kasse, Reinigung and day blocks, including cake delivery, have no additional age minimum.
+Adult M/F and youth mA–mE/wA–wE classes are recognized even with league prefixes; SPF is youth. GE, missing and unsupported classes leave timing eligibility unresolved, so new timing claims are refused. An invalid game date also prevents a new age-restricted claim; today's date is never substituted. Ordnungsdienst, Kasse, Wischer and day blocks, including cake delivery, have no additional age minimum.
 
 Verkauf is a group rule. A younger helper or a legacy helper with an unknown birth date may take the first sale slot. Filling the last free slot requires at least one explicitly assigned seller who reaches 18 by the game date; the other seller has no individual minimum. An adult in the responsible team or candidate list does not provide coverage without an assignment. Every claim, including admin and CLI claims or past-game corrections, is checked against saved data. There is no admin age override. Sale candidates refresh after claims and atomic takeovers, and stale selections can be refused without overwriting saved occupants.
 
@@ -397,19 +398,34 @@ To upgrade an existing database:
    all birth dates and person relationships. No cake time, quantity or volunteer
    is inferred. Revision `0006_game_duty_staffing`
    renames current Unterstützung assignments to Kasse while preserving their
-   IDs, game, person and numbered position; older Reinigung rows traverse the
+   IDs, game, person and numbered position; older original Reinigung rows traverse the
    earlier Reinigung-to-Unterstützung revision first. Historical audit labels
-   and snapshots remain unchanged and readable, and new Reinigung places begin
-   empty. Unterstützung/Kasse collisions, unexpected new-role rows and invalid
+   and snapshots remain unchanged and readable, and the two Reinigung places introduced by that historical revision begin empty. Unterstützung/Kasse collisions, unexpected new-role rows and invalid
    old positions are refused without merging or discarding them. Youth/unknown
    Kasse assignments become retained release-only assignments, as described
-   above. Revision `0007_binding_duty_assignments` is the single current head. It adds
+   above. Revision `0007_binding_duty_assignments` adds
    nullable replacement tokens and saved lock timestamps to game/block assignments
    plus the `duty_cutoffs` season/date cutoff marker table. Existing occupants, positions,
    personal data and historical audit snapshots remain unchanged. Migration creates
    no replacement requests, inferred confirmations or historical reminder cutoffs;
    an existing database's first authoritative runtime checks enforce the
    fixed 09:00 Europe/Berlin deadline independently of a reminder run. All upgrades require this stopped-service migration before startup.
+   Revision `0008_single_wischer` is the single current head. It renames current
+   Reinigung position 0 to Wischer, preserving its assignment ID, helper, saved lock
+   and replacement token. As the explicitly requested **one-time migration exception**
+   to commitment preservation, it deletes **every current Reinigung position 1** across
+   all seasons, dates and categories, including past, locked and replacement-seeking
+   duties. It never moves the second helper into the first position. Deleted duties
+   disappear from personal counts (including past counts) and ordinary reminders.
+   Each deletion appends one system `migration_remove` audit with the original role,
+   position, helper and game; all previous audits and snapshots stay unchanged. Original
+   pre-day-block Reinigung still becomes Kasse through the historical chain. Unexpected
+   Wischer target rows and unsupported source positions fail preflight; retained-data
+   checks verify the exact deletion/rename set and every old plus appended audit row.
+   No provider notifications are sent. Adult staffing now requires seven places.
+   This exception grants no runtime release or cutoff override. Keep the printed backup:
+   on failure, stop all writers and restore that snapshot and the prior application,
+   which also restores deleted second duties; never downgrade in place.
    Verification rejects unreviewed schema differences, even if a database already
    carries the current revision label. Previously recognized historical defaults
    remain unchanged, and SQLite uniqueness checks confirm reflected constraints.
@@ -456,7 +472,7 @@ or individually via `python3 test/test_db.py` etc., or with pytest (`pytest test
 - `auth_tokens`: expiring, single-use registration/login nonces and six-digit e-mail/SMS codes
 - `assignment_audit`: append-only assignment-change snapshots that remain readable after deletion
 
-The active MV of a game's responsible team receives an MV notification as long as required positions of that game are still unassigned or have unresolved/invalid age eligibility. Adult games require all eight offered positions; youth games and unresolved classes require the baseline five. Retained removed duties do not affect completeness. Day blocks have no responsible team and therefore never create an MV reminder.
+The active MV of a game's responsible team receives an MV notification as long as required positions of that game are still unassigned or have unresolved/invalid age eligibility. Adult games require all seven offered positions; youth games and unresolved classes require the baseline five. Retained removed duties do not affect completeness. Day blocks have no responsible team and therefore never create an MV reminder.
 
 Preparation, cake delivery and cleanup are date-level duties rather than duties of an individual game. Active members and MVs may claim or take over only for themselves and seek replacement only for their own unlocked block duty; admins retain roster-wide staffing scope under the same binding and lock rules. A person may hold one task in each block independently of any game assignment on the same date. Preparation helpers receive the special one-week reminder, cleanup and cake helpers an ordinary one-week reminder, and all occupied block slots a day-before reminder. Cake reminders include the saved delivery time and ask each volunteer for one cake. Empty positions send no helper reminder; ordinary reminders prefer e-mail, fall back to SMS and skip contactless helpers. Game-level `Verkauf` helpers always use the normal game reminder flow.
 
@@ -518,9 +534,8 @@ python3 manage_db.py list-games
 python3 manage_db.py list-games --number 12034
 python3 manage_db.py assign 42 Zeitnehmer 1
 python3 manage_db.py assign 42 Kasse 2
-python3 manage_db.py assign 42 Reinigung 3
-python3 manage_db.py assign 42 Reinigung 4
-python3 manage_db.py unassign 42 Reinigung 4
+python3 manage_db.py assign 42 Wischer 3
+python3 manage_db.py unassign 42 Wischer 3
 python3 manage_db.py set-jteam 42 "Damen 1"
 ```
 
@@ -529,9 +544,10 @@ empty numbered position and prints that position. `unassign` refuses ordinary
 withdrawal from an offered duty; use the schedule's replacement request and eligible
 atomic takeover before lock. It can still retire a retained removed-role assignment
 under existing authority before cutoff, without moving its sibling. In the example,
-game 42 must be an adult game for Kasse/Reinigung; the shown `unassign` is refused
-while that Reinigung duty is offered. `list-games` shows both numbered occupants.
-New youth/unknown Kasse/Reinigung assignments and every post-lock ordinary release
+game 42 must be an adult game for Kasse/Wischer; the shown `unassign` is refused
+while that Wischer duty is offered. `list-games` shows the single unnumbered Wischer
+and both numbered Verkauf occupants.
+New youth/unknown Kasse/Wischer assignments and every post-lock ordinary release
 are refused.
 
 Run `contact-preflight` before deploying contact normalization to an existing database; it reports invalid values, canonical changes and collisions without writing anything. Person IDs are shown by `list-persons` and `search-person`; names are display data and may repeat. Existing-person commands (`set-birth-date`, `show-memberships`, `set-memberships`, `assign`, `unassign`, `set-mv`, `grant-admin`) therefore take the person ID. `add-person --birth-date` and `set-birth-date PERSON_ID DATE` use ISO `YYYY-MM-DD` dates and shared calendar/future-date validation. Invalid creation data never inserts a partial person. Correction retains the same identity and all assignments; it reevaluates eligibility rather than deleting appointments. `set-memberships` atomically replaces the complete set and accepts no team names to clear it; CLI creation keeps the convenient single `--team` option. Canonical game numbers are unique within a season: `list-games` shows the internal game ID together with its schedule context, and `assign`, `unassign` and `set-jteam` take that game ID. `--number` accepts either an ordinary decimal number or an SPF pseudo number and only filters the list.

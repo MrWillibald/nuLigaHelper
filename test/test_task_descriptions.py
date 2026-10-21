@@ -111,6 +111,10 @@ def test_catalog_covers_actual_roles_and_phases_without_obsolete_proposal_roles(
     )
     assert all(isinstance(text, str) and text.strip() for text in db.TASK_DESCRIPTIONS.values())
     assert "Unterstützung" not in db.TASK_DESCRIPTIONS and db.ROLE_MV not in db.TASK_DESCRIPTIONS
+    assert "Reinigung" not in db.TASK_DESCRIPTIONS
+    assert "Als Wischer" in db.TASK_DESCRIPTIONS[db.ROLE_CLEANING]
+    assert "des Wischers" in db.TASK_DESCRIPTIONS[db.ROLE_CLEANING]
+    assert db.TASK_DESCRIPTIONS[db.BLOCK_CLEANUP].startswith("Zur angegebenen Uhrzeit")
     assert db.ROLE_CASH in expected and db.ROLE_CLEANING in expected and db.BLOCK_CAKE_DELIVERY in expected
 
 
@@ -121,7 +125,7 @@ def test_guest_member_and_admin_render_all_task_help_with_matching_shared_descri
     for person_id in (None, ids["assigned"], ids["admin"]):
         tree = html.fromstring(_client(app, person_id).get("/").get_data(as_text=True))
         buttons, descriptions = _task_controls(tree)
-        assert len(buttons) == 5 + 8 + 3 + 4 + 3, (
+        assert len(buttons) == 5 + 7 + 3 + 4 + 3, (
             "youth/adult duties and every preparation, cake and cleanup position need information controls"
         )
         for role, count in db.ROLE_SLOT_COUNT.items():

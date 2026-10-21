@@ -74,7 +74,7 @@ def _cli(path, *args):
 
 def test_explicit_classifier_controls_offered_and_required_duties_for_all_reviewed_classes():
     assert db.ROLE_SLOT_COUNT[db.ROLE_SECURITY] == 1
-    assert db.ROLE_SLOT_COUNT[db.ROLE_CLEANING] == 2
+    assert db.ROLE_SLOT_COUNT[db.ROLE_CLEANING] == 1
     assert db.ROLE_CLEANING != db.ROLE_CASH and db.ROLE_SUPPORT == db.ROLE_CASH
     groups = {
         "adult": ("M", "F", "BL M", "BOL F"),
@@ -87,54 +87,45 @@ def test_explicit_classifier_controls_offered_and_required_duties_for_all_review
             assert db.classify_game_category(label) == category, f"misclassified {label!r}"
             offered = db.offered_positions(game)
             assert offered == db.required_positions(game)
-            assert len(offered) == (8 if category == "adult" else 5)
+            assert len(offered) == (7 if category == "adult" else 5)
             assert sum(role == db.ROLE_SECURITY for role, _ in offered) == 1
             if category != "adult":
                 assert not any(role in {db.ROLE_CASH, db.ROLE_CLEANING} for role, _ in offered)
             assert db.staffing_status(game)["classification_unresolved"] == (category == "unknown")
 
 
-def test_adult_repeated_cleaning_positions_are_independent_audited_and_stale_safe():
+def test_single_wischer_has_no_age_minimum_and_rejects_stale_positions():
     app, engine, path, ids = _site()
     with h.Session(engine) as session:
         game = session.get(db.Game, ids["games"][0])
         first, second = [session.get(db.Person, n) for n in ids["helpers"][:2]]
-        a = db.claim_slot(session, game, db.ROLE_CLEANING, 1, None, second)
-        assert a.slot == 1 and game.assignment_by_role(db.ROLE_CLEANING, 1).person_id == second.id
-        assert game.assignment_by_role(db.ROLE_CLEANING) is None, "slot zero must not borrow slot one"
-        db.claim_slot(session, game, db.ROLE_CLEANING, 0, None, first)
+        first.birth_date = None
+        a = db.claim_slot(session, game, db.ROLE_CLEANING, 0, None, first)
         session.commit()
-        assert [p.id for p in game.receivers_for_roles([db.ROLE_CLEANING, db.ROLE_CLEANING])] == [first.id, second.id]
-        try:
-            db.claim_slot(session, game, db.ROLE_CLEANING, 1, None, first)
-        except db.SlotConflictError as exc:
-            assert exc.current_person_id == second.id
-            session.rollback()
-        else:
-            raise AssertionError("stale claims must preserve the second occupant")
+        assert a.slot == 0 and a.person_id == first.id
+        for role, slot in (("Reinigung", 0), ("Reinigung", 1), (db.ROLE_CLEANING, 1)):
+            try:
+                db.claim_slot(session, game, role, slot, None, second)
+            except ValueError:
+                session.rollback()
+            else:
+                raise AssertionError("old-name and second-position claims must fail")
         try:
             db.claim_slot(session, game, db.ROLE_CASH, 0, None, first)
         except ValueError as exc:
             assert "bereits" in str(exc)
             session.rollback()
         else:
-            raise AssertionError("cleaning and cash must not bypass one-task-per-game")
-        try:
-            db.claim_slot(session, game, db.ROLE_SECURITY, 1, None, first)
-        except ValueError as exc:
-            assert "Ungültiger" in str(exc)
-        else:
-            raise AssertionError("a second Ordnungsdienst must not exist")
-        third = session.get(db.Person, ids["helpers"][2])
-        request = db.request_replacement(session, game, db.ROLE_CLEANING, 1, second.id)
-        assert request.person_id == second.id, "seeking a replacement must preserve the numbered occupant"
-        db.takeover_slot(session, game, db.ROLE_CLEANING, 1, second.id, request.replacement_token, third)
+            raise AssertionError("Wischer cannot bypass one duty per game")
+        request = db.request_replacement(session, game, db.ROLE_CLEANING, 0, first.id)
+        token = request.replacement_token
         session.commit()
-        assert game.assignment_by_role(db.ROLE_CLEANING, 0).person_id == first.id
-        assert game.assignment_by_role(db.ROLE_CLEANING, 1).person_id == third.id
+        db.takeover_slot(session, game, db.ROLE_CLEANING, 0, first.id, token, second)
+        session.commit()
+        assert game.assignment_by_role(db.ROLE_CLEANING).person_id == second.id
         assert [(a.action, a.slot) for a in session.query(db.AssignmentAudit).order_by(db.AssignmentAudit.id)] == [
-            ("claim", 1), ("claim", 0), ("request_open", 1),
-            ("takeover_out", 1), ("request_close", 1), ("takeover_in", 1)]
+            ("claim", 0), ("request_open", 0), ("takeover_out", 0),
+            ("request_close", 0), ("takeover_in", 0)]
 
 
 def test_saved_category_refuses_stale_new_duties_but_keeps_retained_assignments_releasable():
@@ -171,7 +162,7 @@ def test_category_markup_candidates_claim_refusals_and_retained_release_match_ex
     adult, youth, unknown, spf = ids["games"]
     admin = _client(app, ids["admin"])
     page = html.fromstring(admin.get("/").get_data(as_text=True))
-    for game_id, count in ((adult, 8), (youth, 5), (unknown, 5), (spf, 5)):
+    for game_id, count in ((adult, 7), (youth, 5), (unknown, 5), (spf, 5)):
         card = page.get_element_by_id(f"game-{game_id}")
         selects = card.xpath('.//select[@data-role]')
         assert len(selects) == count, "category markup must omit removed fields"
@@ -184,12 +175,12 @@ def test_category_markup_candidates_claim_refusals_and_retained_release_match_ex
     for tier in ("admin", "mv", "member"):
         client = _client(app, ids[tier])
         for game_id in (youth, unknown, spf):
-            for role, slot in ((db.ROLE_CASH, 0), (db.ROLE_CLEANING, 0), (db.ROLE_CLEANING, 1)):
+            for role, slot in ((db.ROLE_CASH, 0), (db.ROLE_CLEANING, 0)):
                 response = _claim(client, game_id, ids[tier], role, slot)
                 assert response.status_code == 400, f"{tier} bypassed {role} category availability"
                 assert "nicht angeboten" in response.get_json()["error"]
     assert _claim(app.test_client(), adult, ids["member"], db.ROLE_CASH).status_code == 401
-    assert _claim(_client(app, ids["member"]), adult, ids["outsider"], db.ROLE_CLEANING, 1).status_code == 403
+    assert _claim(_client(app, ids["member"]), adult, ids["outsider"], db.ROLE_CLEANING, 0).status_code == 403
 
     with h.Session(engine) as session:
         game = session.get(db.Game, youth)
@@ -233,7 +224,7 @@ def test_reports_use_offered_positions_and_count_retained_duties_without_vacanci
         game = session.get(db.Game, youth)
         session.add(db.Assignment(game=game, person=session.get(db.Person, ids["member"]), role=db.ROLE_CASH, slot=0))
         session.commit()
-        assert db.missing_slots(session.get(db.Game, adult)) == {"Kasse": 1, "Reinigung": 2}
+        assert db.missing_slots(session.get(db.Game, adult)) == {"Kasse": 1, "Wischer": 1}
         assert db.missing_slots(game) == {}
         assert db.staffing_status(game)["complete"]
         assert db.staffing_status(game)["required_filled"] == 5
@@ -242,7 +233,7 @@ def test_reports_use_offered_positions_and_count_retained_duties_without_vacanci
     assert "Duty Member" in tree.text_content() and "Kasse" in tree.text_content()
     assert "Opponent 0" in tree.text_content() and "Opponent 1" not in tree.text_content(), "youth removed duties must not cause report gaps"
     page = _client(app, ids["admin"]).get("/").get_data(as_text=True)
-    assert "5 von 8 Pflichtdiensten besetzt" in page and "5 von 5 Pflichtdiensten besetzt" in page
+    assert "5 von 7 Pflichtdiensten besetzt" in page and "5 von 5 Pflichtdiensten besetzt" in page
 
 
 @patch("common.effective_today", return_value=date(2026, 9, 1))
@@ -275,15 +266,27 @@ def test_initial_ring_vacancies_match_statistics_for_adult_youth_spf_and_retaine
     assert "person_id" not in text and "data-occupant-id" not in text and "birth_date" not in text
 
 
-def test_cli_supports_both_cleaning_positions_and_refuses_removed_category_duties():
+def test_cli_supports_one_wischer_and_refuses_removed_category_duties():
     app, engine, path, ids = _site()
     adult, youth = ids["games"][:2]
     for role in db.ROLE_SLOT_COUNT:
         assert manage_db.build_parser().parse_args(["assign", str(adult), role, str(ids["member"])]).role == role
-    assert "Reinigung 1" in _cli(path, "assign", adult, db.ROLE_CLEANING, ids["helpers"][0])
-    assert "Reinigung 2" in _cli(path, "assign", adult, db.ROLE_CLEANING, ids["helpers"][1])
+    with contextlib.redirect_stderr(io.StringIO()):
+        try:
+            manage_db.build_parser().parse_args(["assign", str(adult), "Reinigung", str(ids["member"])])
+        except SystemExit as exc:
+            assert exc.code == 2
+        else:
+            raise AssertionError("old role text must be rejected by the CLI parser")
+    assert "Wischer" in _cli(path, "assign", adult, db.ROLE_CLEANING, ids["helpers"][0])
+    try:
+        _cli(path, "assign", adult, db.ROLE_CLEANING, ids["helpers"][1])
+    except SystemExit:
+        pass
+    else:
+        raise AssertionError("CLI must not create a second Wischer")
     listing = _cli(path, "--season", h.SEASON, "list-games")
-    assert "Reinigung 1: Staff 0" in listing and "Reinigung 2: Staff 1" in listing
+    assert "Wischer: Staff 0" in listing and "Wischer 2" not in listing
     for role in (db.ROLE_CASH, db.ROLE_CLEANING):
         try:
             _cli(path, "assign", youth, role, ids["member"])
@@ -292,7 +295,7 @@ def test_cli_supports_both_cleaning_positions_and_refuses_removed_category_dutie
         else:
             raise AssertionError("CLI cannot override offered game duties")
     try:
-        _cli(path, "unassign", adult, db.ROLE_CLEANING, ids["helpers"][1])
+        _cli(path, "unassign", adult, db.ROLE_CLEANING, ids["helpers"][0])
     except SystemExit as exc:
         assert "verbindlich" in str(exc)
     else:
@@ -300,7 +303,7 @@ def test_cli_supports_both_cleaning_positions_and_refuses_removed_category_dutie
     with h.Session(engine) as session:
         game = session.get(db.Game, adult)
         assert game.assignment_by_role(db.ROLE_CLEANING, 0) is not None
-        assert game.assignment_by_role(db.ROLE_CLEANING, 1).person_id == ids["helpers"][1]
+        assert game.assignment_by_role(db.ROLE_CLEANING, 1) is None
 
 
 for _name, _test in list(globals().items()):

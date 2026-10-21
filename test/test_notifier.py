@@ -179,10 +179,6 @@ def _add_cleaning_helpers(session, game):
             name="Cleanup First", email="cleanup-first@example.test",
             birth_date=h.ADULT_BIRTH_DATE,
         ),
-        db.Person(
-            name="Cleanup Second", phone="+491700000005",
-            birth_date=h.ADULT_BIRTH_DATE,
-        ),
     ]
     session.add_all(helpers)
     session.flush()
@@ -211,69 +207,67 @@ def test_retained_removed_youth_duties_receive_one_reminder_each_with_shared_rol
     ):
         recorder = TextRecorder()
         sender.send_Mail, sender.send_SMS = recorder.mail, recorder.sms
-        assert notify() == 8, "every saved duty, including retained Kasse/Reinigung, needs one message"
-        assert len(recorder.mails) == 4 and len(recorder.smss) == 4, \
+        assert notify() == 7, "every saved duty, including retained Kasse/Wischer, needs one message"
+        assert len(recorder.mails) == 4 and len(recorder.smss) == 3, \
             "the two occupants of repeated roles must not drop or duplicate recipients"
         recipients = [recipient for recipient, _, _ in recorder.mails]
         for name in ("Alice", "Caro", "Ed", "Cleanup First"):
             assert sum(name in recipient for recipient in recipients) == 1, \
                 f"{name} must receive exactly one reminder"
         phones = [phone for phone, _ in recorder.smss]
-        for phone in ("+491700000001", "+491700000003", "+491700000004", "+491700000005"):
+        for phone in ("+491700000001", "+491700000003", "+491700000004"):
             assert phones.count(phone) == 1, "each SMS occupant must receive exactly one reminder"
         for recipient, subject, body in recorder.mails:
             if "Caro" in recipient:
                 assert "Verkauf" in subject and "Verkauf" in body
             if "Cleanup First" in recipient:
-                assert "Reinigung" in subject and "Reinigung" in body
+                assert "Wischer" in subject and "Wischer" in body
         for phone, body in recorder.smss:
             if phone == "+491700000003":
                 assert "Verkauf" in body
             if phone == "+491700000004":
                 assert "Kasse" in body
-            if phone == "+491700000005":
-                assert "Reinigung" in body
         for text in (recorder.all_text(), " ".join(subject for _, subject, _ in recorder.mails)):
-            for numbered_role in ("Verkauf 1", "Verkauf 2", "Reinigung 1", "Reinigung 2"):
+            for numbered_role in ("Verkauf 1", "Verkauf 2", "Wischer 1", "Wischer 2"):
                 assert numbered_role not in text, "reminders must use the shared semantic role"
 
 
-def test_sparse_second_cleaning_position_and_repeated_role_input_notify_saved_person_once():
+def test_single_wischer_and_repeated_role_input_notify_saved_person_once():
     session, game, sender, recorder = _setup()
     game.ak = "BL M"
     session.commit()
     helper = db.Person(
-        name="Only Second", email="second-only@example.test",
+        name="Only Wischer", email="only-wischer@example.test",
         birth_date=h.ADULT_BIRTH_DATE,
     )
     session.add(helper)
     session.flush()
-    db.claim_slot(session, game, db.ROLE_CLEANING, 1, None, helper)
+    db.claim_slot(session, game, db.ROLE_CLEANING, 0, None, helper)
     session.commit()
 
     assert sender._notify_game_helpers(
         game, GAME_DATE, "game.day_before",
         [db.ROLE_CLEANING, db.ROLE_CLEANING],
-    ) == 1, "role requests select actual saved assignments once, including a sparse second position"
-    assert len(recorder.mails) == 1 and "Only Second" in recorder.mails[0][0]
-    assert "Reinigung" in recorder.mails[0][2]
+    ) == 1, "role requests select actual saved assignments once, including Wischer"
+    assert len(recorder.mails) == 1 and "Only Wischer" in recorder.mails[0][0]
+    assert "Wischer" in recorder.mails[0][2]
 
 
-def test_mv_reminder_tracks_adult_added_duties_and_stops_when_all_eight_are_filled():
+def test_mv_reminder_tracks_adult_added_duties_and_stops_when_all_seven_are_filled():
     session, game, sender, recorder = _setup()
     game.ak = "BL M"
     session.commit()
     assert sender.notify_game_day(GAME_DATE) == 6, \
-        "adult Kasse and Reinigung gaps need one MV follow-up alongside five helpers"
+        "adult Kasse and Wischer gaps need one MV follow-up alongside five helpers"
     assert sum(phone == "+491700000002" for phone, _ in recorder.smss) == 1
 
     cash = session.query(db.Person).filter_by(name="Frida").one()
     db.claim_slot(session, game, db.ROLE_CASH, 0, None, cash)
     _add_cleaning_helpers(session, game)
-    assert db.staffing_status(game)["complete"], "all eight adult positions must complete staffing"
+    assert db.staffing_status(game)["complete"], "all seven adult positions must complete staffing"
     recorder = TextRecorder()
     sender.send_Mail, sender.send_SMS = recorder.mail, recorder.sms
-    assert sender.notify_game_day(GAME_DATE) == 8
+    assert sender.notify_game_day(GAME_DATE) == 7
     assert all(phone != "+491700000002" for phone, _ in recorder.smss), \
         "complete adult staffing must stop the MV reminder"
 

@@ -13,6 +13,7 @@ from unittest.mock import patch
 
 import helpers as h
 import db
+import schema_migrations
 
 
 SOURCE = Path(h.PROJECT_DIR) / 'release-assets/nuligahelper-deploy.py'
@@ -335,7 +336,7 @@ def test_candidate_schema_probe_uses_its_own_runtime_without_secrets():
         db.initialize_db(db.make_engine(str(database)))
         result = deploy.schema_probe(Path(h.PROJECT_DIR), database)
         assert result['gate'] == 'ready'
-        assert result['revision'] == '0007_binding_duty_assignments'
+        assert result['revision'] == schema_migrations.HEAD_REVISION
 
 
 def test_local_web_verification_checks_release_listener_schema_and_health():

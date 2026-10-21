@@ -565,7 +565,7 @@ function updateGameStaffing(card, staffing) {
   if (coverage && coverage.dataset.progressKind === "game") {
     setCoverage(coverage, staffing.required_filled, staffing.required_total);
     // Flask sorts JSON keys alphabetically; preserve the domain role order.
-    const vacancies = Object.fromEntries(["Zeitnehmer", "Sekretär", "Verkauf", "Ordnungsdienst", "Kasse", "Reinigung"]
+    const vacancies = Object.fromEntries(["Zeitnehmer", "Sekretär", "Verkauf", "Ordnungsdienst", "Kasse", "Wischer"]
       .filter((role) => staffing.vacancies?.[role] > 0).map((role) => [role, staffing.vacancies[role]]));
     updateVacancies(coverage, vacancies);
   }

@@ -238,8 +238,8 @@ def test_staffing_rechecks_changed_dates_and_category_without_altering_rows_or_a
         people[3].birth_date = None
         session.commit()
         status = db.staffing_status(game)
-        assert status["vacancies"] == {db.ROLE_CASH: 1, db.ROLE_CLEANING: 2}, \
-            "changing youth to adult must expose only the three newly required duties"
+        assert status["vacancies"] == {db.ROLE_CASH: 1, db.ROLE_CLEANING: 1}, \
+            "changing youth to adult must expose only the two newly required duties"
         assert {reason["code"] for reason in status["deficiencies"]} == {"underage", "missing_adult_seller"}
         assert not status["complete"]
         assert [(entry.id, entry.person_id) for entry in game.assignments] == assignment_before
@@ -250,7 +250,7 @@ def test_staffing_rechecks_changed_dates_and_category_without_altering_rows_or_a
         db.request_replacement(session, game, db.ROLE_TIMEKEEPER, 0, people[0].id)
         session.commit()
         assert db.staffing_status(game)["vacancies"] == {
-            db.ROLE_CASH: 1, db.ROLE_CLEANING: 2}
+            db.ROLE_CASH: 1, db.ROLE_CLEANING: 1}
         assert game.assignment_by_role(db.ROLE_TIMEKEEPER).person_id == people[0].id
         assert game.assignment_by_role(db.ROLE_TIMEKEEPER).replacement_token
 

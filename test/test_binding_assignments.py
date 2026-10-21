@@ -101,7 +101,7 @@ def test_batch_locks_complete_cohort_and_late_empty_claims_without_delivery_depe
             db.lock_day_before_batch(session, 2026, game.date)
         session.commit()
         assert session.query(db.AssignmentAudit).count() == before, "batch retry must not duplicate lifecycle audit"
-        late = db.claim_slot(session, game, db.ROLE_CLEANING, 1, None, session.get(db.Person, people[2]))
+        late = db.claim_slot(session, game, db.ROLE_CLEANING, 0, None, session.get(db.Person, people[2]))
         assert late.locked_at == marker.locked_at
         for block_id in blocks:
             late_block = db.claim_block_slot(session, session.get(db.DayBlock, block_id), 1, None, session.get(db.Person, people[2]))

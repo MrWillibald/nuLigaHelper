@@ -267,8 +267,8 @@ def test_retained_data_postflight_failure_reports_valid_backup_without_private_v
         engine = _older_head(path)
         original = schema_migrations._retained_data
 
-        def mismatch(source, columns=None):
-            selected, fingerprints = original(source, columns)
+        def mismatch(source, columns=None, **kwargs):
+            selected, fingerprints = original(source, columns, **kwargs)
             if columns is not None:
                 fingerprints["persons"] = "synthetic-changed-data"
             return selected, fingerprints

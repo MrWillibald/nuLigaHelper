@@ -14,7 +14,7 @@ globalThis.fetch = async (url, options) => {
   } }) };
 };
 const cases = [
-  ...["Zeitnehmer", "Sekretär", "Verkauf", "Ordnungsdienst", "Kasse", "Reinigung"].map((role) => ({ kind: "game", role })),
+  ...["Zeitnehmer", "Sekretär", "Verkauf", "Ordnungsdienst", "Kasse", "Wischer"].map((role) => ({ kind: "game", role })),
   ...["Vorbereitung", "Kuchenlieferung", "Aufräumen"].map((kind) => ({ kind })),
 ];
 

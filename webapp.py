@@ -159,8 +159,7 @@ SLOT_LABELS = [
     ("Verkauf 2", db.ROLE_SALE, 1),
     ("Ordnungsdienst", db.ROLE_SECURITY, 0),
     ("Kasse", db.ROLE_CASH, 0),
-    ("Reinigung 1", db.ROLE_CLEANING, 0),
-    ("Reinigung 2", db.ROLE_CLEANING, 1),
+    ("Wischer", db.ROLE_CLEANING, 0),
 ]
 
 COUNTRY_CODES = [
