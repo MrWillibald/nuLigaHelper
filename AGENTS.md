@@ -211,8 +211,8 @@ test/run_tests.sh                          # whole suite, must stay green
   reactivation restores no historically released assignment.
 
 - Roles: `Zeitnehmer`, `Sekretär`, `Verkauf` (**2 slots**), `Ordnungsdienst`
-  (**1 slot**), `Kasse`, `Reinigung` (**2 slots**) — see `db.ROLE_SLOT_COUNT`.
-  Adults offer all eight positions; youth/SPF and unknown classes offer the
+  (**1 slot**), `Kasse`, `Wischer` (**1 slot**) — see `db.ROLE_SLOT_COUNT`.
+  Adults offer all seven positions; youth/SPF and unknown classes offer the
   baseline five without Kasse/Reinigung. All offered positions are required; use
   `db.offered_positions()` / `db.required_positions()` for per-game calculations.
   Retained assignments outside that set stay visible, count in personal
@@ -270,6 +270,17 @@ test/run_tests.sh                          # whole suite, must stay green
   The sticky-duty revision preserves assignments and old audit snapshots while
   adding replacement tokens, saved locks and a dated cutoff marker. It must not
   fabricate prior confirmation, replacement requests or historical reminder batches.
+- Revision `0008_single_wischer` is the one-time, explicitly requested exception to
+  commitment preservation: current Reinigung slot 0 becomes Wischer with its ID,
+  helper, lock and replacement state intact; every current Reinigung slot 1 is deleted
+  across all seasons, dates and categories, including past, locked and open-request
+  duties. Never promote its helper into slot 0. Deleted duties cease counting in
+  personal statistics (including past counts) and reminders. Append exactly one system
+  `migration_remove` audit per deletion, preserving every old audit and unrelated row.
+  Pre-day-block original Reinigung still migrates to Kasse. Use only the stopped-writers,
+  backup-first guarded migration; recovery restores the printed snapshot and prior
+  application, including deleted assignments. This grants no runtime release, destructive
+  maintenance or cutoff bypass. Adult games now require seven positions.
 - The newspaper-article feature lives in `Notifier.send_article` but its call
   site in `main.py` is commented out.
 

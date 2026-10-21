@@ -13,7 +13,7 @@ The system SHALL provide a concise German description for every supported game a
 #### Scenario: Current tasks have coverage
 
 - **WHEN** the current game and day-level tasks are displayed
-- **THEN** Zeitnehmer, Sekretär, Verkauf, Ordnungsdienst, Kasse, Reinigung, Vorbereitung, Aufräumen and Kuchenlieferung each have a description
+- **THEN** Zeitnehmer, Sekretär, Verkauf, Ordnungsdienst, Kasse, Wischer, Vorbereitung, Aufräumen and Kuchenlieferung each have a description
 
 #### Scenario: Added or renamed duties have coverage
 
@@ -26,6 +26,12 @@ The system SHALL provide a concise German description for every supported game a
 - **WHEN** a viewer reads descriptions for Verkauf 1 and Verkauf 2
 - **THEN** both positions explain the same Verkauf duty
 - **AND** the same rule applies to other numbered roles
+
+#### Scenario: Wischer help uses the current singular duty
+
+- **WHEN** a viewer opens help for the single Wischer position
+- **THEN** the German description explains the existing during-play floor-wiping duty using singular Wischer wording
+- **AND** it does not imply that two Wischer are required or change the meaning of day-wide Aufräumen
 
 ### Requirement: Description information follows each task label
 

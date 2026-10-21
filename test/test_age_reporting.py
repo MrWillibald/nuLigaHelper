@@ -152,9 +152,9 @@ def test_full_invalid_roster_reports_truthful_occupancy_without_private_data(_to
         session.commit()
     guest_text = app.test_client().get("/").get_data(as_text=True)
     tree = html.fromstring(guest_text)
-    assert "8 von 8 Pflichtdiensten besetzt" in guest_text, "eligibility fabricated a vacancy"
+    assert "7 von 7 Pflichtdiensten besetzt" in guest_text, "eligibility fabricated a vacancy"
     assert tree.xpath('//div[@data-eligibility-status and not(@hidden)]'), "full invalid staffing looked complete"
-    assert tree.xpath('//details[@class="game-card"]//*[@data-progress-count]/text()') == ["8/8"]
+    assert tree.xpath('//details[@class="game-card"]//*[@data-progress-count]/text()') == ["7/7"]
     assert not tree.xpath('//details[@class="game-card"]//*[@data-vacancies]/span'), "age deficiency invented a vacancy badge"
     assert "Legacy helper 0" in guest_text
     assert "birth_date" not in guest_text and "1992-01-01" not in guest_text

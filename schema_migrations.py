@@ -19,10 +19,11 @@ import backup
 
 
 BASELINE_REVISION = "0001_current_schema_baseline"
-HEAD_REVISION = "0007_binding_duty_assignments"
+WISCHER_REVISION = "0008_single_wischer"
+HEAD_REVISION = WISCHER_REVISION
 
 # Only historical source revisions may translate the former per-game cleaning
-# role. Reinigung is a distinct, assignable role starting at the current head.
+# role. Current Reinigung from 0006/0007 instead becomes the single Wischer.
 PRE_DAY_BLOCK_REVISIONS = {BASELINE_REVISION, "0002_multi_team_membership"}
 PRE_GAME_DUTY_REVISIONS = PRE_DAY_BLOCK_REVISIONS | {
     "0003_game_day_task_blocks", "0004_person_birth_dates", "0005_cake_delivery_blocks",
@@ -245,7 +246,7 @@ def _create_backup(path: Path) -> Path:
     return destination
 
 
-def _retained_data(path: Path, columns: dict | None = None) -> tuple[dict, dict]:
+def _retained_data(path: Path, columns: dict | None = None, *, appended_audits=()) -> tuple[dict, dict]:
     """Fingerprint preserved values without exposing contacts or birth dates."""
     with sqlite3.connect(_readonly_uri(path), uri=True) as connection:
         tables = _table_names(connection) - {"alembic_version"}
@@ -259,6 +260,7 @@ def _retained_data(path: Path, columns: dict | None = None) -> tuple[dict, dict]
             role_renames["Reinigung"] = "Kasse"
         if revision in PRE_GAME_DUTY_REVISIONS:
             role_renames["Unterstützung"] = "Kasse"
+        current_cleaning = revision in {"0006_game_duty_staffing", "0007_binding_duty_assignments"}
         if columns is None:
             columns = {
                 table: tuple(row[1] for row in connection.execute(
@@ -282,6 +284,16 @@ def _retained_data(path: Path, columns: dict | None = None) -> tuple[dict, dict]
             rows = [tuple(row) for row in connection.execute(
                 f'SELECT {selected} FROM "{table}"{clause}'
             )]
+            if table == "assignment_audit":
+                # Predict the exact appended evidence; every original row and
+                # every planned new field still participates in the fingerprint.
+                rows.extend(tuple(row[column] for column in selected_columns) for row in appended_audits)
+            if table == "assignments" and current_cleaning:
+                role_index = selected_columns.index("role")
+                slot_index = selected_columns.index("slot")
+                rows = [tuple("Wischer" if i == role_index and value == "Reinigung" else value
+                              for i, value in enumerate(row)) for row in rows
+                        if not (row[role_index] == "Reinigung" and row[slot_index] == 1)]
             if table == "assignments" and "role" in selected_columns and role_renames:
                 role_index = selected_columns.index("role")
                 rows = [tuple(role_renames.get(value, value) if index == role_index else value
@@ -485,10 +497,15 @@ def migrate_to_head(database_path: str | Path, engine) -> MigrationResult:
             raise SchemaMigrationError(
                 f"The game-duty source schema does not match its reviewed revision: {exc}"
             ) from exc
+    elif state.revision == "0007_binding_duty_assignments":
+        verify_head_schema(engine, inherited_defaults=inherited_defaults)
 
     backup_path = _create_backup(path)
     try:
-        retained_columns, retained_fingerprints = _retained_data(backup_path)
+        wischer = ScriptDirectory.from_config(alembic_config()).get_revision(WISCHER_REVISION).module
+        with engine.connect() as connection:
+            removals = wischer.removal_plan(connection, state.revision)
+        retained_columns, retained_fingerprints = _retained_data(backup_path, appended_audits=removals)
         with engine.connect() as connection:
             connection.commit()
             connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
@@ -498,12 +515,19 @@ def migrate_to_head(database_path: str | Path, engine) -> MigrationResult:
                 if state.kind == "baseline":
                     _run_alembic(connection, command.stamp, BASELINE_REVISION)
                     connection.commit()
+                connection.info["wischer_removals"] = removals
+                # SQLite's legacy transaction mode does not begin on reads or
+                # DDL. Keep migration evidence, removals and revision stamping
+                # inside one actual transaction, including nested savepoints.
+                connection.exec_driver_sql("BEGIN IMMEDIATE")
                 _run_alembic(connection, command.upgrade, head)
                 connection.commit()
             except BaseException:
                 connection.rollback()
                 connection.exec_driver_sql("PRAGMA foreign_keys=ON")
                 raise
+            finally:
+                connection.info.pop("wischer_removals", None)
             connection.exec_driver_sql("PRAGMA foreign_keys=ON")
             if connection.exec_driver_sql("PRAGMA foreign_keys").scalar_one() != 1:
                 raise SchemaMigrationError("Could not restore SQLite foreign keys after migration")

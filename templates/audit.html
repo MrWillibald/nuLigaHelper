@@ -44,7 +44,7 @@
         <tr class="audit-entry">
           <td data-label="Zeit">{{ entry.changed_at.strftime('%d.%m.%Y %H:%M:%S') }}</td>
           <td data-label="Akteur"><strong>{{ entry.actor_name }}</strong><span class="audit-tier-badge">{{ entry.actor_tier }}</span></td>
-          <td data-label="Aktion"><span class="audit-action-badge audit-action-{{ entry.action }}">{{ entry.action }}</span></td>
+          <td data-label="Aktion"><span class="audit-action-badge audit-action-{{ entry.action }}">{{ "Durch Migration entfernt" if entry.action == "migration_remove" else entry.action }}</span></td>
           <td data-label="Person">{{ entry.affected_person_name }}</td>
           <td data-label="Spiel">{{ entry.block_snapshot or entry.game_snapshot }}</td>
           <td data-label="Dienst"><strong>{{ entry.role }}</strong> · Platz {{ entry.slot + 1 }}</td>

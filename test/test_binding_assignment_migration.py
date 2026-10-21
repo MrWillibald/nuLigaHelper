@@ -14,9 +14,9 @@ PREVIOUS = "0006_game_duty_staffing"
 
 
 def test_binding_revision_is_single_head_and_fresh_schema_has_no_model_drift():
-    assert schema_migrations.head_revisions() == ("0007_binding_duty_assignments",)
+    assert schema_migrations.head_revisions() == (schema_migrations.HEAD_REVISION,)
     scripts = ScriptDirectory.from_config(schema_migrations.alembic_config())
-    assert scripts.get_revision(schema_migrations.HEAD_REVISION).down_revision == PREVIOUS
+    assert scripts.get_revision("0007_binding_duty_assignments").down_revision == PREVIOUS
     engine = h.make_engine()
     schema_migrations.verify_head_schema(engine)
     assert schema_migrations.metadata_drift(engine, db.Base.metadata) == []

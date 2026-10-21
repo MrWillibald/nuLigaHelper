@@ -176,12 +176,12 @@ def test_head_fingerprints_preserve_new_cleaning_as_a_distinct_current_role():
         engine = create_game_duty_source(path)
         schema_migrations.migrate_to_head(path, engine)
         with sqlite3.connect(path) as connection:
-            connection.execute("INSERT INTO assignments (id,game_id,person_id,role,slot) VALUES (404, 101, 15, 'Reinigung', 1)")
+            connection.execute("INSERT INTO assignments (id,game_id,person_id,role,slot) VALUES (404, 101, 15, 'Wischer', 0)")
         columns, before = schema_migrations._retained_data(path)
         with sqlite3.connect(path) as connection:
             connection.execute("UPDATE assignments SET role='Kasse' WHERE id=404")
         _, after = schema_migrations._retained_data(path, columns)
-        assert before["assignments"] != after["assignments"], "new Reinigung must never share a compatibility fingerprint with Kasse"
+        assert before["assignments"] != after["assignments"], "Wischer must never share a compatibility fingerprint with Kasse"
         engine.dispose()
 
 

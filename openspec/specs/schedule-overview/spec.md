@@ -153,7 +153,7 @@ Each card SHALL have a labeled control that expands and collapses that card inde
 
 - **WHEN** a viewer expands a youth game
 - **THEN** only the five offered baseline positions appear as game duty fields
-- **AND** empty Kasse and Reinigung fields and optional markers are absent
+- **AND** empty Kasse and Wischer fields and optional markers are absent
 - **AND** any retained removed-duty occupant appears separately as an existing assignment with only controls allowed by binding protection and the explicit legacy retirement policy
 
 #### Scenario: Compact disclosure stays accessible
@@ -165,7 +165,7 @@ Each card SHALL have a labeled control that expands and collapses that card inde
 
 ### Requirement: Compact cards show accurate staffing progress
 
-Each game SHALL display a ring gauge whose arc represents occupied positions in that game's offered/required-position set and whose center shows a readable occupied/required fraction such as `5/8`. Retained removed-duty positions and responsible-team selection SHALL be excluded from numerator and denominator. Adult games SHALL have eight required positions; youth games SHALL have five. Preparation and cleanup gauges SHALL count occupied slots among their respective three slots. Configured cake quantities greater than zero SHALL use the same ring presentation with the requested quantity as denominator. The overview SHALL replace the horizontal progress bar and separate percentage line with this ring and fraction, including at zero and full coverage.
+Each game SHALL display a ring gauge whose arc represents occupied positions in that game's offered/required-position set and whose center shows a readable occupied/required fraction such as `5/7`. Retained removed-duty positions and responsible-team selection SHALL be excluded from numerator and denominator. Adult games SHALL have seven required positions; youth games SHALL have five. Preparation and cleanup gauges SHALL count occupied slots among their respective three slots. Configured cake quantities greater than zero SHALL use the same ring presentation with the requested quantity as denominator. The overview SHALL replace the horizontal progress bar and separate percentage line with this ring and fraction, including at zero and full coverage.
 
 Each gauge SHALL expose its current value, total and a German description identifying occupied duties, block positions or promised cakes to assistive technology. Meaning SHALL NOT depend on color alone. Initial counts and arcs SHALL be available without JavaScript. A successful permitted occupancy change SHALL update the affected ring and vacancy badges together without requiring a page reload; an unsuccessful, cancelled or stale operation SHALL not show uncommitted progress or vacancies.
 
@@ -188,12 +188,12 @@ Each gauge SHALL expose its current value, total and a German description identi
 
 #### Scenario: Adult additional duties count
 
-- **WHEN** an adult game has five of its eight required positions occupied
-- **THEN** its compact card shows `5/8` required slots filled
+- **WHEN** an adult game has five of its seven required positions occupied
+- **THEN** its compact card shows `5/7` required slots filled
 
 #### Scenario: Retained removed duty released
 
-- **WHEN** a retained Kasse or Reinigung assignment of a youth game is explicitly retired by an authorized caller before the fixed day-before cutoff
+- **WHEN** a retained Kasse or Wischer assignment of a youth game is explicitly retired by an authorized caller before the fixed day-before cutoff
 - **THEN** its required-duty gauge and vacancy badges are unchanged and the removed duty field disappears
 - **AND** changing its sole Ordnungsdienst position updates the gauge and matching badge
 
@@ -439,7 +439,7 @@ Every game and day-block duty SHALL show its assigned helper and persistent `Ers
 
 ### Requirement: Collapsed cards identify grouped staffing vacancies
 
-Each collapsed game card SHALL show red vacancy badges beside its ring, using the visual language and vacancy meaning of the statistics page. Each missing offered duty type SHALL appear once in a stable duty order, with its readable German name and a count when more than one position is vacant, such as "Verkauf (2×)" or "Reinigung (2×)". Occupied roles, retained removed-duty roles and responsible-team selection SHALL NOT produce vacancy badges. Preparation and cleanup SHALL each show one grouped badge for their remaining positions; configured positive cake quantities SHALL show one grouped badge for missing cake contributions. Fully occupied containers SHALL show no vacancy badges or empty badge placeholders.
+Each collapsed game card SHALL show red vacancy badges beside its ring, using the visual language and vacancy meaning of the statistics page. Each missing offered duty type SHALL appear once in a stable duty order, with its readable German name and a count when more than one position is vacant, such as "Verkauf (2×)" for two vacant Verkauf positions or "Wischer" for its single vacant position. Occupied roles, retained removed-duty roles and responsible-team selection SHALL NOT produce vacancy badges. Preparation and cleanup SHALL each show one grouped badge for their remaining positions; configured positive cake quantities SHALL show one grouped badge for missing cake contributions. Fully occupied containers SHALL show no vacancy badges or empty badge placeholders.
 
 The same vacancy information SHALL be available to guests and signed-in viewers on initial rendering without JavaScript. New summary content SHALL contain no person identifiers, candidate lists, contacts, full birth dates or exact personal ages. Badge updates SHALL reflect saved state from successful mutations and staffing refreshes, including candidate refreshes that return current staffing. Cancelled or dismissed confirmation, failed writes and stale responses SHALL NOT remove badges based on an unsaved selection. Existing replacement and fixed-duty states SHALL remain available in the expanded duty fields.
 
@@ -451,7 +451,7 @@ The same vacancy information SHALL be available to guests and signed-in viewers 
 
 #### Scenario: Game type determines offered vacancies
 
-- **WHEN** a youth or Spielfest card has empty Kasse and Reinigung positions outside its offered set
+- **WHEN** a youth or Spielfest card has empty Kasse and Wischer positions outside its offered set
 - **THEN** those roles produce no vacancy badges
 - **AND** its ring continues to use its five required positions
 

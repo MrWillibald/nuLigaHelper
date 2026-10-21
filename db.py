@@ -40,7 +40,7 @@ ROLE_SECRETARY = "Sekretär"
 ROLE_SALE = "Verkauf"
 ROLE_SECURITY = "Ordnungsdienst"
 ROLE_CASH = "Kasse"
-ROLE_CLEANING = "Reinigung"
+ROLE_CLEANING = "Wischer"
 # Import compatibility for the renamed support duty. Legacy stored role text is
 # migrated explicitly; new cleaning duties always use their distinct role.
 ROLE_SUPPORT = ROLE_CASH
@@ -52,7 +52,7 @@ ROLE_SLOT_COUNT = {
     ROLE_SALE: 2,
     ROLE_SECURITY: 1,
     ROLE_CASH: 1,
-    ROLE_CLEANING: 2,
+    ROLE_CLEANING: 1,
 }
 
 # Semantic roles occur once; repeated positions are resolved from assignments.
@@ -64,7 +64,7 @@ BASELINE_REQUIRED_POSITIONS = (
 
 
 def offered_positions(game: Game) -> tuple[tuple[str, int], ...]:
-    """Adult games offer eight duties; youth/unknown classes keep five."""
+    """Adult games offer seven duties; youth/unknown classes keep five."""
     if age_eligibility.classify_game_category(game.ak) == age_eligibility.ADULT:
         return tuple((role, slot) for role, count in ROLE_SLOT_COUNT.items()
                      for slot in range(count))
@@ -134,10 +134,10 @@ TASK_DESCRIPTIONS = {
         "Besprechungen mit den Schiedsrichtern ist nicht erforderlich."
     ),
     ROLE_CLEANING: (
-        "Während des Spiels bei Bedarf bei der Reinigung einzelner Stellen des Spielfelds "
-        "helfen. In Spielfeldnähe bereithalten, jedoch nicht auf der Auswechselbank. "
+        "Als Wischer während des Spiels bei Bedarf einzelne Stellen des Spielfelds "
+        "wischen. In Spielfeldnähe bereithalten, jedoch nicht auf der Auswechselbank. "
         "Eine Teilnahme an den technischen Besprechungen mit den Schiedsrichtern ist "
-        "nicht erforderlich. Die Schiedsrichter nehmen die Anwesenheit der Reinigungskräfte "
+        "nicht erforderlich. Die Schiedsrichter nehmen die Anwesenheit des Wischers "
         "zur Kenntnis."
     ),
     BLOCK_PREPARATION: (

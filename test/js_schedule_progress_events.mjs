@@ -49,12 +49,11 @@ if (assignmentSelect.value !== "" || coverage.dataset.progressFilled !== "3") {
 
 assert.equal(summary.snapshot(), beforeRefusal, "refused selection changed ring, semantics or vacancies");
 
-// Adult Reinigung positions and Kasse receive saved staffing, without deriving
+// Adult Wischer and Kasse receive saved staffing, without deriving
 // requiredness from their role text or from the locally selected value.
 for (const [role, slot, total, filled] of [
-  ["Kasse", "0", 8, 4],
-  ["Reinigung", "0", 8, 5],
-  ["Reinigung", "1", 8, 6],
+  ["Kasse", "0", 7, 4],
+  ["Wischer", "0", 7, 5],
 ]) {
   assignmentSelect.value = "";
   assignmentSelect.dataset.role = role;
@@ -80,7 +79,7 @@ listeners.focus();
 assignmentSelect.value = "";
 globalThis.fetch = async () => ({ status: 409, json: async () => ({ ok: false, error: "Stale" }) });
 await listeners.change();
-if (assignmentSelect.value !== "7" || coverage.dataset.progressFilled !== "6") {
+if (assignmentSelect.value !== "7" || coverage.dataset.progressFilled !== "5") {
   throw new Error("stale adult cleaning release changed saved progress");
 }
 
@@ -88,7 +87,7 @@ listeners.focus();
 assignmentSelect.value = "";
 globalThis.fetch = async () => { throw new Error("an offered occupied duty must never be released"); };
 await listeners.change();
-if (assignmentSelect.value !== "7" || coverage.dataset.progressFilled !== "6") {
+if (assignmentSelect.value !== "7" || coverage.dataset.progressFilled !== "5") {
   throw new Error("selecting the empty option withdrew a binding duty");
 }
 
@@ -125,22 +124,22 @@ if (feedback.at(-1).severity !== "warning" || !feedback.at(-1).message.includes(
 
 // Candidate responses and writes share exactly one public summary renderer.
 const tools = globalThis.nuLigaProgressTools;
-tools.updateGameStaffing(card, { required_filled: 3, required_total: 8,
-  vacancies: { Reinigung: 2, Verkauf: 2, Kasse: 1 }, deficiencies: [] });
+tools.updateGameStaffing(card, { required_filled: 3, required_total: 7,
+  vacancies: { Wischer: 1, Verkauf: 2, Kasse: 1 }, deficiencies: [] });
 assert.deepEqual(summary.vacancies.children.map(badge => badge.textContent),
-  ["Verkauf (2×)", "Kasse", "Reinigung (2×)"], "JSON key sorting must not reorder role badges");
+  ["Verkauf (2×)", "Kasse", "Wischer"], "JSON key sorting must not reorder role badges");
 assert.equal(summary.vacancies.hidden, false);
 card.querySelectorAll = () => [];
 globalThis.nuLigaCandidateTools.populateCandidateCard(card, { people: [], slots: {}, staffing: {
-  required_filled: 7, required_total: 8, vacancies: { Reinigung: 1 }, deficiencies: [],
+  required_filled: 6, required_total: 7, vacancies: { Wischer: 1 }, deficiencies: [],
 } });
-assert.equal(summary.count.textContent, "7/8");
-assert.deepEqual(summary.vacancies.children.map(badge => badge.textContent), ["Reinigung"]);
-for (const filled of [0, 8]) {
-  tools.updateGameStaffing(card, { required_filled: filled, required_total: 8,
+assert.equal(summary.count.textContent, "6/7");
+assert.deepEqual(summary.vacancies.children.map(badge => badge.textContent), ["Wischer"]);
+for (const filled of [0, 7]) {
+  tools.updateGameStaffing(card, { required_filled: filled, required_total: 7,
     vacancies: filled ? {} : { Verkauf: 2 }, deficiencies: [] });
   assert.equal(summary.arc.attrs["stroke-dashoffset"], filled ? "0" : "100");
-  assert.equal(summary.vacancies.hidden, filled === 8);
+  assert.equal(summary.vacancies.hidden, filled === 7);
 }
 // A pre-write candidate read cannot roll back the saved ring and chips.
 card.dataset = { candidateUrl: "/api/games/1/candidates" };
@@ -151,7 +150,7 @@ const pending = globalThis.nuLigaCandidateTools.loadCandidateCard(card, true);
 await Promise.resolve();
 card._candidateRevision = (card._candidateRevision || 0) + 1;
 const saved = summary.snapshot();
-finishOld({ people: [], slots: {}, staffing: { required_filled: 0, required_total: 8,
+finishOld({ people: [], slots: {}, staffing: { required_filled: 0, required_total: 7,
   vacancies: { Verkauf: 2 }, deficiencies: [] } });
 await pending;
 assert.equal(summary.snapshot(), saved, "old candidates overwrote a newer saved game summary");
