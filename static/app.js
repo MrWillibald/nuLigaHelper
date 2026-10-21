@@ -409,7 +409,7 @@ function makeCandidateOption(person) {
 }
 
 function populateCandidateCard(card, payload) {
-  if (payload.block) renderCakeBlock(card, payload.block);
+  if (payload.block) renderBlockView(card, payload.block);
   const selects = Array.from(card.querySelectorAll("select[data-role], select[data-block-assignment]"));
   const people = new Map(payload.people.map((person) => [person.id, person]));
   const taken = new Set(Object.values(payload.slots).map((slot) => slot.occupant_id).filter(Boolean));
@@ -519,33 +519,55 @@ document.querySelectorAll("details[data-candidate-url]").forEach((card) => {
 });
 
 function setCoverage(coverage, filled, total) {
-  const percent = total ? Math.round(filled * 100 / total) : 0;
   coverage.dataset.progressFilled = String(filled);
   coverage.dataset.progressTotal = String(total);
   const kind = coverage.dataset.progressKind;
   const unit = kind === "game" ? "Pflichtdiensten" : kind === "cake" ? "Kuchen zugesagt" : "Plätzen";
-  coverage.querySelector("[data-progress-count]").textContent = `${filled} von ${total} ${unit}${kind === "cake" ? "" : " besetzt"}`;
-  coverage.querySelector("[data-progress-percent]").textContent = `${percent} %`;
-  coverage.querySelector(".coverage-fill").style.width = `${percent}%`;
-  const track = coverage.querySelector('[role="progressbar"]');
-  track.setAttribute("aria-valuenow", String(filled));
-  track.setAttribute("aria-valuemax", String(total));
+  coverage.hidden = total <= 0;
+  coverage.querySelector("[data-progress-count]").textContent = `${filled}/${total}`;
+  coverage.querySelector(".coverage-fill").setAttribute("stroke-dashoffset", String(total ? 100 - filled * 100 / total : 100));
+  const gauge = coverage.querySelector(".coverage-gauge");
+  if (total > 0) {
+    gauge.setAttribute("role", "progressbar");
+    gauge.setAttribute("aria-label", kind === "game" ? "Besetzte Pflichtdienste" : kind === "cake" ? "Zugesagte Kuchen" : "Besetzte Plätze");
+    gauge.setAttribute("aria-valuemin", "0");
+    gauge.setAttribute("aria-valuenow", String(filled));
+    gauge.setAttribute("aria-valuemax", String(total));
+    gauge.setAttribute("aria-valuetext", `${filled} von ${total} ${unit}${kind === "cake" ? "" : " besetzt"}`);
+  } else {
+    for (const attribute of ["role", "aria-label", "aria-valuemin", "aria-valuenow", "aria-valuemax", "aria-valuetext"]) {
+      gauge.removeAttribute(attribute);
+    }
+  }
 }
 
-function updateCoverage(card, previousId, newId) {
-  const coverage = card && card.querySelector(".coverage");
-  if (!coverage || coverage.dataset.progressKind === "game") return;
-  const change = Number(newId !== null) - Number(previousId !== null);
-  if (change === 0) return;
-  const total = Number(coverage.dataset.progressTotal);
-  const filled = Math.max(0, Math.min(total, Number(coverage.dataset.progressFilled) + change));
-  setCoverage(coverage, filled, total);
+function updateVacancies(coverage, vacancies = {}) {
+  const list = coverage.querySelector("[data-vacancies]");
+  const badges = Object.entries(vacancies).filter(([, count]) => count > 0).map(([label, count]) => {
+    const badge = document.createElement("span");
+    badge.className = "chip chip-gap";
+    badge.textContent = `${label}${count > 1 ? ` (${count}×)` : ""}`;
+    return badge;
+  });
+  list.replaceChildren(...badges);
+  list.hidden = badges.length === 0;
+}
+
+function updateBlockSummary(card, block) {
+  const coverage = card?.querySelector(".coverage");
+  if (!coverage) return;
+  setCoverage(coverage, block.progress.filled, block.progress.total);
+  updateVacancies(coverage, block.vacancies);
 }
 
 function updateGameStaffing(card, staffing) {
   const coverage = card?.querySelector(".coverage");
   if (coverage && coverage.dataset.progressKind === "game") {
     setCoverage(coverage, staffing.required_filled, staffing.required_total);
+    // Flask sorts JSON keys alphabetically; preserve the domain role order.
+    const vacancies = Object.fromEntries(["Zeitnehmer", "Sekretär", "Verkauf", "Ordnungsdienst", "Kasse", "Reinigung"]
+      .filter((role) => staffing.vacancies?.[role] > 0).map((role) => [role, staffing.vacancies[role]]));
+    updateVacancies(coverage, vacancies);
   }
   updateEligibility(card, staffing.deficiencies);
 }
@@ -566,7 +588,7 @@ function updateEligibility(card, deficiencies = []) {
 globalThis.nuLigaOptionTools = {
   comparePersonOptions, insertOptionSorted, addPersonOption, removePersonOption,
 };
-globalThis.nuLigaProgressTools = { updateCoverage, setCoverage, updateGameStaffing };
+globalThis.nuLigaProgressTools = { setCoverage, updateGameStaffing, updateBlockSummary };
 
 function assignmentTarget(control) {
   return control.dataset.block ? {
@@ -738,7 +760,7 @@ function bindAssignmentSelect(select) {
           restoreSavedSelection(select, previousId);
         }
         if (result.staffing) updateGameStaffing(card, result.staffing);
-        if (result.block) renderCakeBlock(card, result.block);
+        if (result.block) renderBlockView(card, result.block);
         const navigated = mutationFailure(result);
         if (!navigated) await loadCandidateCard(card, true, true);
         return;
@@ -753,8 +775,7 @@ function bindAssignmentSelect(select) {
       if (newId) removePersonOption(card, select, newId);
       if (previousId && previousId !== newId && previous) addPersonOption(card, select, previous);
       if (result.staffing) updateGameStaffing(card, result.staffing);
-      if (select.dataset.block) updateCoverage(card, previousId, newId);
-      if (result.block) renderCakeBlock(card, result.block);
+      if (result.block) renderBlockView(card, result.block);
       if (releaseOnly && newId === null) field?.remove();
       if (select.dataset.block) flashBlock(select.dataset.block); else flashCard(select.dataset.game);
       const warning = newId !== null && result.warning;
@@ -791,7 +812,7 @@ function bindReplacementRequest(button) {
       });
       if (result.assignment) applyDutyState(field, result.assignment);
       if (result.staffing) updateGameStaffing(card, result.staffing);
-      if (result.block) renderCakeBlock(card, result.block);
+      if (result.block) renderBlockView(card, result.block);
       if (!result.ok) mutationFailure(result);
       else showFeedback(cancel ? "Ersatzsuche beendet. Die Einteilung bleibt verbindlich."
         : "Ersatz gesucht. Die bisherige Einteilung bleibt verbindlich.", "success");
@@ -830,7 +851,8 @@ function setCardMutationPending(card, pending) {
   card.querySelectorAll("[data-request-replacement]").forEach((control) => { control.disabled = pending; });
 }
 
-function renderCakeBlock(card, block, resetForm = false) {
+function renderBlockView(card, block, resetForm = false) {
+  updateBlockSummary(card, block);
   if (block.phase !== "cake_delivery") return;
   card.querySelector("[data-cake-time]").textContent = block.delivery_time || "Lieferzeit offen";
   card.classList.toggle("task-block-no-time", !block.delivery_time);
@@ -840,9 +862,6 @@ function renderCakeBlock(card, block, resetForm = false) {
   status.hidden = block.configured && block.cake_quantity > 0;
   status.textContent = !block.configured ? "Admin-Einrichtung erforderlich"
     : block.cake_quantity === 0 ? "Keine Kuchen angefragt" : "";
-  const coverage = card.querySelector(".coverage");
-  coverage.hidden = !block.configured || block.cake_quantity === 0;
-  setCoverage(coverage, block.progress.filled, block.progress.total);
   const form = card.querySelector("[data-cake-config]");
   const dirty = form && (
     form.querySelector('[name="delivery_time"]').value !== form.dataset.expectedTime
@@ -973,7 +992,7 @@ document.querySelectorAll("[data-cake-config]").forEach((form) => {
       });
       if (result.block) {
         invalidateCandidateCard(card);
-        renderCakeBlock(card, result.block, true);
+        renderBlockView(card, result.block, true);
         if (card.open && result.block.slots.length) await loadCandidateCard(card, true, true);
         else candidateStatus(card, "");
       } else if (card.open && card.querySelector("select[data-block-assignment]")) {
@@ -996,7 +1015,7 @@ document.querySelectorAll("[data-cake-config]").forEach((form) => {
   });
 });
 
-globalThis.nuLigaCakeTools = { renderCakeBlock, invalidateCandidateCard };
+globalThis.nuLigaCakeTools = { renderBlockView, invalidateCandidateCard };
 
 function bindSettingSelect(select, url, field, confirmation) {
   let previous = select.value;

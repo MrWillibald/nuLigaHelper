@@ -1449,9 +1449,7 @@ def create_app() -> Flask:
                    "sort_group": 0, "sort_name": p["name"].casefold(), "hint": ""}
                   for p in persons if p["id"] in used_ids]
         people.sort(key=lambda p: (p["sort_name"], p["id"]))
-        return candidate_response(people, allowed, **(
-            {"block": block_view(block)} if block.phase == db.BLOCK_CAKE_DELIVERY else {}
-        ))
+        return candidate_response(people, allowed, block=block_view(block))
 
     def progress_data(filled: int, total: int) -> dict[str, int]:
         return {
@@ -1485,6 +1483,10 @@ def create_app() -> Flask:
                                  and (assignment is None or not db.duty_is_locked(get_session(), block, assignment))
                                  ),
             })
+        progress = progress_data(
+            sum(slot["person_id"] is not None for slot in slots), len(slots)
+        )
+        missing = progress["total"] - progress["filled"]
         return {
             "id": block.id, "phase": block.phase, "label": block.label,
             "description": db.TASK_DESCRIPTIONS[block.phase],
@@ -1494,9 +1496,8 @@ def create_app() -> Flask:
             "cake_quantity": block.cake_quantity,
             "configured": db.block_is_configured(block),
             "slots": slots,
-            "progress": progress_data(
-                sum(slot["person_id"] is not None for slot in slots), len(slots)
-            ),
+            "progress": progress,
+            "vacancies": {block.label: missing} if missing else {},
             "past": bool(home_date and home_date < common.effective_today()),
         }
 
@@ -1604,6 +1605,8 @@ def create_app() -> Flask:
                 "progress": progress_data(
                     staffing["required_filled"], staffing["required_total"]
                 ),
+                "vacancies": {role: staffing["vacancies"][role]
+                              for role in db.ROLE_SLOT_COUNT if staffing["vacancies"].get(role)},
                 "classification_unresolved": staffing["classification_unresolved"],
                 "past": bool(d and d < today),
                 "eligibility_deficiencies": staffing["deficiencies"] if not d or d >= today else [],

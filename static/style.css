@@ -57,6 +57,7 @@ h3{color:var(--navy)}
 .schedule-filter-card{display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) auto;
   gap:14px;align-items:end;padding:18px;margin-bottom:24px;border:1px solid var(--line);
   border-radius:18px;background:#f8fafc}
+.schedule-filter-card .filter-field{min-width:0;overflow-wrap:anywhere}
 .schedule-empty{padding:20px;border:1px solid var(--line);border-radius:14px;
   background:#f8fafc;color:var(--muted);line-height:1.5}
 .schedule-empty a{color:var(--navy);font-weight:800}
@@ -73,29 +74,42 @@ h3{color:var(--navy)}
 .day-block.past .game-card{background:#f5f7fa}
 .day-block.past .game-time{color:#41516d}
 .day-block.past .hex{filter:saturate(.55)}
-.game-summary{display:grid;grid-template-columns:minmax(240px,340px) minmax(0,1fr);gap:22px;
-  align-items:center;padding:18px 20px;cursor:pointer;list-style:none}
+.game-summary{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:12px;
+  position:relative;align-items:center;padding:10px 12px;cursor:pointer;list-style:none;overflow-wrap:anywhere}
 .game-summary::-webkit-details-marker{display:none}
 .game-summary::marker{content:""}
 .game-summary:hover{background:rgba(10,29,78,.035)}
 .game-summary:focus-visible{outline:3px solid var(--kids);outline-offset:-3px}
-.game-summary-side{display:flex;flex-direction:column;gap:8px;min-width:0}
-.coverage{min-width:0}
-.coverage-text{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;
-  color:var(--navy);font-size:.88rem;font-weight:800}
-.coverage-track{display:block;width:100%;height:10px;margin-top:8px;border-radius:999px;
-  background:#e4eaf2;overflow:hidden}
-.coverage-fill{display:block;height:100%;border-radius:inherit;background:var(--navy);
-  transition:width .2s ease}
-.disclosure-label{display:inline-flex;align-items:center;gap:6px;align-self:flex-end;color:var(--navy);font-size:.83rem;font-weight:800;
-  text-decoration:underline;text-underline-offset:3px}
+.game-summary-side{display:grid;gap:4px;min-width:0}
+.coverage{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;align-items:center;min-width:0}
+.coverage[hidden],.coverage [hidden]{display:none}
+.coverage-gauge{position:relative;display:grid;place-items:center;aspect-ratio:1;margin:6px;padding:.8em;min-width:48px;min-height:48px;
+  color:var(--navy);font-size:.78rem;font-weight:800}
+.coverage-gauge svg{position:absolute;inset:0;width:100%;height:100%}
+.coverage-gauge [data-progress-count]{position:relative}
+.coverage-fill{transition:stroke-dashoffset .2s ease}
+.vacancy-list{display:flex;flex-wrap:wrap;gap:4px 6px;min-width:0;align-items:flex-start}
+.game-summary .vacancy-list .chip{max-width:100%;font-size:.76rem;line-height:1.3;
+  padding:3px 6px;overflow-wrap:anywhere}
+@media(prefers-reduced-motion:reduce){.coverage-fill{transition:none}}
+body:has(.game-card) .footer{overflow-wrap:anywhere}
+.disclosure-label{display:inline-flex;align-items:center;gap:6px;align-self:end;color:var(--navy);font-size:.83rem;font-weight:800;
+  line-height:1.2;text-decoration:underline;text-underline-offset:3px}
 .disclosure-indicator{width:0;height:0;border-top:4px solid transparent;border-bottom:4px solid transparent;
   border-left:7px solid currentColor;flex:0 0 auto}
 .game-card[open]>.game-summary .disclosure-indicator{transform:rotate(90deg)}
-.game-detail-body{padding:16px 20px 20px;border-top:1px solid var(--line)}
-.game-info{display:flex;flex-direction:column;gap:7px}
-.game-time{font-size:1.5rem;font-weight:900;color:var(--navy)}
-.game-teams{display:flex;align-items:center;gap:9px;font-weight:900;line-height:1.35}
+.game-detail-body{padding:16px 20px 20px;border-top:1px solid var(--line);overflow-wrap:anywhere}
+.game-info{display:flex;flex-wrap:wrap;gap:4px 8px;min-width:0;align-items:baseline}
+.game-time{font-size:1.1rem;font-weight:900;color:var(--navy);min-width:0}
+.game-info>.game-meta,.game-info>.game-responsible,.game-info>.classification-status{flex-basis:100%}
+.game-info>.game-responsible{flex:1 1 calc(100% - 5rem)}
+.task-block-info>.game-meta{flex:1 1 calc(100% - 5rem)}
+.game-info>.disclosure-label{position:absolute;right:12px;bottom:10px}
+@media(min-width:901px){
+  .game-summary{padding-right:calc(24px + 4rem)}
+}
+.game-teams{display:flex;align-items:center;gap:6px;font-weight:900;line-height:1.35;min-width:0;flex:1 1 8rem}
+.game-teams>span:last-child{min-width:0}
 .game-meta{color:var(--muted);font-size:.88rem}
 .game-responsible{color:var(--navy);font-size:.88rem;line-height:1.35}
 .hex{width:15px;height:15px;display:inline-block;flex:0 0 auto;
@@ -141,13 +155,13 @@ select.select-warn{border-color:#e8b23c;background:#fffaf0}
 .task-block-cake_delivery{--block-accent:#d8caf2}
 .task-block-card .game-time{display:flex;gap:8px;align-items:baseline}
 .task-block-card .game-time small{font-size:.72rem;color:var(--muted)}
-.task-block-icon{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;
+.task-block-icon{display:inline-grid;place-items:center;width:1.5em;height:1.5em;border-radius:50%;flex:0 0 auto;
   background:var(--block-accent);color:var(--navy);font-weight:900}
 .task-block-no-time .game-time{color:#8b5b00}
 .cake-status{margin:0;color:#8b5b00;font-size:.88rem;font-weight:700}
 .cake-settings{display:flex;gap:14px;align-items:end;flex-wrap:wrap;padding:12px 0 18px}
-.cake-settings label{display:flex;flex-direction:column;gap:6px;font-weight:700}
-.cake-settings input{width:150px;padding:9px;border:1px solid var(--line);border-radius:8px}
+.cake-settings label{display:flex;flex-direction:column;gap:6px;font-weight:700;min-width:0;max-width:100%}
+.cake-settings input{width:150px;max-width:100%;padding:9px;border:1px solid var(--line);border-radius:8px}
 .cake-settings .hint,.cake-settings-message{flex-basis:100%;margin:0}
 .cake-settings-message{color:#8b5b00}
 @keyframes savedflash{0%{box-shadow:0 0 0 3px var(--women)}100%{box-shadow:none}}
@@ -437,7 +451,7 @@ select.select-warn{border-color:#e8b23c;background:#fffaf0}
 .return-top:focus-visible{outline:3px solid var(--kids);outline-offset:3px}
 
 @media(max-width:900px){
-  .game-summary{grid-template-columns:1fr;gap:12px}
+  .game-summary{grid-template-columns:minmax(0,1fr);gap:6px;padding-bottom:calc(16px + 1rem)}
   .management-card-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
   .roster-filter-card,.audit-filter-card,.schedule-filter-card{grid-template-columns:repeat(2,minmax(0,1fr))}
   .filter-actions{grid-column:1/-1}

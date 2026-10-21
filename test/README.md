@@ -86,3 +86,23 @@ non-JavaScript confirmation path. It installs nothing and never uses real provid
 PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs \
   BROWSER_EXECUTABLE=/absolute/path/to/chromium node test/browser_binding_assignments.mjs
 ```
+
+The optional `browser_schedule_gauges.mjs` check covers compact schedule rings,
+role/block vacancy badges, native disclosures and saved-state initialization at
+320, 360, 390, 700, 900 and 1280 CSS pixels, with normal and doubled text. It uses
+`test/schedule_gauge_fixture.py`, a temporary synthetic database and a loopback
+server; no production configuration or providers are used. Like the browser
+checks above, it requires an already installed Playwright module and Chromium:
+
+```bash
+PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs \
+  BROWSER_EXECUTABLE=/absolute/path/to/chromium \
+  BROWSER_REPORT_PATH=/tmp/gauge-layout.json \
+  BROWSER_SCREENSHOT_DIR=/tmp/gauge-screens \
+  node test/browser_schedule_gauges.mjs
+```
+
+Optional `GAUGE_BEFORE_DIR` points to captured pre-change `schedule.html` and
+`style.css` files. The fixture renders those assets with the same saved data to
+measure before/after heights. Results for the gauge change are retained in
+`openspec/changes/archive/2026-10-21-compact-schedule-gauges/verification.md` and `verification/`.

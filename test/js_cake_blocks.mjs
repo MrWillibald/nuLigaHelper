@@ -118,7 +118,7 @@ class Element {
 const coverage = new Element();
 coverage.dataset = { progressKind: "cake", progressFilled: "0", progressTotal: "0" };
 coverage.elements = Object.fromEntries([
-  "[data-progress-count]", "[data-progress-percent]", ".coverage-fill", '[role="progressbar"]',
+  "[data-progress-count]", ".coverage-fill", ".coverage-gauge", "[data-vacancies]",
 ].map((selector) => [selector, new Element()]));
 const positions = new Element();
 const time = new Element("input");
@@ -185,6 +185,7 @@ function savedBlock(count, occupant = null) {
     description: cakeDescription,
     cake_quantity: count, delivery_time: count === null ? null : "10:00",
     progress: { filled: occupant ? 1 : 0, total: count || 0 },
+    vacancies: count > (occupant ? 1 : 0) ? { Kuchenlieferung: count - (occupant ? 1 : 0) } : {},
     slots: Array.from({ length: count || 0 }, (_, slot) => ({
       slot, label: `Kuchenlieferung ${slot + 1}`, editable: true,
       person_id: slot === 0 ? occupant : null,
@@ -250,6 +251,7 @@ check(!card.open && positions.children.length === 4, "saved setup expanded card 
 checkTaskHelpForSlots(4);
 check(requests.join() === form.dataset.settingsUrl, "collapsed setup loaded candidates");
 check(coverage.dataset.progressTotal === "4" && coverage.dataset.progressFilled === "0", "saved quantity did not refresh progress");
+check(coverage.elements["[data-vacancies]"].children[0].textContent === "Kuchenlieferung (4×)", "setup lost grouped vacancies");
 check(card.querySelectorAll("").every((select) => select.disabled), "new positions enabled without candidates");
 card.open = true;
 await globalThis.nuLigaCandidateTools.loadCandidateCard(card, true);
@@ -300,6 +302,7 @@ check(retry.hidden === false && card.querySelectorAll("").every((control) => con
 candidateFailure = false;
 await globalThis.nuLigaCandidateTools.loadCandidateCard(card, true);
 check(coverage.dataset.progressFilled === "1" && positions.children[0].dataset.occupantId === "7", "cake claim did not show saved progress and occupant");
+check(coverage.elements["[data-vacancies]"].children[0].textContent === "Kuchenlieferung (3×)", "claim updated ring without vacancies");
 check(card.querySelectorAll("")[1].options.every((option) => option.value !== "7"), "cake volunteer still offered for another cake");
 
 configurationReply = { status: 400, json: async () => ({ ok: false, error: "Belegte Plätze freigeben." }) };
@@ -325,7 +328,7 @@ await globalThis.nuLigaCandidateTools.loadCandidateCard(card, true);
 check(quantity.value === "7" && time.value === "11:00", "candidate refresh overwrote an unsaved settings draft");
 check(form.dataset.expectedQuantity === originalExpected.quantity
   && form.dataset.expectedTime === originalExpected.time, "candidate refresh moved a draft's CAS expectations");
-globalThis.nuLigaCakeTools.renderCakeBlock(card, savedBlock(8, 7));
+globalThis.nuLigaCakeTools.renderBlockView(card, savedBlock(8, 7));
 check(quantity.value === "7" && form.dataset.expectedQuantity === "5", "assignment refresh moved unsaved settings expectations");
 configurationReply = { status: 409, json: async () => ({ ok: false, error: "Veraltet", block: current }) };
 await form.listeners.submit({ preventDefault() {} });
@@ -421,6 +424,7 @@ finishOldCandidates({ block: oldBlock, people: [person], slots: Object.fromEntri
 await oldCandidateRead;
 check(coverage.dataset.progressTotal === "4" && coverage.dataset.progressFilled === "0"
   && positions.children.length === 4, "delayed pre-mutation candidates replaced newer saved cake progress");
+check(coverage.elements["[data-vacancies]"].children[0].textContent === "Kuchenlieferung (4×)", "old candidates replaced newer vacancy count");
 globalThis.fetch = ordinaryFetch;
 
 candidateFailure = true;
@@ -439,15 +443,16 @@ check(removedDescription.hidden && !removedDescription.popoverOpen
   "closing a cake card left task guidance visible over other page content");
 card.open = true;
 removedHelp.listeners.click({ preventDefault() {}, stopPropagation() {}, pointerType: "touch" });
-globalThis.nuLigaCakeTools.renderCakeBlock(card, savedBlock(0));
+globalThis.nuLigaCakeTools.renderBlockView(card, savedBlock(0));
 globalThis.nuLigaTaskHelpTools.refreshTaskHelp();
 check(removedDescription.hidden && !removedDescription.popoverOpen
   && removedHelp.getAttribute("aria-expanded") === "false",
   "removing a configured cake position left its floating task guidance visible");
 check(positions.children.length === 0 && coverage.hidden, "zero cakes left positions or a visible percentage");
 check(card.elements["[data-cake-status]"].textContent === "Keine Kuchen angefragt", "zero cake status confused with setup");
-check(!coverage.elements["[data-progress-percent]"].textContent.includes("NaN"), "zero cake progress divided by zero");
-globalThis.nuLigaCakeTools.renderCakeBlock(card, savedBlock(null));
+check(!coverage.elements[".coverage-gauge"].hasAttribute("role")
+  && coverage.elements["[data-vacancies]"].hidden, "zero cakes exposed an invalid progressbar or invented vacancy");
+globalThis.nuLigaCakeTools.renderBlockView(card, savedBlock(null));
 check(coverage.hidden && card.elements["[data-cake-status]"].textContent.includes("Einrichtung"), "unset cake status appears fully staffed");
 
 check(feedback.some((value) => value.severity === "success" && value.message === "Kucheneinstellungen gespeichert."),

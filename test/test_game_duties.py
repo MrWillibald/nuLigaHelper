@@ -245,6 +245,36 @@ def test_reports_use_offered_positions_and_count_retained_duties_without_vacanci
     assert "5 von 8 Pflichtdiensten besetzt" in page and "5 von 5 Pflichtdiensten besetzt" in page
 
 
+@patch("common.effective_today", return_value=date(2026, 9, 1))
+def test_initial_ring_vacancies_match_statistics_for_adult_youth_spf_and_retained_duties(_today):
+    app, engine, _path, ids = _site()
+    with h.Session(engine) as session:
+        youth = session.get(db.Game, ids["games"][1])
+        session.add(db.Assignment(game=youth, person=session.get(db.Person, ids["member"]),
+                                  role=db.ROLE_CASH, slot=0))
+        session.commit()
+    guest = html.fromstring(app.test_client().get("/").get_data(as_text=True))
+    stats = html.fromstring(_client(app, ids["admin"]).get("/statistik").get_data(as_text=True))
+    with h.Session(engine) as session:
+        for game_id in ids["games"]:
+            game = session.get(db.Game, game_id)
+            card = guest.xpath(f'//div[contains(@class,"game-meta") and contains(.,"Nr. {game.game_nr}")]/ancestor::details[1]')[0]
+            vacancies = db.staffing_status(game)["vacancies"]
+            expected = [f"{role} ({count}×)" if count > 1 else role
+                        for role, count in vacancies.items()]
+            assert card.xpath('.//*[@data-vacancies]/span/text()') == expected
+            # The statistics row uses exactly the same public missing-duty labels.
+            identity = f"Spielfest {game.ak}" if db.is_spielfest(game) else game.guest
+            row = stats.xpath(f'//tr[contains(.,"{identity}")]')[0]
+            assert row.xpath('.//span[contains(@class,"chip-gap")]/text()') == (
+                expected + [item["message"] for item in db.staffing_status(game)["deficiencies"]]
+            )
+            assert card.xpath('.//*[@role="progressbar"]/@aria-valuemax') == [str(len(db.required_positions(game)))]
+            assert card.get("open") is None and "Details" in card.xpath('./summary')[0].text_content()
+    text = html.tostring(guest, encoding="unicode")
+    assert "person_id" not in text and "data-occupant-id" not in text and "birth_date" not in text
+
+
 def test_cli_supports_both_cleaning_positions_and_refuses_removed_category_duties():
     app, engine, path, ids = _site()
     adult, youth = ids["games"][:2]

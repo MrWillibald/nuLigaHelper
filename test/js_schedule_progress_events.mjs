@@ -1,3 +1,5 @@
+import assert from "node:assert/strict";
+import { progressFixture } from "./js_progress_fixture.mjs";
 import { installConfirmation } from "./js_confirmation_fixture.mjs";
 const feedback = [];
 globalThis.nuLigaFeedback = {
@@ -5,16 +7,8 @@ globalThis.nuLigaFeedback = {
   navigate: (values) => { feedback.push(...values); return true; },
 };
 // A rejected claim must leave the card and its progress at the saved value.
-const elements = {
-  "[data-progress-count]": { textContent: "" },
-  "[data-progress-percent]": { textContent: "" },
-  ".coverage-fill": { style: { width: "60%" } },
-  '[role="progressbar"]': { setAttribute() {} },
-};
-const coverage = {
-  dataset: { progressKind: "game", progressFilled: "3", progressTotal: "5" },
-  querySelector: (selector) => elements[selector],
-};
+const summary = progressFixture();
+const { coverage } = summary;
 const empty = { value: "", dataset: {}, classList: { contains: () => false } };
 const candidate = { value: "7", dataset: {}, classList: { contains: () => false } };
 const listeners = {};
@@ -35,6 +29,7 @@ const toast = { classList: { toggle() {}, add() {}, remove() {} } };
 globalThis.document = {
   querySelectorAll: (selector) => selector === "select[data-role]" ? [assignmentSelect] : [],
   querySelector: () => ({ content: "test-csrf" }),
+  createElement: () => ({ textContent: "" }),
   getElementById: (id) => id === "toast" ? toast : card,
 };
 installConfirmation(document, { autoConfirm: true });
@@ -42,12 +37,17 @@ globalThis.fetch = async () => ({ status: 409, json: async () => ({ ok: false, e
 globalThis.setTimeout = () => 0;
 globalThis.clearTimeout = () => {};
 await import("../static/app.js");
+globalThis.nuLigaProgressTools.updateGameStaffing(card, { required_filled: 3, required_total: 5,
+  vacancies: { Verkauf: 1, Ordnungsdienst: 1 }, deficiencies: [] });
+const beforeRefusal = summary.snapshot();
 listeners.focus();
 assignmentSelect.value = "7";
 await listeners.change();
 if (assignmentSelect.value !== "" || coverage.dataset.progressFilled !== "3") {
   throw new Error("rejected claim changed the selected person or displayed progress");
 }
+
+assert.equal(summary.snapshot(), beforeRefusal, "refused selection changed ring, semantics or vacancies");
 
 // Adult Reinigung positions and Kasse receive saved staffing, without deriving
 // requiredness from their role text or from the locally selected value.
@@ -63,9 +63,12 @@ for (const [role, slot, total, filled] of [
   assignmentSelect.value = "7";
   globalThis.fetch = async () => ({ status: 200, json: async () => ({
     ok: true,
-    staffing: { required_filled: filled, required_total: total, deficiencies: [] },
+    staffing: { required_filled: filled, required_total: total, vacancies: {}, deficiencies: [] },
   }) });
   await listeners.change();
+  assert.equal(summary.count.textContent, `${filled}/${total}`);
+  assert.equal(Number(summary.arc.attrs["stroke-dashoffset"]), 100 - filled * 100 / total);
+  assert.equal(summary.gauge.attrs["aria-valuetext"], `${filled} von ${total} Pflichtdiensten besetzt`);
   if (assignmentSelect.value !== "7"
       || coverage.dataset.progressFilled !== String(filled)
       || coverage.dataset.progressTotal !== String(total)) {
@@ -99,7 +102,7 @@ assignmentSelect.value = "7";
 listeners.focus();
 assignmentSelect.value = "";
 globalThis.fetch = async () => ({ status: 200, json: async () => ({
-  ok: true, staffing: { required_filled: 5, required_total: 5, deficiencies: [] },
+  ok: true, staffing: { required_filled: 5, required_total: 5, vacancies: {}, deficiencies: [] },
 }) });
 await listeners.change();
 if (!removed || coverage.dataset.progressFilled !== "5" || coverage.dataset.progressTotal !== "5") {
@@ -114,8 +117,61 @@ listeners.focus();
 assignmentSelect.value = "7";
 globalThis.fetch = async () => ({ status: 200, json: async () => ({
   ok: true, warning: "Person spielt selbst.",
-  staffing: { required_filled: 5, required_total: 5, deficiencies: [] },
+  staffing: { required_filled: 5, required_total: 5, vacancies: {}, deficiencies: [] },
 }) });
 await listeners.change();
 if (feedback.at(-1).severity !== "warning" || !feedback.at(-1).message.includes("gespeichert")
     || assignmentSelect.value !== "7") throw new Error("authoritative advisory did not confirm the saved assignment");
+
+// Candidate responses and writes share exactly one public summary renderer.
+const tools = globalThis.nuLigaProgressTools;
+tools.updateGameStaffing(card, { required_filled: 3, required_total: 8,
+  vacancies: { Reinigung: 2, Verkauf: 2, Kasse: 1 }, deficiencies: [] });
+assert.deepEqual(summary.vacancies.children.map(badge => badge.textContent),
+  ["Verkauf (2×)", "Kasse", "Reinigung (2×)"], "JSON key sorting must not reorder role badges");
+assert.equal(summary.vacancies.hidden, false);
+card.querySelectorAll = () => [];
+globalThis.nuLigaCandidateTools.populateCandidateCard(card, { people: [], slots: {}, staffing: {
+  required_filled: 7, required_total: 8, vacancies: { Reinigung: 1 }, deficiencies: [],
+} });
+assert.equal(summary.count.textContent, "7/8");
+assert.deepEqual(summary.vacancies.children.map(badge => badge.textContent), ["Reinigung"]);
+for (const filled of [0, 8]) {
+  tools.updateGameStaffing(card, { required_filled: filled, required_total: 8,
+    vacancies: filled ? {} : { Verkauf: 2 }, deficiencies: [] });
+  assert.equal(summary.arc.attrs["stroke-dashoffset"], filled ? "0" : "100");
+  assert.equal(summary.vacancies.hidden, filled === 8);
+}
+// A pre-write candidate read cannot roll back the saved ring and chips.
+card.dataset = { candidateUrl: "/api/games/1/candidates" };
+let finishOld;
+globalThis.fetch = async () => ({ ok: true, status: 200,
+  json: () => new Promise(resolve => { finishOld = resolve; }) });
+const pending = globalThis.nuLigaCandidateTools.loadCandidateCard(card, true);
+await Promise.resolve();
+card._candidateRevision = (card._candidateRevision || 0) + 1;
+const saved = summary.snapshot();
+finishOld({ people: [], slots: {}, staffing: { required_filled: 0, required_total: 8,
+  vacancies: { Verkauf: 2 }, deficiencies: [] } });
+await pending;
+assert.equal(summary.snapshot(), saved, "old candidates overwrote a newer saved game summary");
+
+// Preparation/cleanup writes and candidate reads must use the authoritative
+// block occupancy, including a second helper saved concurrently.
+delete card.dataset.candidateUrl;
+coverage.dataset.progressKind = "block";
+assignmentSelect.dataset.block = "1";
+retainedLabel.dataset.occupantId = "";
+assignmentSelect.value = "";
+listeners.focus();
+assignmentSelect.value = "7";
+const savedBlock = { phase: "preparation", progress: { filled: 2, total: 3 }, vacancies: { Vorbereitung: 1 } };
+globalThis.fetch = async () => ({ status: 200, json: async () => ({ ok: true, block: savedBlock }) });
+await listeners.change();
+assert.equal(summary.count.textContent, "2/3", "local +1 lost a concurrent saved block claim");
+assert.deepEqual(summary.vacancies.children.map(badge => badge.textContent), ["Vorbereitung"]);
+globalThis.nuLigaCandidateTools.populateCandidateCard(card, { people: [], slots: {}, block: {
+  phase: "cleanup", progress: { filled: 3, total: 3 }, vacancies: {},
+} });
+assert.equal(summary.count.textContent, "3/3");
+assert.equal(summary.vacancies.hidden, true);
