@@ -46,8 +46,8 @@
         <span>{% if g.spielfest %}Spielfest {{ g.ak }}{% else %}{{ g.home }} &ndash; {{ g.guest }}{% endif %}</span>
       </div>
       <div class="game-meta">{{ g.ak }} &middot; Halle {{ g.hall }} &middot; Nr. {{ g.nr }}</div>
-      {% if g.classification_unresolved %}<div class="classification-status">Altersklasse prüfen · 5 Pflichtpositionen</div>{% endif %}
       <div class="game-responsible">Verantwortlich: <strong>{{ responsible_team_name }}</strong></div>
+      {% if g.classification_unresolved %}<div class="classification-status">Altersklasse prüfen · 5 Pflichtpositionen</div>{% endif %}
       <span class="disclosure-label"><span class="disclosure-indicator" aria-hidden="true"></span>Details</span>
     </div>
     <div class="game-summary-side">

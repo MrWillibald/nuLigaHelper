@@ -99,16 +99,13 @@ body:has(.game-card) .footer{overflow-wrap:anywhere}
   border-left:7px solid currentColor;flex:0 0 auto}
 .game-card[open]>.game-summary .disclosure-indicator{transform:rotate(90deg)}
 .game-detail-body{padding:16px 20px 20px;border-top:1px solid var(--line);overflow-wrap:anywhere}
-.game-info{display:flex;flex-wrap:wrap;gap:4px 8px;min-width:0;align-items:baseline}
-.game-time{font-size:1.1rem;font-weight:900;color:var(--navy);min-width:0}
-.game-info>.game-meta,.game-info>.game-responsible,.game-info>.classification-status{flex-basis:100%}
-.game-info>.game-responsible{flex:1 1 calc(100% - 5rem)}
-.task-block-info>.game-meta{flex:1 1 calc(100% - 5rem)}
+.game-info{display:grid;grid-template-columns:minmax(0,1fr);gap:4px;min-width:0}
+.game-time{font-size:1.5rem;line-height:1.25;margin:2px 0 6px;font-weight:900;color:var(--navy);min-width:0}
 .game-info>.disclosure-label{position:absolute;right:12px;bottom:10px}
 @media(min-width:901px){
   .game-summary{padding-right:calc(24px + 4rem)}
 }
-.game-teams{display:flex;align-items:center;gap:6px;font-weight:900;line-height:1.35;min-width:0;flex:1 1 8rem}
+.game-teams{display:flex;align-items:center;gap:6px;font-weight:900;line-height:1.35;min-width:0}
 .game-teams>span:last-child{min-width:0}
 .game-meta{color:var(--muted);font-size:.88rem}
 .game-responsible{color:var(--navy);font-size:.88rem;line-height:1.35}
@@ -153,7 +150,7 @@ select.select-warn{border-color:#e8b23c;background:#fffaf0}
 .task-block-preparation{--block-accent:#a0e656}
 .task-block-cleanup{--block-accent:#ffb752}
 .task-block-cake_delivery{--block-accent:#d8caf2}
-.task-block-card .game-time{display:flex;gap:8px;align-items:baseline}
+.task-block-card .game-time{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:baseline}
 .task-block-card .game-time small{font-size:.72rem;color:var(--muted)}
 .task-block-icon{display:inline-grid;place-items:center;width:1.5em;height:1.5em;border-radius:50%;flex:0 0 auto;
   background:var(--block-accent);color:var(--navy);font-weight:900}
@@ -168,11 +165,11 @@ select.select-warn{border-color:#e8b23c;background:#fffaf0}
 
 .past-details{margin-top:8px;border:1px solid var(--line);border-radius:18px;
   background:#f8fafc;padding:10px 14px}
-.past-details summary{cursor:pointer;color:var(--navy);font-weight:800;padding:12px 16px;
+.past-details>summary{cursor:pointer;color:var(--navy);font-weight:800;padding:12px 16px;
   border-radius:14px;background:#e9eef5}
-.past-details summary:hover{background:#dde6f0}
-.past-details summary:focus-visible{outline:3px solid var(--kids);outline-offset:2px}
-.past-details[open] summary{margin-bottom:18px}
+.past-details>summary:hover{background:#dde6f0}
+.past-details>summary:focus-visible{outline:3px solid var(--kids);outline-offset:2px}
+.past-details[open]>summary{margin-bottom:18px}
 .past-details .month-title{margin-left:4px}
 
 /* ---- persons ---- */
