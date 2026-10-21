@@ -87,14 +87,17 @@ def deficiency(role: str, code: str, *, minimum_age: int | None = None,
     return result
 
 
-def timing_eligibility(game, role: str, person, slot: int = 0) -> dict | None:
-    """Return a public-safe refusal for an individual timing duty."""
-    if role not in {"Zeitnehmer", "Sekretär"}:
+def individual_eligibility(game, role: str, person, slot: int = 0) -> dict | None:
+    """Return a public-safe refusal for an individually age-restricted duty."""
+    if role not in {"Zeitnehmer", "Sekretär", "Ordnungsdienst"}:
         return None
-    category = classify_game_category(game.ak)
-    if category == UNKNOWN:
-        return deficiency(role, "unresolved_category", slot=slot)
-    minimum = 14 if category == YOUTH else (18 if role == "Zeitnehmer" else 16)
+    if role == "Ordnungsdienst":
+        minimum = 18
+    else:
+        category = classify_game_category(game.ak)
+        if category == UNKNOWN:
+            return deficiency(role, "unresolved_category", slot=slot)
+        minimum = 14 if category == YOUTH else 16
     game_date = parse_game_date(game.date)
     if game_date is None:
         return deficiency(role, "unresolved_game_date", minimum_age=minimum, slot=slot)
@@ -106,7 +109,9 @@ def timing_eligibility(game, role: str, person, slot: int = 0) -> dict | None:
 
 
 def sale_coverage(game, sellers) -> dict | None:
-    """Only explicitly assigned sellers can prove adult coverage."""
+    """Outside youth/SPF, only assigned sellers can prove adult coverage."""
+    if classify_game_category(game.ak) == YOUTH:
+        return None
     game_date = parse_game_date(game.date)
     if game_date is None:
         return deficiency("Verkauf", "unresolved_game_date", minimum_age=18)

@@ -173,21 +173,28 @@ test/run_tests.sh                          # whole suite, must stay green
   one position in each block independently of game duties. New block audit snapshots preserve season, date
   and original numbered position; existing snapshots stay unchanged.
 - **Game age eligibility uses the scheduled game date** and completed calendar
-  years. Youth Zeitnehmer/Sekretär require 14; adult Zeitnehmer requires 18 and
-  Sekretär 16. Adult M/F, youth mA–mE/wA–wE and SPF use the shared explicit
-  classifier; GE, missing/unsupported classes or an invalid game date cannot
-  authorize a new timing claim. Thresholds are inclusive on the birthday;
+  years. Youth Zeitnehmer/Sekretär require 14; adult Zeitnehmer and Sekretär
+  require 16. Ordnungsdienst requires a known birth date and age 18 for every
+  category, including unresolved categories. Adult M/F, youth mA–mE/wA–wE and
+  SPF use the shared explicit classifier; GE, missing/unsupported classes or an
+  invalid game date cannot authorize a new timing claim. An invalid date also
+  refuses Ordnungsdienst claims. Thresholds are inclusive on the birthday;
   29 February advances on 1 March in a non-leap year.
-- **Verkauf requires collective adult coverage.** A first younger/unknown-date
+- **Verkauf at adult and unresolved-category games requires collective adult coverage.**
+  Recognized youth/SPF Verkauf has no individual minimum, birth-date requirement
+  or collective adult coverage; its age check needs no valid game date, while general
+  assignment/date and cutoff guards remain unchanged. GE, missing and unsupported
+  classes receive no youth exemption. For non-youth games, a first younger/unknown-date
   seller is permitted while another sale slot remains free. A claim filling the
   last slot must leave an explicitly assigned seller at least 18 on the game
   date. The other seller has no individual minimum. Invalid game dates refuse
-  Verkauf claims even while staffing is incomplete. Revalidate saved game,
+  non-youth Verkauf claims even while staffing is incomplete. Revalidate saved game,
   person and post-claim group state under write serialization and after retries;
   every tier and CLI/system callers obey the rule, with no admin override.
   A replacement request retains the sole adult seller and their coverage; atomic
-  takeover must validate the resulting group without counting the outgoing helper.
-  Deficiencies never authorize ordinary release or a lock override.
+  takeover must validate the resulting non-youth group without counting the outgoing
+  helper; youth/SPF takeovers may remove the sole adult seller. Deficiencies never
+  authorize ordinary release or a lock override.
 - **Vacancies and age deficiencies are separate.** Existing assignments survive
   migration, date corrections and game changes; reevaluate current/future staffing
   without rewriting history or audits. Occupancy counts remain physical, while

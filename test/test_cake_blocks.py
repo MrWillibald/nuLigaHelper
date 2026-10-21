@@ -15,7 +15,7 @@ def _setup(session):
     preparation, cake, cleanup = db.get_day_blocks(
         session, h.SEASON, game_data["date"]
     )
-    people = [db.Person(name=f"Cake helper {index}") for index in range(5)]
+    people = [db.Person(name=f"Cake helper {index}", birth_date=h.ADULT_BIRTH_DATE) for index in range(5)]
     session.add_all(people)
     session.flush()
     return game_data, preparation, cake, cleanup, people
