@@ -174,18 +174,24 @@ def test_09_game_progress_counts_required_slots_and_cards_start_closed():
     progress = first.xpath('.//*[@role="progressbar"]')[0]
     assert progress.get("aria-valuenow") == "3"
     assert progress.get("aria-valuemax") == "5"
-    assert "3 von 5 Pflichtdiensten besetzt" in first.xpath('./summary')[0].text_content()
-    assert "60 %" in first.xpath('./summary')[0].text_content()
+    assert progress.get("aria-valuetext") == "3 von 5 Pflichtdiensten besetzt"
+    assert first.xpath('.//*[@data-progress-count]/text()') == ["3/5"]
+    assert float(first.xpath('.//*[@class="coverage-fill"]/@stroke-dashoffset')[0]) == 40
+    assert first.xpath('.//*[@data-vacancies]/span/text()') == ["Verkauf", "Ordnungsdienst"]
+    assert not first.xpath('.//*[@data-progress-percent]')
     assert first.xpath('./summary//div[@class="game-responsible"]/strong/text()') == ["Supporter"], (
         "the assigned responsible team must be visible before opening the game"
     )
     assert "Optional Test" in first.text_content(), "optional support remains in details"
     full = page.xpath('//div[contains(@class, "game-meta") and contains(., "Nr. 9001")]/ancestor::details[1]')[0]
     assert full.xpath('.//*[@role="progressbar"]')[0].get("aria-valuenow") == "5"
-    assert "100 %" in full.xpath('./summary')[0].text_content()
+    assert float(full.xpath('.//*[@class="coverage-fill"]/@stroke-dashoffset')[0]) == 0
+    assert not full.xpath('.//*[@data-vacancies]/span')
+    assert full.xpath('.//*[@data-vacancies and @hidden]')
     empty = page.xpath('//div[contains(@class, "game-meta") and contains(., "Nr. 1005")]/ancestor::details[1]')[0]
     assert empty.xpath('.//*[@role="progressbar"]')[0].get("aria-valuenow") == "0"
-    assert "0 %" in empty.xpath('./summary')[0].text_content()
+    assert float(empty.xpath('.//*[@class="coverage-fill"]/@stroke-dashoffset')[0]) == 100
+    assert empty.xpath('.//*[@data-vacancies]/span/text()') == ["Zeitnehmer", "Sekretär", "Verkauf (2×)", "Ordnungsdienst"]
     assert empty.xpath('./summary//div[@class="game-responsible"]/strong/text()') == ["– offen –"], (
         "an unassigned responsible team must be clear in the collapsed game"
     )

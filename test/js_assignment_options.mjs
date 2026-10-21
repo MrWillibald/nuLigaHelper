@@ -89,56 +89,27 @@ if (!otherContainer.querySelector('option[value="7"]')) {
   throw new Error("block claim leaked into another assignment container");
 }
 
-function coverageCard(kind, filled, total) {
-  const count = { textContent: "" };
-  const percent = { textContent: "" };
-  const fill = { style: { width: "" } };
-  const bar = { attributes: {}, setAttribute(name, value) { this.attributes[name] = value; } };
-  const elements = {
-    "[data-progress-count]": count,
-    "[data-progress-percent]": percent,
-    ".coverage-fill": fill,
-    '[role="progressbar"]': bar,
-  };
-  const coverage = {
-    dataset: { progressKind: kind, progressFilled: String(filled), progressTotal: String(total) },
-    querySelector: (selector) => elements[selector],
-  };
-  return { card: { querySelector: (selector) => selector === ".coverage" ? coverage : null }, coverage, count, percent, fill, bar };
+const { progressFixture } = await import("./js_progress_fixture.mjs");
+const { setCoverage, updateGameStaffing, updateBlockSummary } = globalThis.nuLigaProgressTools;
+globalThis.document.createElement = () => ({ textContent: "" });
+const game = progressFixture();
+updateGameStaffing(game.card, { required_filled: 4, required_total: 5, vacancies: { Verkauf: 1 }, deficiencies: [] });
+if (game.count.textContent !== "4/5" || game.arc.attrs["stroke-dashoffset"] !== "20"
+    || game.gauge.attrs["aria-valuetext"] !== "4 von 5 Pflichtdiensten besetzt"
+    || game.vacancies.children[0].textContent !== "Verkauf") {
+  throw new Error("saved game summary lost its fraction, arc, semantics or vacancy");
 }
-
-const gameProgress = coverageCard("game", 3, 5);
-const update = globalThis.nuLigaProgressTools.updateCoverage;
-const savedGame = globalThis.nuLigaProgressTools.updateGameStaffing;
-savedGame(gameProgress.card, { required_filled: 4, required_total: 5, deficiencies: [] });
-if (gameProgress.count.textContent !== "4 von 5 Pflichtdiensten besetzt"
-    || gameProgress.percent.textContent !== "80 %"
-    || gameProgress.fill.style.width !== "80%"
-    || gameProgress.bar.attributes["aria-valuenow"] !== "4") {
-  throw new Error("successful game claim did not update all progress views");
+// A remote helper also claimed a position: use the saved block, not a local +1.
+for (const kind of ["preparation", "cleanup"]) {
+  const block = progressFixture("block", 0, 3);
+  updateBlockSummary(block.card, { phase: kind, progress: { filled: 2, total: 3 }, vacancies: { Tagesdienst: 1 } });
+  if (block.count.textContent !== "2/3" || block.vacancies.children[0].textContent !== "Tagesdienst"
+      || block.gauge.attrs["aria-valuetext"] !== "2 von 3 Plätzen besetzt") {
+    throw new Error("saved block summary ignored concurrent occupancy");
+  }
 }
-// A youth Kasse/Reinigung change retains the server's five required positions.
-savedGame(gameProgress.card, { required_filled: 4, required_total: 5, deficiencies: [] });
-if (gameProgress.coverage.dataset.progressFilled !== "4") {
-  throw new Error("saved optional assignment changed required progress");
-}
-savedGame(gameProgress.card, { required_filled: 3, required_total: 5, deficiencies: [] });
-if (gameProgress.coverage.dataset.progressFilled !== "3") {
-  throw new Error("game release did not reduce required progress");
-}
-const adultProgress = coverageCard("game", 5, 8);
-savedGame(adultProgress.card, { required_filled: 6, required_total: 8, deficiencies: [] });
-if (adultProgress.count.textContent !== "6 von 8 Pflichtdiensten besetzt"
-    || adultProgress.percent.textContent !== "75 %") {
-  throw new Error("saved adult added duty did not update the eight-position denominator");
-}
-const blockProgress = coverageCard("block", 1, 3);
-update(blockProgress.card, null, 7);
-if (blockProgress.count.textContent !== "2 von 3 Plätzen besetzt"
-    || blockProgress.percent.textContent !== "67 %") {
-  throw new Error("block claim did not update three-slot progress");
-}
-update(blockProgress.card, 7, null);
-if (blockProgress.coverage.dataset.progressFilled !== "1") {
-  throw new Error("block release did not reduce progress");
+const adult = progressFixture();
+setCoverage(adult.coverage, 6, 8);
+if (adult.count.textContent !== "6/8" || adult.arc.attrs["stroke-dashoffset"] !== "25") {
+  throw new Error("adult ring lost its eight-position denominator");
 }

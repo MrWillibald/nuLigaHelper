@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { assignmentFixture } from "./js_assignment_fixture.mjs";
+import { progressFixture } from "./js_progress_fixture.mjs";
 
 const page = assignmentFixture();
 await import("../static/app.js");
@@ -19,7 +20,15 @@ const cases = [
 
 for (const settings of cases) {
   for (const dismissal of ["cancel", "escape", "outside", "close"]) {
-    const { select, field } = page.createDuty(settings);
+    const { select, field, card } = page.createDuty(settings);
+    const summary = progressFixture(settings.kind === "game" ? "game" : "block", 1, 3);
+    const query = card.querySelector.bind(card);
+    card.querySelector = selector => selector === ".coverage" ? summary.coverage : query(selector);
+    globalThis.nuLigaProgressTools.setCoverage(summary.coverage, 1, 3);
+    globalThis.nuLigaProgressTools.updateBlockSummary(card, {
+      progress: { filled: 1, total: 3 }, vacancies: { [settings.role || settings.kind]: 2 },
+    });
+    const beforeSummary = summary.snapshot();
     tools.bindAssignmentSelect(select); select.focus(); select.value = "9";
     const before = requests.length;
     const pending = select.dispatch("change");
@@ -39,6 +48,7 @@ for (const settings of cases) {
     assert.equal(field.dataset.occupantId, ""); assert.equal(select.value, "");
     assert.equal(document.activeElement, select, "cancellation must return focus to the initiating control");
     assert.equal(page.dialog.open, false);
+    assert.equal(summary.snapshot(), beforeSummary, `${dismissal} changed the ring or vacancy badges`);
   }
   const { select, field, status } = page.createDuty({ ...settings, late: true });
   tools.bindAssignmentSelect(select); select.focus(); select.value = "9";

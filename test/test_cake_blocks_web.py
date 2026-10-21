@@ -98,12 +98,15 @@ def test_setup_zero_and_four_cakes_are_distinct_saved_collapsed_states(_today):
     assert admin.get(f'/api/blocks/{ids["cake"]}/candidates').get_json()["people"] == []
     assert _assignment(admin, ids["cake"], ids["volunteer"]).status_code == 400
     configured = _settings(admin, ids["cake"]).get_json()["block"]
+    assert configured["vacancies"] == {"Kuchenlieferung": 4}
     assert configured["cake_quantity"] == 4 and configured["time"] == "10:00"
     assert len(configured["slots"]) == 4 and configured["progress"]["total"] == 4
     tree = html.fromstring(admin.get("/?date=05.09.2026").get_data(as_text=True))
     card = tree.get_element_by_id(f'block-{ids["cake"]}')
     assert len(card.xpath('.//select[@data-block-assignment]')) == 4
     assert "4 Kuchen angefragt" in card.xpath("./summary")[0].text_content()
+    assert card.xpath('.//*[@data-vacancies]/span/text()') == ["Kuchenlieferung (4×)"]
+    assert card.xpath('.//*[@data-progress-count]/text()') == ["0/4"]
     assert not card.xpath('.//*[contains(@class,"game-responsible")]')
     cards = tree.xpath('//details[contains(@class,"game-card")]')
     assert "task-block-preparation" in cards[0].get("class")
@@ -113,6 +116,7 @@ def test_setup_zero_and_four_cakes_are_distinct_saved_collapsed_states(_today):
     assert zero.status_code == 200 and zero.get_json()["block"]["slots"] == []
     card = html.fromstring(admin.get("/").get_data(as_text=True)).get_element_by_id(f'block-{ids["cake"]}')
     assert "Keine Kuchen angefragt" in card.text_content()
+    assert not card.xpath('.//*[@role="progressbar"] | .//*[@data-vacancies]/span')
     assert card.xpath('.//div[@class="coverage"]')[0].get("hidden") is not None
 
 
@@ -147,6 +151,7 @@ def test_stale_settings_and_occupied_reduction_keep_saved_positions_and_history(
     assert _settings(admin, ids["cake"]).status_code == 200
     claim = _assignment(admin, ids["cake"], ids["volunteer"], 3).get_json()
     assert claim["block"]["progress"]["filled"] == 1
+    assert claim["block"]["vacancies"] == {"Kuchenlieferung": 3}
     blocked = _settings(admin, ids["cake"], 2, "11:00", 4, "10:00")
     assert blocked.status_code == 400 and "belegten" in blocked.get_json()["error"], "occupied cake reduction must explain the retained position"
     stale = _settings(admin, ids["cake"], 5)
@@ -193,6 +198,10 @@ def test_cake_candidates_and_claims_use_current_capacity_active_people_and_self_
     candidates = admin.get(candidate_url)
     assert candidates.headers["Cache-Control"] == "private, no-store"
     assert ids["volunteer"] not in candidates.get_json()["slots"]["1"]["candidate_ids"]
+    for phase in ("preparation", "cleanup"):
+        current = admin.get(f'/api/blocks/{ids[phase]}/candidates').get_json()["block"]
+        assert current["progress"]["filled"] == 1 and current["progress"]["total"] == 3
+        assert current["vacancies"] == {current["label"]: 2}
     assert "private-cake@fixture.test" not in candidates.get_data(as_text=True)
     assert "birth_date" not in candidates.get_data(as_text=True)
     assert _assignment(member, ids["past"], ids["volunteer"]).status_code == 403

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { progressFixture } from "./js_progress_fixture.mjs";
 import { assignmentFixture } from "./js_assignment_fixture.mjs";
 
 const page = assignmentFixture();
@@ -12,8 +13,15 @@ for (const fixture of settings) {
   tools.bindAssignmentSelect(select);
   const prefix = fixture.kind === "game" ? "/api/assignment/" : "/api/block-assignment/";
   const originalQuery = field.parent.querySelector.bind(field.parent);
-  const coverage = { dataset: { progressKind: fixture.kind === "game" ? "game" : "block", progressFilled: "2", progressTotal: "5" } };
-  field.parent.querySelector = (selector) => selector === ".coverage" ? coverage : originalQuery(selector);
+  const summary = progressFixture(fixture.kind === "game" ? "game" : "block", 2, 3);
+  const { coverage } = summary;
+  field.parent.querySelector = selector => selector === ".coverage" ? coverage : originalQuery(selector);
+  const savedSummary = fixture.kind === "game" ? {
+    staffing: { required_filled: 2, required_total: 3, vacancies: { Verkauf: 1 }, deficiencies: [] },
+  } : { block: { phase: fixture.kind, progress: { filled: 2, total: 3 }, vacancies: { [fixture.kind]: 1 } } };
+  if (savedSummary.staffing) globalThis.nuLigaProgressTools.updateGameStaffing(field.parent, savedSummary.staffing);
+  else globalThis.nuLigaProgressTools.updateBlockSummary(field.parent, savedSummary.block);
+  const initialSummary = summary.snapshot();
   globalThis.fetch = async (url, options) => {
     requests.push({ url, body: JSON.parse(options.body) });
     return { status: 400, json: async () => ({ ok: false, error: "Verkauf benötigt eine erwachsene Person." }) };
@@ -25,6 +33,7 @@ for (const fixture of settings) {
   assert.equal(requests.length, before, "cancelled takeover must not release or claim anything");
   assert.equal(field.dataset.occupantId, "7");
   assert.equal(field.dataset.replacementToken, "original-request");
+  assert.equal(summary.snapshot(), initialSummary);
   select.value = "9";
   const refused = select.dispatch("change");
   page.confirm.dispatch("click"); await refused;
@@ -62,7 +71,7 @@ for (const fixture of settings) {
 
   globalThis.fetch = async (url, options) => {
     requests.push({ url, body: JSON.parse(options.body) });
-    return { status: 200, json: async () => ({ ok: true, assignment: {
+    return { status: 200, json: async () => ({ ok: true, ...savedSummary, assignment: {
       person_id: 9, person_name: "Replacement Helper", replacement_token: null, seeking_replacement: false, locked: false,
     } }) };
   };
@@ -72,6 +81,7 @@ for (const fixture of settings) {
   assert.equal(field.dataset.occupantId, "9");
   assert.equal(field.dataset.replacementToken, "");
   assert.equal(coverage.dataset.progressFilled, "2");
+  assert.equal(summary.snapshot(), initialSummary, "takeover must preserve the occupied ring and vacancies");
   assert.equal(select.hidden, true);
   assert.match(status.textContent, /Verbindlich/);
 }
