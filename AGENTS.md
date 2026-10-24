@@ -174,11 +174,11 @@ test/run_tests.sh                          # whole suite, must stay green
   and original numbered position; existing snapshots stay unchanged.
 - **Game age eligibility uses the scheduled game date** and completed calendar
   years. Youth Zeitnehmer/Sekretär require 14; adult Zeitnehmer and Sekretär
-  require 16. Ordnungsdienst requires a known birth date and age 18 for every
+  require 16. Ordner requires a known birth date and age 18 for every
   category, including unresolved categories. Adult M/F, youth mA–mE/wA–wE and
   SPF use the shared explicit classifier; GE, missing/unsupported classes or an
   invalid game date cannot authorize a new timing claim. An invalid date also
-  refuses Ordnungsdienst claims. Thresholds are inclusive on the birthday;
+  refuses Ordner claims. Thresholds are inclusive on the birthday;
   29 February advances on 1 March in a non-leap year.
 - **Verkauf at adult and unresolved-category games requires collective adult coverage.**
   Recognized youth/SPF Verkauf has no individual minimum, birth-date requirement
@@ -217,7 +217,12 @@ test/run_tests.sh                          # whole suite, must stay green
   override. Successful deactivation without blocking duties clears MV appointments;
   reactivation restores no historically released assignment.
 
-- Roles: `Zeitnehmer`, `Sekretär`, `Verkauf` (**2 slots**), `Ordnungsdienst`
+- Current task names use `db.role_label()` / `db.position_label()`. **Ordner** retains
+  the stable assignment/API key `Ordnungsdienst`; never use its display label in
+  assignment lookups or mutation payloads. New audit entries capture the current
+  label in their own `role` field; render historical audit labels literally and
+  never rewrite them through the current label mapping.
+- Roles: `Zeitnehmer`, `Sekretär`, `Verkauf` (**2 slots**), `Ordner`
   (**1 slot**), `Kasse`, `Wischer` (**1 slot**) — see `db.ROLE_SLOT_COUNT`.
   Adults offer all seven positions; youth/SPF and unknown classes offer the
   baseline five without Kasse/Reinigung. All offered positions are required; use

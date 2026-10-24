@@ -137,7 +137,7 @@ def test_team_vacancy_variants_have_personal_event_facts_counts_and_friendly_act
             recipient_name="Fixture {recipient_name}", responsible_team_name="Team {auth_code}",
             game_date="28.11.2026", game_start_time="14:13",
             age_class="SPF Minis vollständig" if event == "spielfest" else "BL M",
-            open_tasks_text="Verkauf: 1 Platz; Ordnungsdienst: 1 Platz",
+            open_tasks_text="Verkauf: 1 Platz; Ordner: 1 Platz",
         )
         if event == "game":
             context.update(home_team_name="Home Fixture", away_team_name="Away Fixture")

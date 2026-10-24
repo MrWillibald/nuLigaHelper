@@ -113,7 +113,7 @@ def test_html_confirmation_cancel_and_concurrent_winner_never_need_compensating_
     try:
         first = client_for(app, ids, "Original")
         second = client_for(app, ids, "Replacement")
-        targets = [dict(game_id=ids["game"], role=db.ROLE_SALE, slot=0)] + [
+        targets = [dict(game_id=ids["game"], role=db.ROLE_SECURITY, slot=0)] + [
             dict(block_id=ids[phase], slot=0) for phase in db.BLOCK_PHASES]
         for target in targets:
             before = audit_count(engine)
@@ -121,6 +121,10 @@ def test_html_confirmation_cancel_and_concurrent_winner_never_need_compensating_
                                                            "expected_person_id": "", "decision": "review"}))
             assert review.status_code == 200
             assert "Bestätigen" in review.get_data(as_text=True) and "Abbrechen" in review.get_data(as_text=True)
+            if "game_id" in target:
+                tree = html.fromstring(review.get_data(as_text=True))
+                assert "Ordner" in tree.text_content() and "Ordnungsdienst" not in tree.text_content()
+                assert tree.xpath('//input[@name="role"]/@value') == ["Ordnungsdienst"]
             assert audit_count(engine) == before, "selection and review are read-only"
             cancel = first.post("/dienst", data=h.csrf_data({**target, "decision": "cancel"}))
             assert cancel.status_code == 302 and audit_count(engine) == before

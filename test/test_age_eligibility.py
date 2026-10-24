@@ -333,6 +333,9 @@ def test_concurrent_young_sale_claims_to_different_slots_revalidate_after_serial
 
 
 def test_individual_policy_boundaries_unknown_dates_and_categories():
+    assert db.ROLE_SECURITY == "Ordnungsdienst", "the persisted role key must stay compatible"
+    assert db.position_label(db.ROLE_SECURITY, 0) == "Ordner"
+    assert db.position_label(db.ROLE_SALE, 1) == "Verkauf 2"
     # Keep the full policy matrix explicit: unknown categories only block timing.
     from types import SimpleNamespace
     for category in ("BL M", "BL F", "BL mA", "BK wE", "SPF Mini", "GE", None, "unsupported"):
@@ -348,12 +351,18 @@ def test_individual_policy_boundaries_unknown_dates_and_categories():
             game.date = "04.10.2026"
             reason = age.individual_eligibility(game, role, person, 0)
             assert reason["code"] == "underage" and reason["minimum_age"] == minimum
+            assert reason["role"] == role, "reason identifiers must retain their transport key"
+            assert reason["message"].startswith(db.role_label(role) + ":")
             game.date = "05.10.2026"
             person.birth_date = None
-            assert age.individual_eligibility(game, role, person)["code"] == "unknown_birth_date"
+            reason = age.individual_eligibility(game, role, person)
+            assert reason["code"] == "unknown_birth_date"
+            assert reason["message"].startswith(db.role_label(role) + ":")
             for invalid in ("invalid", "", None):
                 game.date = invalid
-                assert age.individual_eligibility(game, role, person)["code"] == "unresolved_game_date"
+                reason = age.individual_eligibility(game, role, person)
+                assert reason["code"] == "unresolved_game_date"
+                assert reason["message"].startswith(db.role_label(role) + ":")
             game.date = "05.10.2026"
     for role, born, year in ((db.ROLE_TIMEKEEPER, date(2008, 2, 29), 2025),
                              (db.ROLE_SECURITY, date(2008, 2, 29), 2026)):

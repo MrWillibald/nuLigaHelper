@@ -6,6 +6,7 @@ import re
 from datetime import date, datetime
 
 import common
+from task_labels import role_label
 
 
 ADULT = "adult"
@@ -83,7 +84,7 @@ def deficiency(role: str, code: str, *, minimum_age: int | None = None,
         result["minimum_age"] = minimum_age
     if slot is not None:
         result["slot"] = slot
-    result["message"] = MESSAGES[code].format(role=role, minimum_age=minimum_age)
+    result["message"] = MESSAGES[code].format(role=role_label(role), minimum_age=minimum_age)
     return result
 
 

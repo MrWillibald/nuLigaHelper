@@ -153,13 +153,9 @@ MONATE = [
 ]
 
 SLOT_LABELS = [
-    ("Zeitnehmer", db.ROLE_TIMEKEEPER, 0),
-    ("Sekretär", db.ROLE_SECRETARY, 0),
-    ("Verkauf 1", db.ROLE_SALE, 0),
-    ("Verkauf 2", db.ROLE_SALE, 1),
-    ("Ordnungsdienst", db.ROLE_SECURITY, 0),
-    ("Kasse", db.ROLE_CASH, 0),
-    ("Wischer", db.ROLE_CLEANING, 0),
+    (db.position_label(role, slot), role, slot)
+    for role, count in db.ROLE_SLOT_COUNT.items()
+    for slot in range(count)
 ]
 
 COUNTRY_CODES = [
@@ -1760,7 +1756,8 @@ def create_app() -> Flask:
                 continue
             role_counts: dict[str, int] = {}
             for a in assignments:
-                role_counts[a.role] = role_counts.get(a.role, 0) + 1
+                label = db.role_label(a.role)
+                role_counts[label] = role_counts.get(label, 0) + 1
             for a in block_assignments:
                 label = a.block.label
                 role_counts[label] = role_counts.get(label, 0) + 1
@@ -1788,7 +1785,8 @@ def create_app() -> Flask:
                     "ak": game.ak or "",
                     "color": ak_color(game.ak),
                     "team_name": game.judge_team_name or "",
-                    "missing": list(staffing["vacancies"].items()),
+                    "missing": [(db.role_label(role), count)
+                                for role, count in staffing["vacancies"].items()],
                     "deficiencies": staffing["deficiencies"],
                 })
 

@@ -31,6 +31,18 @@ import game_identity_migration
 import schema_migrations
 
 
+def _parse_role(value: str) -> str:
+    """Accept current task names and retained assignment keys for old scripts."""
+    labels = {db.role_label(role): role for role in db.ROLE_SLOT_COUNT}
+    if value in labels:
+        return labels[value]
+    if value in db.ROLE_SLOT_COUNT:
+        return value
+    raise argparse.ArgumentTypeError(
+        f"Unknown role {value!r}; choose from {', '.join(labels)}"
+    )
+
+
 def get_db_path(args) -> str:
     if args.db:
         return args.db
@@ -376,7 +388,7 @@ def cmd_unassign(args):
         raise SystemExit(str(exc)) from exc
     if removed:
         session.commit()
-        print(f"{person.name} removed from game ID {game.id} (Nr.{game.game_nr}, {args.role})")
+        print(f"{person.name} removed from game ID {game.id} (Nr.{game.game_nr}, {db.role_label(args.role)})")
     else:
         print("No such assignment found")
 
@@ -511,13 +523,17 @@ def build_parser():
 
     p = sub.add_parser("assign", help="Assign a person to a game role")
     p.add_argument("game_id", type=int)
-    p.add_argument("role", choices=list(db.ROLE_SLOT_COUNT))
+    p.add_argument("role", type=_parse_role,
+                   metavar="{" + ",".join(db.role_label(role) for role in db.ROLE_SLOT_COUNT) + "}",
+                   help="Current task name; Ordnungsdienst remains an alias for Ordner")
     p.add_argument("person_id", type=int)
     p.set_defaults(func=cmd_assign)
 
     p = sub.add_parser("unassign", help="Remove an assignment")
     p.add_argument("game_id", type=int)
-    p.add_argument("role", choices=list(db.ROLE_SLOT_COUNT))
+    p.add_argument("role", type=_parse_role,
+                   metavar="{" + ",".join(db.role_label(role) for role in db.ROLE_SLOT_COUNT) + "}",
+                   help="Current task name; Ordnungsdienst remains an alias for Ordner")
     p.add_argument("person_id", type=int)
     p.set_defaults(func=cmd_unassign)
 

@@ -195,7 +195,7 @@ Each bar SHALL expose its current value, total and a contextual German descripti
 
 - **WHEN** a retained Kasse or Wischer assignment of a youth game is explicitly retired by an authorized caller before the fixed day-before cutoff
 - **THEN** its required-duty progress display is unchanged and the removed duty field disappears
-- **AND** successfully claiming its empty offered Ordnungsdienst position updates required progress
+- **AND** successfully claiming its empty offered Ordner position updates required progress
 
 #### Scenario: Replacement wanted is still occupied
 
@@ -320,7 +320,7 @@ Game cards SHALL distinguish physical required-slot occupancy from unresolved or
 
 Current/future game cards SHALL provide a readable German eligibility indication identifying the affected duty or adult-coverage requirement without exposing a full birth date or exact personal age. This indication SHALL remain visible while the card is collapsed and separate from the occupancy count and bar. Saved assignment changes and refreshed game data SHALL update the affected indication.
 
-The displayed guidance SHALL explain that Ordnungsdienst requires 18 for every game, adult-game Zeitnehmer and Sekretär require 16, and youth/SPF timing duties require 14. It SHALL explain that youth/SPF Verkauf has no age requirement while adult and unresolved-category games retain collective adult coverage. Guidance SHALL remain consistent with saved-state eligibility indications.
+The displayed guidance SHALL explain that Ordner requires 18 for every game, adult-game Zeitnehmer and Sekretär require 16, and youth/SPF timing duties require 14. It SHALL explain that youth/SPF Verkauf has no age requirement while adult and unresolved-category games retain collective adult coverage. Guidance SHALL remain consistent with saved-state eligibility indications.
 
 #### Scenario: Full game lacks an adult seller
 
@@ -354,8 +354,8 @@ The displayed guidance SHALL explain that Ordnungsdienst requires 18 for every g
 
 #### Scenario: Retained Ordnungsdienst fails the new rule
 
-- **WHEN** a current/future game's Ordnungsdienst is occupied by a helper below 18 or with an unknown birth date
-- **THEN** the collapsed card reports the Ordnungsdienst eligibility deficiency in German while retaining the occupant and physical occupancy
+- **WHEN** a current/future game's Ordner is occupied by a helper below 18 or with an unknown birth date
+- **THEN** the collapsed card reports the Ordner eligibility deficiency in German while retaining the occupant and physical occupancy
 - **AND** it exposes no full birth date or exact personal age
 
 #### Scenario: Adult Zeitnehmer meets the new threshold

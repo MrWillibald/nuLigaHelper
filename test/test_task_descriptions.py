@@ -125,6 +125,8 @@ def test_guest_member_and_admin_render_all_task_help_with_matching_shared_descri
     for person_id in (None, ids["assigned"], ids["admin"]):
         tree = html.fromstring(_client(app, person_id).get("/").get_data(as_text=True))
         buttons, descriptions = _task_controls(tree)
+        assert "Ordner" in descriptions and "Ordnungsdienst" not in tree.text_content()
+        assert "den Ordner als zweiter Ordner unterstützen" in db.TASK_DESCRIPTIONS[db.ROLE_CASH]
         assert len(buttons) == 5 + 7 + 3 + 4 + 3, (
             "youth/adult duties and every preparation, cake and cleanup position need information controls"
         )
@@ -215,7 +217,7 @@ def test_task_guidance_and_no_javascript_schedule_explain_revised_age_policy(_to
     assert notice.get("open") is not None, "age guidance must remain available without JavaScript"
     text = " ".join(notice.text_content().split())
     assert "14 Jahre bei Jugend/SPF und 16 Jahre bei Erwachsenen" in text
-    assert "Für Ordnungsdienst sind bei allen Spielen mindestens 18 Jahre erforderlich" in text
+    assert "Für Ordner sind bei allen Spielen mindestens 18 Jahre erforderlich" in text
     assert "Bei Jugend/SPF gelten im Verkauf keine Altersanforderungen" in text
     assert "Bei Erwachsenen und ungeklärten Altersklassen" in text
 

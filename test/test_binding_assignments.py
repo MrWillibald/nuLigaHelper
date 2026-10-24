@@ -61,6 +61,40 @@ def test_request_and_takeover_keep_position_identity_and_atomic_before_after_aud
     engine.dispose()
 
 
+def test_ordner_transitions_capture_current_label_without_rewriting_old_audits():
+    engine, game_id, people, _ = _seed()
+    with h.Session(engine) as session:
+        game = session.get(db.Game, game_id)
+        first, second = [session.get(db.Person, p) for p in people[1:3]]
+        legacy = db.AssignmentAudit(
+            actor_tier="system", action="claim", game_id=game.id,
+            role="Ordnungsdienst", slot=0, actor_name="System",
+            affected_person_name=first.name, game_snapshot="Historical game snapshot",
+        )
+        session.add(legacy)
+        session.commit()
+        assignment = db.claim_slot(session, game, "Ordnungsdienst", 0, None, first)
+        assignment_id = assignment.id
+        token = db.request_replacement(session, game, db.ROLE_SECURITY, 0, first.id).replacement_token
+        db.cancel_replacement(session, game, db.ROLE_SECURITY, 0, first.id, token)
+        token = db.request_replacement(session, game, db.ROLE_SECURITY, 0, first.id).replacement_token
+        db.takeover_slot(session, game, db.ROLE_SECURITY, 0, first.id, token, second)
+        db.request_replacement(session, game, db.ROLE_SECURITY, 0, second.id)
+        with patch("db.duty_now", return_value=datetime(2099, 12, 30, 9, tzinfo=ZoneInfo("Europe/Berlin"))):
+            db.lock_day_before_batch(session, 2026, game.date)
+        session.commit()
+        session.expire_all()
+        assert assignment.id == assignment_id and assignment.role == "Ordnungsdienst"
+        assert assignment.person_id == second.id and assignment.locked_at is not None
+        assert assignment.replacement_token is None
+        assert legacy.role == "Ordnungsdienst" and legacy.game_snapshot == "Historical game snapshot"
+        entries = session.query(db.AssignmentAudit).filter(db.AssignmentAudit.id != legacy.id).all()
+        assert {entry.action for entry in entries} == {
+            "claim", "request_open", "request_close", "takeover_out", "takeover_in", "lock"}
+        assert all(entry.role == "Ordner" for entry in entries)
+    engine.dispose()
+
+
 def test_takeover_rechecks_final_sale_group_and_preserves_original_on_refusal():
     engine, game_id, people, _ = _seed()
     with h.Session(engine) as session:
