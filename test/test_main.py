@@ -16,6 +16,8 @@ import backup
 import daily_lock
 import db
 import main
+import notifier
+from test_notifier import TextRecorder
 
 
 TODAY = datetime.date(2026, 9, 2)
@@ -156,6 +158,9 @@ class _FakeNotifier:
 
     def notify_pre(self, _date):
         return self._call("notify_pre")
+
+    def notify_team_vacancies_early(self, _date):
+        return self._call("notify_team_vacancies_early")
 
 
 @contextlib.contextmanager
@@ -344,6 +349,7 @@ def test_successful_daily_path_orders_lock_sync_backup_and_notifications():
         "notify_cleanup_early",
         "notify_cakes_early",
         "notify_pre",
+        "notify_team_vacancies_early",
         "session1:exit",
         "lock:exit",
     ]
@@ -462,6 +468,7 @@ def test_backup_failure_is_retained_while_notifications_continue():
         "notify_cleanup_early",
         "notify_cakes_early",
         "notify_pre",
+        "notify_team_vacancies_early",
     ]
     output = logs.getvalue()
     assert "stage latest_upload" in output
@@ -569,6 +576,80 @@ def test_run_sh_propagates_daily_job_failure_status():
 
     assert result.returncode == 73
     assert "Refusing to overlap" in result.stderr
+
+
+def test_weekly_vacancy_invitations_follow_effective_today_and_keep_existing_senders():
+    engine = h.make_engine()
+    target_today = datetime.date(2026, 9, 2)
+    rows = [
+        {**h.sample_games()[1], "game_nr": str(9000 + days),
+         "date": (target_today + datetime.timedelta(days=days)).strftime("%d.%m.%Y")}
+        for days in (6, 7, 8)
+    ]
+    with h.Session(engine) as session:
+        db.sync_games(session, rows, h.SEASON)
+        team = session.query(db.Team).filter_by(is_support=True).one()
+        invited = db.Person(name="Weekly invitee", email="invitee@example.test", teams=[team])
+        helper = db.Person(name="Weekly helper", email="helper@example.test", birth_date=h.ADULT_BIRTH_DATE)
+        session.add_all([invited, helper])
+        session.commit()
+        for game in session.query(db.Game).all():
+            game.team = team
+        session.commit()
+        weekly = session.query(db.Game).filter_by(game_nr="9007").one()
+        db.claim_slot(session, weekly, db.ROLE_TIMEKEEPER, 0, None, helper)
+        session.commit()
+    cfg = {"club": h.load_club_config()}
+    rec = TextRecorder()
+    weekly_calls = []
+    original_senders = {
+        name: getattr(notifier.Notifier, name) for name in (
+            "notify_service_early", "notify_cleanup_early", "notify_cakes_early",
+            "notify_pre", "notify_team_vacancies_early",
+        )
+    }
+    def tracked_sender(name):
+        def send(instance, game_date):
+            weekly_calls.append((name, game_date))
+            return original_senders[name](instance, game_date)
+        return send
+    with contextlib.ExitStack() as stack:
+        stack.enter_context(patch.dict(os.environ, {"NULIGAHELPER_DB": str(engine.url.database)}))
+        stack.enter_context(patch.object(main.common, "effective_today", return_value=target_today))
+        stack.enter_context(patch.object(main.common, "load_config", return_value=cfg))
+        stack.enter_context(patch.object(main, "fetch_home_games", return_value=rows))
+        stack.enter_context(patch.object(main, "_backup_database"))
+        stack.enter_context(patch.object(main.production, "write_success"))
+        stack.enter_context(patch.object(notifier.Notifier, "send_Mail", side_effect=rec.mail))
+        stack.enter_context(patch.object(notifier.Notifier, "send_SMS", side_effect=rec.sms))
+        for name in original_senders:
+            stack.enter_context(patch.object(notifier.Notifier, name, tracked_sender(name)))
+        with _captured_logs() as logs:
+            main.main()
+    assert weekly_calls == [(name, "09.09.2026") for name in original_senders], \
+        "every existing weekly sender and recruitment must receive effective today plus seven days"
+    invitations = [body for address, subject, body in rec.mails if "Deine Unterstützung" in subject]
+    assert len(invitations) == 1 and "09.09.2026" in invitations[0], "only the seven-day game may recruit"
+    assert "08.09.2026" not in invitations[0] and "10.09.2026" not in invitations[0]
+    assert len(rec.mails) == 2, "the existing assigned-helper reminder must still be delivered"
+    assert "Number of sent service notifications: 2" in logs.getvalue(), "weekly total must include the new dispatch"
+    engine.dispose()
+
+
+def test_weekly_branch_does_not_recruit_when_only_six_and_eight_day_games_exist():
+    engine = h.make_engine()
+    with h.Session(engine) as session:
+        db.sync_games(session, [
+            {**h.sample_games()[1], "game_nr": str(9000 + days),
+             "date": (TODAY + datetime.timedelta(days=days)).strftime("%d.%m.%Y")}
+            for days in (6, 8)
+        ], h.SEASON)
+    with patch.object(main, "Notifier") as sender:
+        sender.return_value.notify_shifts.return_value = 0
+        main._send_notifications(h.load_club_config(), engine, h.SEASON, TODAY, db.SyncEvents())
+        sender.return_value.notify_team_vacancies_early.assert_not_called()
+        sender.return_value.notify_pre.assert_not_called()
+    engine.dispose()
 
 
 if __name__ == "__main__":

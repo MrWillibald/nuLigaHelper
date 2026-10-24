@@ -130,5 +130,49 @@ def test_dormant_templates_and_removed_definitions_have_explicit_dispositions():
     assert messages.LEGACY_RECIPIENT_KEY not in mapped, "recipient metadata must not be treated as copy"
 
 
+def test_team_vacancy_variants_have_personal_event_facts_counts_and_friendly_action():
+    for event in ("game", "spielfest"):
+        key = f"team.{event}.vacancies.weekly"
+        context = dict(
+            recipient_name="Fixture {recipient_name}", responsible_team_name="Team {auth_code}",
+            game_date="28.11.2026", game_start_time="14:13",
+            age_class="SPF Minis vollständig" if event == "spielfest" else "BL M",
+            open_tasks_text="Verkauf: 1 Platz; Ordnungsdienst: 1 Platz",
+        )
+        if event == "game":
+            context.update(home_team_name="Home Fixture", away_team_name="Away Fixture")
+        result = messages.render(key, **context)
+        event_label = "Spielfest" if event == "spielfest" else "Heimspiel"
+        assert result.subject == f"Deine Unterstützung beim {event_label} am 28.11.2026"
+        for body in (result.email, result.sms):
+            for value in (context[field] for field in messages._TEAM_VACANCY_FIELDS):
+                assert value in body, "each channel must retain the personal event and vacancy facts literally"
+            assert "Hallo Fixture {recipient_name}," in body and "nächste Woche" in body
+            assert "Heimspielplan" in body and "Vielen Dank" in body
+        assert "passende Aufgabe" in result.email and "passenden Dienst" in result.sms
+        assert result.email.endswith("Viele Grüße\nTuS Raubling Handball")
+        assert result.sms.endswith("VG TuS Handball")
+        assert len(result.sms) < len(result.email), "SMS needs its own shorter wording"
+        if event == "game":
+            assert "Home Fixture gegen Away Fixture (BL M)" in result.email
+        else:
+            assert "Spielfest SPF Minis vollständig" in result.email and "Spielfest SPF Minis vollständig" in result.sms
+            assert "gegen" not in result.email + result.sms, "Spielfest must not invent opponents"
+
+
+def test_team_vacancy_fragments_count_free_sale_places_and_validate_contexts():
+    for count, fragment, expected in ((1, "one", "Verkauf: 1 Platz"), (2, "many", "Verkauf: 2 Plätze")):
+        assert messages.render_fragment(
+            f"team.vacancies.{fragment}", task_label="Verkauf", vacancy_count=count,
+        ) == expected, "free Verkauf places must share one counted task label"
+    assert messages.render_fragment("team.vacancies.separator") == "; "
+    for key in ("team.game.vacancies.weekly", "team.spielfest.vacancies.weekly"):
+        context = _context(key)
+        context.pop("open_tasks_text")
+        _refusal(lambda: messages.render(key, **context), (key, "open_tasks_text"))
+        _refusal(lambda: messages.render(key, **_context(key), unexpected="private"), (key, "unexpected"))
+    _refusal(lambda: messages.render_fragment("team.vacancies.one", task_label="Verkauf"), ("vacancy_count",))
+
+
 if __name__ == "__main__":
     h.run_all(dict(globals()))

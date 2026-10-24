@@ -17,7 +17,11 @@
 # ---------------------------------------------------------------
 
 from dataclasses import replace
+from datetime import date, datetime
 from unittest.mock import patch
+from zoneinfo import ZoneInfo
+
+from sqlalchemy import event, select
 
 import helpers as h
 import db
@@ -537,6 +541,223 @@ def test_invalid_catalog_subject_is_refused_before_a_helper_send():
         else:
             raise AssertionError("an invalid template produced a notification")
     assert not recorder.mails and not recorder.smss, "render failure must precede provider dispatch"
+
+
+def _vacancy_setup(age_class="BL M"):
+    """One empty game with a saved responsible team and recorded transports."""
+    session = h.Session(h.make_engine())
+    row = {**h.sample_games()[1], "ak": age_class}
+    rows = scraper.collapse_spielfeste([row]) if age_class.startswith("SPF") else [row]
+    db.sync_games(session, rows, h.SEASON)
+    game = session.query(db.Game).one()
+    # Responsibility intentionally differs from the playing team.
+    team = session.query(db.Team).filter_by(is_support=True).one()
+    game.team = team
+    session.commit()
+    sender = notifier.Notifier(h.load_club_config(), session, h.SEASON)
+    recorder = TextRecorder()
+    sender.send_Mail, sender.send_SMS = recorder.mail, recorder.sms
+    return session, game, sender, recorder
+
+
+def _vacancy_member(session, team, name="Invited", **values):
+    person = db.Person(**{
+        "name": name, "email": f"member-{session.query(db.Person).count()}@example.test",
+        "birth_date": h.ADULT_BIRTH_DATE, "teams": [team], **values,
+    })
+    session.add(person)
+    session.commit()
+    return person
+
+
+def _fill_vacancy_positions(session, game, positions):
+    for role, slot in positions:
+        person = _vacancy_member(session, game.team, name=f"Assigned {role} {slot}")
+        db.claim_slot(session, game, role, slot, None, person)
+    session.commit()
+
+
+def test_team_vacancies_require_active_saved_membership_but_no_mv():
+    session, game, sender, rec = _vacancy_setup()
+    active = _vacancy_member(session, game.team)
+    for status in (db.ACCOUNT_REGISTERED, db.ACCOUNT_VERIFIED, db.ACCOUNT_REJECTED, db.ACCOUNT_INACTIVE):
+        _vacancy_member(session, game.team, name=status, account_status=status)
+    playing_team = session.query(db.Team).filter_by(name=game.ak).one()
+    _vacancy_member(session, playing_team, name="Playing team only", is_admin=True)
+    _vacancy_member(session, None, name="No team", teams=[])
+    assert game.team.mv_person is None, "recruitment must not need an MV appointment"
+    assert sender.notify_team_vacancies_early(GAME_DATE) == 1
+    assert len(rec.mails) == 1 and active.email in rec.mails[0][0]
+    assert "Verkauf: 2 Plätze" in rec.all_text()
+    assert "Kasse: 1 Platz; Wischer: 1 Platz" in rec.all_text()
+    game.team = None
+    session.commit()
+    assert sender.notify_team_vacancies_early(GAME_DATE) == 0, "no fallback team or admin recipients"
+    session.close()
+
+
+def test_team_vacancies_invite_qualifying_mv_once_and_exclude_an_assigned_mv():
+    session, game, sender, rec = _vacancy_setup()
+    mv = _vacancy_member(session, game.team, is_admin=True)
+    db.set_team_mv(session, game.team, mv)
+    assert sender.notify_team_vacancies_early(GAME_DATE) == 1
+    assert len(rec.mails) == 1, "MV appointment must not duplicate the member invitation"
+    db.claim_slot(session, game, db.ROLE_TIMEKEEPER, 0, None, mv)
+    session.commit()
+    assert sender.notify_team_vacancies_early(GAME_DATE) == 0, "admin/MV has the same assignment exclusion"
+    session.close()
+
+
+def test_team_vacancies_use_required_counts_for_adult_youth_and_spielfest():
+    for age_class in ("BL M", "BL mD", "SPF Mini vollständig"):
+        session, game, sender, rec = _vacancy_setup(age_class)
+        _vacancy_member(session, game.team)
+        _fill_vacancy_positions(session, game, db.BASELINE_REQUIRED_POSITIONS)
+        count = sender.notify_team_vacancies_early(GAME_DATE)
+        if age_class == "BL M":
+            assert count == 1
+            assert "\n\nKasse: 1 Platz; Wischer: 1 Platz\n\n" in rec.all_text()
+        else:
+            assert count == 0, "youth/SPF need no cash or Wischer staffing"
+        session.close()
+
+
+def test_team_vacancies_exclude_all_same_game_duties_and_preserve_other_container_recipients():
+    session, game, sender, rec = _vacancy_setup("BL mD")
+    excluded = _vacancy_member(session, game.team, name="Same name")
+    included = _vacancy_member(session, game.team, name="Same name", birth_date=None)
+    replacement = _vacancy_member(session, game.team, name="Replacement searching")
+    retired = _vacancy_member(session, game.team, name="Retained removed duty")
+    young = _vacancy_member(session, game.team, name="Young member", birth_date=date(2020, 1, 1))
+    other_game_helper = _vacancy_member(session, game.team, name="Other game")
+    block_helper = _vacancy_member(session, game.team, name="Other block")
+    db.claim_slot(session, game, db.ROLE_TIMEKEEPER, 0, None, excluded)
+    db.claim_slot(session, game, db.ROLE_SALE, 0, None, replacement)
+    token = db.request_replacement(session, game, db.ROLE_SALE, 0, replacement.id)
+    # Synthetic legacy duty retained after a category change.
+    session.add(db.Assignment(game=game, person=retired, role=db.ROLE_CASH, slot=0))
+    other_game = db.Game(season_year=h.SEASON, game_nr="9999", date=GAME_DATE, ak="BL mD")
+    session.add(other_game)
+    session.commit()
+    db.claim_slot(session, other_game, db.ROLE_TIMEKEEPER, 0, None, other_game_helper)
+    block = next(b for b in db.get_day_blocks(session, h.SEASON, GAME_DATE) if b.phase == db.BLOCK_PREPARATION)
+    db.claim_block_slot(session, block, 0, None, block_helper)
+    playing_team = session.query(db.Team).filter_by(name="BL mD").one()
+    included.teams.append(playing_team)
+    session.commit()
+    assert token and game.assignment_by_role(db.ROLE_SALE).replacement_token
+    assert sender.notify_team_vacancies_early(GAME_DATE) == 4
+    addresses = [address for address, _, _ in rec.mails]
+    for person in (included, young, other_game_helper, block_helper):
+        assert sum(person.email in address for address in addresses) == 1, "one invitation per qualifying identity"
+    for person in (excluded, replacement, retired):
+        assert all(person.email not in address for address in addresses), "every saved same-game duty excludes its helper"
+    assert "Verkauf: 1 Platz" in rec.all_text() and "Verkauf: 2 Plätze" not in rec.all_text()
+    assert "Kasse" not in rec.all_text(), "retained removed positions are not advertised"
+    session.close()
+
+
+def test_team_vacancies_are_season_date_scoped_and_per_game_per_invocation():
+    session, game, sender, rec = _vacancy_setup()
+    _vacancy_member(session, game.team)
+    for season, number, game_date in (
+        (h.SEASON, "1002", GAME_DATE),
+        (h.SEASON - 1, game.game_nr, GAME_DATE),
+        (h.SEASON, "1003", "06.09.2026"),
+    ):
+        session.add(db.Game(season_year=season, game_nr=number, date=game_date, ak="BL M", team=game.team))
+    session.commit()
+    assert sender.notify_team_vacancies_early(GAME_DATE) == 2, "only two games in this season and date qualify"
+    assert sender.notify_team_vacancies_early(GAME_DATE) == 2, "reruns follow existing reminder resend behavior"
+    assert len(rec.mails) == 4, "each game and invocation has its own invitation"
+    session.close()
+
+
+def test_team_vacancies_route_contacts_and_render_both_events_without_opponent_invention():
+    for age_class in ("BL M", "SPF Mini vollständig"):
+        session, game, sender, rec = _vacancy_setup(age_class)
+        both = _vacancy_member(session, game.team, phone="+491700111111")
+        phone = _vacancy_member(session, game.team, name="Phone", email=None, phone="+491700222222")
+        _vacancy_member(session, game.team, name="Contactless", email=None)
+        game.time = None
+        session.commit()
+        with patch.object(notifier.logging, "warning") as warning:
+            assert sender.notify_team_vacancies_early(GAME_DATE) == 2, "contactless member contributes zero"
+        warning.assert_called_once_with("notification outcome=skipped reason=no_contact")
+        assert len(rec.mails) == len(rec.smss) == 1 and both.email in rec.mails[0][0]
+        assert rec.smss[0][0] == phone.phone, "both contacts must prefer e-mail"
+        for body in (rec.mails[0][2], rec.smss[0][1]):
+            assert game.team.name in body and GAME_DATE in body and age_class in body
+            if age_class.startswith("SPF"):
+                assert "Spielfest SPF Mini vollständig" in body and "gegen" not in body
+        session.close()
+
+
+def test_team_vacancy_provider_errors_propagate_without_fallback_or_writes():
+    for channel in ("email", "sms"):
+        session, game, sender, rec = _vacancy_setup()
+        _vacancy_member(session, game.team, email="both@example.test" if channel == "email" else None, phone="+491700111111")
+        error = RuntimeError("synthetic provider failure")
+        with patch.object(sender, "send_Mail" if channel == "email" else "send_SMS", side_effect=error) as send:
+            try:
+                sender.notify_team_vacancies_early(GAME_DATE)
+            except RuntimeError as actual:
+                assert actual is error, "provider failures must reach daily-job reporting"
+            else:
+                raise AssertionError("provider failure was silently treated as success")
+        send.assert_called_once()
+        assert not rec.mails and not rec.smss, "SMTP failure must not fall back to SMS"
+        assert not session.new and not session.dirty and not session.deleted
+        session.close()
+
+
+def test_team_vacancy_dispatch_does_not_write_or_lock_even_when_cutoff_is_due():
+    session, game, sender, rec = _vacancy_setup()
+    _vacancy_member(session, game.team)
+    assigned = _vacancy_member(session, game.team, name="Assigned")
+    db.claim_slot(session, game, db.ROLE_SALE, 0, None, assigned)
+    db.request_replacement(session, game, db.ROLE_SALE, 0, assigned.id)
+    session.commit()
+    def snapshot():
+        return {table.name: session.execute(select(table)).all() for table in db.Base.metadata.sorted_tables}
+    before = snapshot()
+    statements = []
+    def record_sql(_conn, _cursor, statement, _parameters, _context, _many):
+        statements.append(statement.lstrip().split()[0].upper())
+    event.listen(session.bind, "before_cursor_execute", record_sql)
+    try:
+        # Weekly invitations remain read-only even if explicitly invoked late.
+        with patch.object(db, "duty_now", return_value=datetime(2026, 9, 4, 10, tzinfo=ZoneInfo("Europe/Berlin"))):
+            assert sender.notify_team_vacancies_early(GAME_DATE) == 1
+        assert set(statements) <= {"SELECT"}, "sender must never write, commit, lock or begin a serialized writer"
+        assert not session.new and not session.dirty and not session.deleted
+        assert snapshot() == before, "assignments, replacement tokens, cutoffs and audit history must remain identical"
+    finally:
+        event.remove(session.bind, "before_cursor_execute", record_sql)
+        session.close()
+
+
+def test_team_vacancies_ignore_deficiencies_replacement_searches_and_block_gaps():
+    for age_class in ("BL M", "BL mD", "SPF Mini", "GE", "unsupported"):
+        session, game, sender, rec = _vacancy_setup(age_class)
+        mv = _vacancy_member(session, game.team)
+        db.set_team_mv(session, game.team, mv)
+        # Retained synthetic staffing includes unknown birth dates/classifications.
+        for role, slot in db.required_positions(game):
+            helper = _vacancy_member(session, game.team, name=f"Legacy {role} {slot}", birth_date=None)
+            session.add(db.Assignment(game=game, person=helper, role=role, slot=slot))
+        session.commit()
+        db.request_replacement(session, game, db.ROLE_SALE, 0, game.assignment_by_role(db.ROLE_SALE).person_id)
+        session.commit()
+        cake = next(b for b in db.get_day_blocks(session, h.SEASON, GAME_DATE) if b.phase == db.BLOCK_CAKE_DELIVERY)
+        db.configure_cake_block(session, cake, "10:00", 2, expected_cake_quantity=None, expected_delivery_time=None)
+        session.commit()
+        assert not db.missing_slots(game) and db.staffing_status(game)["deficiencies"]
+        assert sender.notify_team_vacancies_early(GAME_DATE) == 0
+        assert not rec.mails and not rec.smss, "full staffing must not recruit for age, replacement or block gaps"
+        assert sender.notify_pre(GAME_DATE) == len(db.required_positions(game)), "weekly assigned-helper reminders remain available"
+        assert sender.notify_game_day(GAME_DATE) == len(db.required_positions(game)) + 1, "age deficiencies still trigger day-before MV follow-up"
+        session.close()
 
 
 if __name__ == "__main__":

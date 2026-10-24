@@ -11,6 +11,7 @@ from email.utils import formataddr
 from email.message import EmailMessage
 
 from twilio.rest import Client
+from sqlalchemy import select
 
 from common import DEBUG_FLAG
 import common
@@ -306,6 +307,46 @@ class Notifier:
     # ---------------------------------------------------------------------------
     # Pre-notifications (one week ahead)
     # ---------------------------------------------------------------------------
+
+    def notify_team_vacancies_early(self, date: str) -> int:
+        """Invite unassigned active responsible-team members to required vacancies."""
+        count = 0
+        games = self.session.scalars(
+            select(db.Game).where(
+                db.Game.season_year == self._season_year, db.Game.date == date,
+            ).order_by(db.Game.time, db.Game.game_nr)
+        )
+        for game in games:
+            vacancies = db.missing_slots(game)
+            if not vacancies or game.team is None:
+                continue
+            excluded = {assignment.person_id for assignment in game.assignments}
+            recipients = {
+                person.id: person for person in game.team.persons
+                if person.account_status == db.ACCOUNT_ACTIVE and person.id not in excluded
+            }
+            open_tasks_text = messages.render_fragment("team.vacancies.separator").join(
+                messages.render_fragment(
+                    "team.vacancies.one" if vacancy_count == 1 else "team.vacancies.many",
+                    task_label=role, vacancy_count=vacancy_count,
+                ) for role, vacancy_count in vacancies.items()
+            )
+            context = {
+                "responsible_team_name": game.team.name, "game_date": date,
+                "game_start_time": game.time or "", "age_class": game.ak or "",
+                "open_tasks_text": open_tasks_text,
+            }
+            if db.is_spielfest(game):
+                key = "team.spielfest.vacancies.weekly"
+            else:
+                key = "team.game.vacancies.weekly"
+                context.update(home_team_name=game.home or "", away_team_name=game.guest or "")
+            for person in sorted(recipients.values(), key=lambda person: (person.name, person.id)):
+                count += self._dispatch_message(
+                    self._person_receiver(person, ""),
+                    messages.render(key, recipient_name=person.name, **context), game.game_nr,
+                )
+        return count
 
     def notify_pre(self, date: str) -> int:
         """Send pre-notifications to all assigned game helpers one week ahead."""
