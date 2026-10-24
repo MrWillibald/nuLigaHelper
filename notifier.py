@@ -328,7 +328,7 @@ class Notifier:
             open_tasks_text = messages.render_fragment("team.vacancies.separator").join(
                 messages.render_fragment(
                     "team.vacancies.one" if vacancy_count == 1 else "team.vacancies.many",
-                    task_label=role, vacancy_count=vacancy_count,
+                    task_label=db.role_label(role), vacancy_count=vacancy_count,
                 ) for role, vacancy_count in vacancies.items()
             )
             context = {
@@ -381,10 +381,10 @@ class Notifier:
             raise messages.MessageRenderError("Unknown game reminder key")
         cnt = 0
         for role, assignment in self._game_helper_assignments(game, roles):
-            receiver = self._person_receiver(assignment.person, role)
+            receiver = self._person_receiver(assignment.person, db.role_label(role))
             context = {
                 "recipient_name": receiver["name"], "game_date": date,
-                "task_label": role, "age_class": game.ak or "",
+                "task_label": db.role_label(role), "age_class": game.ak or "",
                 "game_start_time": game.time or "",
             }
             if db.is_spielfest(game):
@@ -412,9 +412,9 @@ class Notifier:
                 f"New date: {shift.new_date} {shift.new_time}"
             )
             for role, assignment in self._game_helper_assignments(game):
-                receiver = self._person_receiver(assignment.person, role)
+                receiver = self._person_receiver(assignment.person, db.role_label(role))
                 context = {
-                    "recipient_name": receiver["name"], "task_label": role,
+                    "recipient_name": receiver["name"], "task_label": db.role_label(role),
                     "age_class": game.ak or "", "old_game_date": shift.old_date or "",
                     "old_game_start_time": shift.old_time or "", "new_game_date": shift.new_date or "",
                     "new_game_start_time": shift.new_time or "",

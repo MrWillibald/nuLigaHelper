@@ -217,7 +217,7 @@ The system SHALL enforce age rules for new claims and responsibility takeovers m
 
 #### Scenario: Ordnungsdienst age changes before confirmation
 
-- **WHEN** a previously eligible Ordnungsdienst candidate no longer reaches 18 under current saved game or person data when a claim or takeover commits
+- **WHEN** a previously eligible Ordner candidate no longer reaches 18 under current saved game or person data when a claim or takeover commits
 - **THEN** the write is refused for every tier and entry point, including admin and CLI
 - **AND** saved assignments and replacement-request state remain unchanged
 
@@ -279,7 +279,7 @@ Physical vacancy counts SHALL remain distinct from these deficiencies. Current/f
 
 #### Scenario: New Ordnungsdienst minimum exposes a retained deficiency
 
-- **WHEN** a current/future Ordnungsdienst occupant is below 18 or has an unknown birth date when the revised policy is applied
+- **WHEN** a current/future Ordner occupant is below 18 or has an unknown birth date when the revised policy is applied
 - **THEN** the existing assignment, responsibility, request state and any saved lock remain intact
 - **AND** staffing summaries, statistics and existing MV follow-up include the applicable deficiency
 - **AND** an age deficiency grants no release or lock override
@@ -296,32 +296,39 @@ Physical vacancy counts SHALL remain distinct from these deficiencies. Current/f
 - **THEN** collective adult coverage is reevaluated and any deficiency becomes visible
 - **AND** changing back to recognized youth removes that sale age deficiency without altering assignments
 
-### Requirement: Ordnungsdienst requires an adult helper
+### Requirement: Ordner requires an adult helper
 
-Every new Ordnungsdienst claim or takeover SHALL require a known birth date and completed age of at least 18 on the scheduled game date. This minimum SHALL apply to adult games, recognized youth games including SPF, and games with unresolved categories. A missing or invalid game date SHALL refuse new Ordnungsdienst assignments with an unresolved-date reason. Unknown birth dates SHALL refuse new assignments with an unknown-birth-date reason. Full birth dates and exact personal ages SHALL remain private; public eligibility reasons SHALL identify only the duty, required minimum or unresolved condition.
+Every new Ordner claim or takeover SHALL require a known birth date and completed age of at least 18 on the scheduled game date. This minimum SHALL apply to adult games, recognized youth games including SPF, and games with unresolved categories. A missing or invalid game date SHALL refuse new Ordner assignments with an unresolved-date reason. Unknown birth dates SHALL refuse new assignments with an unknown-birth-date reason. Full birth dates and exact personal ages SHALL remain private; public eligibility reasons SHALL identify only the duty, required minimum or unresolved condition.
 
 #### Scenario: Ordnungsdienst reaches 18
 
 - **WHEN** a helper turns 18 on a game's scheduled date
-- **THEN** the Ordnungsdienst age check permits the assignment
+- **THEN** the Ordner age check permits the assignment
 - **AND** the same helper fails the check for a game on the preceding day
 
 #### Scenario: Ordnungsdienst applies to every category
 
-- **WHEN** an underage helper claims Ordnungsdienst for an adult, youth, SPF or unresolved-category game
+- **WHEN** an underage helper claims Ordner for an adult, youth, SPF or unresolved-category game
 - **THEN** the age check refuses the claim with a minimum-age-18 reason
 
 #### Scenario: Unknown Ordnungsdienst birth date
 
-- **WHEN** a new Ordnungsdienst claim or takeover names a legacy helper with an unknown birth date
+- **WHEN** a new Ordner claim or takeover names a legacy helper with an unknown birth date
 - **THEN** the write is refused because adult eligibility cannot be established
 
 #### Scenario: Ordnungsdienst game date is unresolved
 
 - **WHEN** the game's date is missing or invalid
-- **THEN** a new Ordnungsdienst claim or takeover is refused without substituting today's date
+- **THEN** a new Ordner claim or takeover is refused without substituting today's date
 
 #### Scenario: Adult helper for an unresolved category
 
 - **WHEN** a helper reaches 18 by a valid game date but the game's category is unresolved
-- **THEN** the Ordnungsdienst age check permits the assignment because its threshold is category-independent
+- **THEN** the Ordner age check permits the assignment because its threshold is category-independent
+
+#### Scenario: Public reasons use the current name
+
+- **WHEN** an Ordner claim or takeover is refused for age, unknown birth date or an invalid game date, or a retained occupant has an eligibility deficiency
+- **THEN** the human-readable reason identifies Ordner and the applicable threshold or unresolved condition
+- **AND** it exposes no full birth date or exact personal age
+- **AND** any machine-readable role identifier remains compatible with existing clients

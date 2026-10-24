@@ -660,7 +660,7 @@ function confirmAssignment(select, option) {
   activeAssignmentConfirmation = true;
   const context = dialog.querySelector("[data-confirmation-context]");
   const day = select.closest?.(".day-block")?.querySelector?.(".day-title")?.textContent?.trim();
-  const duty = select.dataset.dutyLabel || select.dataset.role || "Tagesdienst";
+  const duty = select.dataset.dutyLabel || select.closest?.("[data-duty-label]")?.dataset.dutyLabel || "Dienst";
   context.textContent = `${option.textContent || option.label || "Die ausgewählte Person"} übernimmt ${duty}${day ? ` am ${day}` : ""}.`;
   const lateNotice = dialog.querySelector("[data-confirmation-late]");
   if (lateNotice) lateNotice.hidden = select.dataset.lateClaimLocked !== "true";

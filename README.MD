@@ -9,7 +9,7 @@ Host-specific deployment configuration and operator records are maintained priva
 - Read home games from Hallenspielplan website of nuLiga
 - Games, persons and task assignments are stored in a SQLite database (`nuliga_helper.db`)
 - The database is backed up to a dropbox account after every run
-- Game tasks (Zeitnehmer, Sekretär, Verkauf, Ordnungsdienst, Kasse, Wischer) offer seven required positions for adults and five for youth and unresolved categories
+- Game tasks (Zeitnehmer, Sekretär, Verkauf, Ordner, Kasse, Wischer) offer seven required positions for adults and five for youth and unresolved categories
 - Every home-game date has three-slot Vorbereitung and Aufräumen blocks, timed 90 minutes before the first and 60 minutes after the last game start; slot numbers are display positions while statistics, reminders and audits use the shared task name, just like Verkauf
 - Every home-game date also has a Kuchenlieferung block; admins set its delivery time and requested quantity, with one volunteer position per cake
 - nuLigaHelper keeps track of all game shifts
@@ -161,9 +161,12 @@ catalog, repeated-position wording, rendering and public-response privacy.
 
 All offered game duties are mandatory. Position numbers distinguish occupants of
 one semantic role: **Verkauf 1/2** both count as Verkauf in personal statistics
-and reminders. There is exactly one independent **Ordnungsdienst**
+and reminders. There is exactly one independent **Ordner**
 and one adult **Kasse** role. Kasse additionally takes the ordering/security work
 originally intended for a second Ordner. A person still holds at most one task per game.
+The current label **Ordner** retains the stored assignment and API key
+`Ordnungsdienst`; display labels never change saved duties, locks or replacement tokens.
+New audit entries capture Ordner, while historical audit labels remain unchanged.
 Per-game Wischer remains separate from the day-wide Aufräumen block.
 
 | Duty | Positions | Adult games | Youth games and unresolved categories |
@@ -171,7 +174,7 @@ Per-game Wischer remains separate from the day-wide Aufräumen block.
 | Zeitnehmer | 1 | Required | Required |
 | Sekretär | 1 | Required | Required |
 | Verkauf | 2 | Both required | Both required |
-| Ordnungsdienst | 1 | Required | Required |
+| Ordner | 1 | Required | Required |
 | Kasse | 1 | Required | Not offered |
 | Wischer | 1 | Required | Not offered |
 
@@ -270,10 +273,10 @@ Age means completed calendar years on the scheduled game date, including future 
 | --- | --- | --- |
 | Zeitnehmer | 14 or older | 16 or older |
 | Sekretär | 14 or older | 16 or older |
-| Ordnungsdienst | 18 or older | 18 or older |
+| Ordner | 18 or older | 18 or older |
 | Verkauf | No age requirement (including SPF) | At least one assigned seller is 18 or older |
 
-Adult M/F and youth mA–mE/wA–wE classes are recognized even with league prefixes; SPF is youth. GE, missing and unsupported classes leave timing eligibility unresolved, so new timing claims are refused. Ordnungsdienst requires a known birth date and age 18 for every category, including unresolved categories. An invalid game date prevents new timing/Ordnungsdienst claims; today's date is never substituted. Kasse, Wischer and day blocks, including cake delivery, have no additional age minimum.
+Adult M/F and youth mA–mE/wA–wE classes are recognized even with league prefixes; SPF is youth. GE, missing and unsupported classes leave timing eligibility unresolved, so new timing claims are refused. Ordner requires a known birth date and age 18 for every category, including unresolved categories. An invalid game date prevents new timing/Ordner claims; today's date is never substituted. Kasse, Wischer and day blocks, including cake delivery, have no additional age minimum.
 
 Recognized youth/SPF Verkauf has no individual minimum, birth-date requirement or collective adult-coverage requirement. Its age check also needs no game date; general assignment/date and cutoff checks still apply. Adult games and unresolved categories (GE, missing or unsupported classes) retain collective adult coverage and reject sale claims with invalid game dates even for the first slot. For these non-youth games, a younger helper or a legacy helper with an unknown birth date may take the first sale slot. Filling the last free slot requires at least one explicitly assigned seller who reaches 18 by the game date; the other seller has no individual minimum. An adult in the responsible team or candidate list does not provide coverage without an assignment. Every claim, including admin and CLI claims or past-game corrections, is checked against saved data. There is no admin age override. Sale candidates refresh after claims and atomic takeovers, and stale selections can be refused without overwriting saved occupants.
 
@@ -553,12 +556,15 @@ python3 manage_db.py grant-admin 1
 python3 manage_db.py list-games
 python3 manage_db.py list-games --number 12034
 python3 manage_db.py assign 42 Zeitnehmer 1
+python3 manage_db.py assign 42 Ordner 4
 python3 manage_db.py assign 42 Kasse 2
 python3 manage_db.py assign 42 Wischer 3
 python3 manage_db.py unassign 42 Wischer 3
 python3 manage_db.py set-jteam 42 "Damen 1"
 ```
 
+Use `Ordner` as the CLI task name; `Ordnungsdienst` remains an input alias for
+existing scripts and resolves to the same duty.
 Game and person arguments are internal IDs. Repeated-role `assign` uses the first
 empty numbered position and prints that position. `unassign` refuses ordinary
 withdrawal from an offered duty; use the schedule's replacement request and eligible

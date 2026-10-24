@@ -14,6 +14,7 @@ import time
 
 import contact_validation as contacts
 import age_eligibility
+from task_labels import role_label
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -31,7 +32,7 @@ from sqlalchemy.orm import (
 )
 
 # ---------------------------------------------------------------------------
-# Role labels (also used as task names in notifications)
+# Stable assignment keys; use role_label() for current human-readable names.
 # ---------------------------------------------------------------------------
 
 ROLE_MV = "MV"
@@ -78,7 +79,8 @@ def required_positions(game: Game) -> tuple[tuple[str, int], ...]:
 
 def position_label(role: str, slot: int) -> str:
     """Number positions only when the semantic role has multiple places."""
-    return f"{role} {slot + 1}" if ROLE_SLOT_COUNT.get(role, 0) > 1 else role
+    label = role_label(role)
+    return f"{label} {slot + 1}" if ROLE_SLOT_COUNT.get(role, 0) > 1 else label
 
 BLOCK_PREPARATION = "preparation"
 BLOCK_CAKE_DELIVERY = "cake_delivery"
@@ -133,7 +135,7 @@ TASK_DESCRIPTIONS = {
     ROLE_CASH: (
         "Mindestens eine Stunde vor dem angesetzten Spielbeginn am Spielort sein. "
         "Am Eingang Zuschauerkarten für die Erwachsenenspiele verkaufen und den "
-        "Ordnungsdienst als zweiter Ordner unterstützen. Eine Teilnahme an den technischen "
+        "Ordner als zweiter Ordner unterstützen. Eine Teilnahme an den technischen "
         "Besprechungen mit den Schiedsrichtern ist nicht erforderlich."
     ),
     ROLE_CLEANING: (
@@ -1353,7 +1355,7 @@ def _audit_assignment(
             action=action,
             affected_person_id=assignment.person_id,
             game_id=assignment.game_id,
-            role=assignment.role,
+            role=role_label(assignment.role),
             slot=assignment.slot,
             actor_name=actor.name if actor else "System",
             affected_person_name=assignment.person.name,
@@ -1723,7 +1725,7 @@ def claim_slot(
             if other is not None:
                 raise ValueError(
                     f"{stored_person.name} ist für dieses Spiel bereits als "
-                    f"'{other.role}' eingeteilt."
+                    f"'{role_label(other.role)}' eingeteilt."
                 )
 
             session.expire(stored_game, ["assignments"])
@@ -1770,7 +1772,7 @@ def claim_slot(
                 stored_person = session.get(Person, person_id)
                 name = stored_person.name if stored_person else "Die Person"
                 raise ValueError(
-                    f"{name} ist für dieses Spiel bereits als '{other.role}' eingeteilt."
+                    f"{name} ist für dieses Spiel bereits als '{role_label(other.role)}' eingeteilt."
                 ) from None
             raise
 
@@ -1812,7 +1814,7 @@ def release_slot(
                 action=action,
                 affected_person_id=current.person_id,
                 game_id=current.game_id,
-                role=current.role,
+                role=role_label(current.role),
                 slot=current.slot,
                 actor_name=actor_name,
                 affected_person_name=person.name,
@@ -2315,7 +2317,7 @@ def assign_person(
     )
     if other is not None:
         raise ValueError(
-            f"{person.name} ist für dieses Spiel bereits als '{other.role}' eingeteilt."
+            f"{person.name} ist für dieses Spiel bereits als '{role_label(other.role)}' eingeteilt."
         )
     slot = next(
         (

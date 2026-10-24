@@ -8,13 +8,13 @@ Defines category-dependent game duty positions and preserves removed-duty assign
 
 ### Requirement: Games expose their offered task position set
 
-Adult games SHALL offer one Zeitnehmer, one Sekretär, two Verkauf, exactly one independent Ordnungsdienst, one Kasse and exactly one Wischer position (position 0). Youth games and unrecognized categories SHALL offer only Zeitnehmer, Sekretär, two Verkauf and exactly one Ordnungsdienst. Numbers SHALL identify positions of repeated semantic roles and the original position of a retained removed duty. Kasse SHALL additionally perform the ordering/security duties planned for a second Ordner without creating another assignment or relaxing one task per person per game. Per-game Wischer SHALL remain distinct from day-wide Aufräumen.
+Adult games SHALL offer one Zeitnehmer, one Sekretär, two Verkauf, exactly one independent Ordner, one Kasse and exactly one Wischer position (position 0). Youth games and unrecognized categories SHALL offer only Zeitnehmer, Sekretär, two Verkauf and exactly one Ordner. Numbers SHALL identify positions of repeated semantic roles and the original position of a retained removed duty. Kasse SHALL additionally perform the ordering/security duties planned for a second Ordner without creating another assignment or relaxing one task per person per game. Per-game Wischer SHALL remain distinct from day-wide Aufräumen.
 
 #### Scenario: Adult expanded game duties
 
 - **WHEN** an adult game's assignments are opened
 - **THEN** seven offered positions are visible or assignable according to existing rights
-- **AND** Wischer is shown as one unnumbered offered position and Ordnungsdienst has exactly one
+- **AND** Wischer is shown as one unnumbered offered position and Ordner has exactly one
 
 #### Scenario: Youth offered duties
 
@@ -64,7 +64,7 @@ Every offered position SHALL be required. Adult M/F classes SHALL have seven req
 
 #### Scenario: Youth Ordnungsdienst is required
 
-- **WHEN** a youth game's Ordnungsdienst is empty
+- **WHEN** a youth game's Ordner is empty
 - **THEN** that required position remains missing even if a retained removed duty is occupied
 
 #### Scenario: Classification is unresolved
@@ -259,3 +259,47 @@ The system SHALL exclude a responsible-team member from a game's vacancy invitat
 - **WHEN** an active, unassigned member with an unknown birth date belongs to the responsible team
 - **THEN** the member remains a recipient
 - **AND** any subsequent claim is checked under the existing task-specific eligibility rules
+
+### Requirement: Ordner is the consistent current security-duty label
+
+The independent security duty formerly displayed as Ordnungsdienst SHALL be presented as the singular, unnumbered Ordner in current schedule fields, accessible task names, candidate guidance, JavaScript and non-JavaScript confirmation flows, replacement controls, eligibility messages, statistics, CLI output and newly generated helper, rescheduling, MV and team-vacancy notifications. The label SHALL refer to the same single position; it SHALL NOT introduce an additional role or change staffing counts, eligibility, authorization, responsibility, replacement generations or cutoff rules.
+
+Stored assignment identifiers and existing JSON mutation and candidate-key contracts SHALL remain compatible with the role identifier Ordnungsdienst. The CLI SHALL accept Ordner as the current human-facing role argument and retain Ordnungsdienst as a compatibility alias for the same duty. Raw role identifiers in transport fields, form values and data attributes SHALL NOT be used as visible labels. New audit transitions SHALL capture the label Ordner; existing audit entries SHALL retain their recorded role names and snapshots.
+
+#### Scenario: Existing assignment receives the current label
+
+- **WHEN** an existing Ordnungsdienst assignment is displayed after the rename, including one on a past game, a locked one or one seeking replacement
+- **THEN** its current assignment label is Ordner with the same assignment identity, occupant, slot, lock and replacement state
+- **AND** its statistics and required-position contribution remain unchanged
+- **AND** the rename alone writes no assignment mutation, audit transition or notification
+
+#### Scenario: Compatible role identifiers keep one duty
+
+- **WHEN** an authorized client uses the existing Ordnungsdienst role identifier in a claim, replacement, closure or takeover request
+- **THEN** the request targets the same single duty under all existing checks
+- **AND** returned human-readable task labels use Ordner while candidate lookup and mutation identifiers retain their existing contract
+- **AND** an Ordner display label does not create a second assignable API role
+
+#### Scenario: CLI supports the current name and the compatibility alias
+
+- **WHEN** an operator invokes a role-taking CLI command using Ordner or the retained Ordnungsdienst alias
+- **THEN** both resolve to the same saved role and apply the same existing authorization, eligibility, occupancy and cutoff rules
+- **AND** user-facing task output and supported-role guidance show Ordner as the current name
+
+#### Scenario: Newly generated notifications use Ordner
+
+- **WHEN** an e-mail or SMS mentions the security duty as an assigned helper task, missing task, eligibility deficiency or advertised team vacancy
+- **THEN** the rendered message uses Ordner
+- **AND** message contracts, recipient selection, timing, routing and dispatch counts retain their existing behavior
+
+#### Scenario: Audit history preserves the name in force
+
+- **WHEN** an administrator reviews a historical Ordnungsdienst entry and a newly recorded Ordner transition
+- **THEN** the old entry still displays its recorded Ordnungsdienst label and the new entry displays Ordner
+- **AND** both remain readable for the same game and numbered position without rewriting earlier evidence
+
+#### Scenario: Confirmation cancellation remains free of writes
+
+- **WHEN** a helper opens a claim or takeover confirmation labeled Ordner and then cancels or dismisses it, with or without JavaScript
+- **THEN** no assignment, replacement request, successful mutation audit or notification is written
+- **AND** the saved occupant and responsibility remain authoritative

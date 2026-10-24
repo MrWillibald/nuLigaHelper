@@ -8,7 +8,7 @@
 # A person may only hold one task per game, so every slot has its own person:
 #   Zeitnehmer=Alice(mail)  Sekretär=Bob(sms)
 #   Verkauf=Caro(mail)      Verkauf=Dora(sms)
-#   Ordnungsdienst=Ed(mail) Kasse=Frida(sms, only when fully assigned)
+#   Ordner=Ed(mail) Kasse=Frida(sms, only when fully assigned)
 #   Frank is MV of "BL mD" and receives the MV notification by SMS
 #   as long as tasks of the game are still open.
 #
@@ -224,6 +224,9 @@ def test_retained_removed_youth_duties_receive_one_reminder_each_with_shared_rol
         for recipient, subject, body in recorder.mails:
             if "Caro" in recipient:
                 assert "Verkauf" in subject and "Verkauf" in body
+            if "Ed" in recipient:
+                assert "Ordner" in subject and "Ordner" in body
+                assert "Ordnungsdienst" not in subject + body
             if "Cleanup First" in recipient:
                 assert "Wischer" in subject and "Wischer" in body
         for phone, body in recorder.smss:
@@ -234,6 +237,36 @@ def test_retained_removed_youth_duties_receive_one_reminder_each_with_shared_rol
         for text in (recorder.all_text(), " ".join(subject for _, subject, _ in recorder.mails)):
             for numbered_role in ("Verkauf 1", "Verkauf 2", "Wischer 1", "Wischer 2"):
                 assert numbered_role not in text, "reminders must use the shared semantic role"
+
+
+def test_ordner_reminders_and_shifts_use_current_name_for_both_channels_and_events():
+    for category in ("BL M", "SPF Mini"):
+        for channel in ("email", "sms"):
+            session, game, sender, _ = _setup()
+            game.ak = category
+            person = game.assignment_by_role(db.ROLE_SECURITY).person
+            person.phone = "+491700999999"
+            if channel == "sms":
+                person.email = None
+            session.commit()
+            shift = db.ShiftEvent(game_id=game.id, game_nr=game.game_nr,
+                old_date=GAME_DATE, old_time="15:00", new_date="06.09.2026", new_time="18:00")
+            for notify, expected in (
+                (lambda: sender.notify_game_day(GAME_DATE), 6 if category == "BL M" else 5),
+                (lambda: sender.notify_pre(GAME_DATE), 5),
+                (lambda: sender.notify_shifts([shift]), 5),
+            ):
+                recorder = TextRecorder()
+                sender.send_Mail, sender.send_SMS = recorder.mail, recorder.sms
+                assert notify() == expected
+                if channel == "email":
+                    texts = [subject + body for recipient, subject, body in recorder.mails if "Ed" in recipient]
+                else:
+                    texts = [body for phone, body in recorder.smss if phone == person.phone]
+                assert len(texts) == 1 and "Ordner" in texts[0]
+                assert "Ordnungsdienst" not in texts[0]
+                assert ("Spielfest" in texts[0]) == (category == "SPF Mini")
+            session.close()
 
 
 def test_single_wischer_and_repeated_role_input_notify_saved_person_once():
@@ -688,6 +721,7 @@ def test_team_vacancies_route_contacts_and_render_both_events_without_opponent_i
         assert rec.smss[0][0] == phone.phone, "both contacts must prefer e-mail"
         for body in (rec.mails[0][2], rec.smss[0][1]):
             assert game.team.name in body and GAME_DATE in body and age_class in body
+            assert "Ordner: 1 Platz" in body and "Ordnungsdienst" not in body
             if age_class.startswith("SPF"):
                 assert "Spielfest SPF Mini vollständig" in body and "gegen" not in body
         session.close()

@@ -167,6 +167,10 @@ def test_category_markup_candidates_claim_refusals_and_retained_release_match_ex
         selects = card.xpath('.//select[@data-role]')
         assert len(selects) == count, "category markup must omit removed fields"
         assert len(card.xpath('.//select[@data-role="Ordnungsdienst"]')) == 1
+        security = card.xpath('.//select[@data-role="Ordnungsdienst"]')[0]
+        assert security.get("data-duty-label") == "Ordner"
+        assert "Ordnungsdienst" not in card.text_content(), "transport keys must not become visible labels"
+        assert "Ordner" in card.text_content()
         assert "optional" not in card.text_content()
         assert not card.get("open"), "duties must remain initially collapsed"
         payload = admin.get(f"/api/games/{game_id}/candidates").get_json()
@@ -253,7 +257,7 @@ def test_initial_bars_and_statistics_for_adult_youth_spf_and_retained_duties(_to
             game = session.get(db.Game, game_id)
             card = guest.xpath(f'//div[contains(@class,"game-meta") and contains(.,"Nr. {game.game_nr}")]/ancestor::details[1]')[0]
             vacancies = db.staffing_status(game)["vacancies"]
-            expected = [f"{role} ({count}×)" if count > 1 else role
+            expected = [f"{db.role_label(role)} ({count}×)" if count > 1 else db.role_label(role)
                         for role, count in vacancies.items()]
             staffing = db.staffing_status(game)
             filled, total = staffing["required_filled"], staffing["required_total"]

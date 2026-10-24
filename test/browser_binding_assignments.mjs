@@ -84,10 +84,17 @@ try {
     await page.waitForFunction(element => !element.disabled, await select.elementHandle());
     await select.selectOption(String(helper));
     await page.locator('#assignment-confirmation').waitFor({ state: 'visible' });
+    if (await select.getAttribute('data-role') === 'Ordnungsdienst') {
+      assert.equal(await select.getAttribute('data-duty-label'),'Ordner');
+      const context = await page.locator('[data-confirmation-context]').textContent();
+      assert.match(context,/übernimmt Ordner/);
+      assert.equal(context.includes('Ordnungsdienst'),false,'raw role keys must not become confirmation text');
+      assert.equal(await card.locator('[aria-label="Informationen zu Ordner"]').count(),1);
+    }
     return select;
   }
   const targets = [
-    { card: `#game-${meta.ids.game}`, selector: 'select[data-role="Verkauf"][data-slot="0"]', game: true },
+    { card: `#game-${meta.ids.game}`, selector: 'select[data-role="Ordnungsdienst"][data-slot="0"]', game: true },
     ...['preparation','cake_delivery','cleanup'].map(phase => ({ card: `#block-${meta.ids[phase]}`,
       selector: 'select[data-block-assignment][data-slot="0"]', block: meta.ids[phase] })),
   ];
@@ -108,12 +115,12 @@ try {
     await saved;
     const assigned = await snapshot(original);
     assert.equal(assigned.game.length + assigned.blocks.length,before.game.length + before.blocks.length + 1);
-    const button = target.game ? original.locator(target.card).locator('[data-request-replacement][data-role="Verkauf"][data-slot="0"]')
+    const button = target.game ? original.locator(target.card).locator('[data-request-replacement][data-role="Ordnungsdienst"][data-slot="0"]')
       : original.locator(target.card).locator('[data-request-replacement][data-slot="0"]');
     await button.click();
     await original.locator(target.card).locator('[data-duty-state]').filter({hasText:'Ersatz gesucht'}).waitFor();
     const wanted = await snapshot(original);
-    const stored = target.game ? wanted.game.find(a => a.role === 'Verkauf' && a.slot===0)
+    const stored = target.game ? wanted.game.find(a => a.role === 'Ordnungsdienst' && a.slot===0)
       : wanted.blocks.find(a => a.block===target.block && a.slot===0);
     assert.equal(stored.person,meta.ids.Original); assert.equal(stored.request,true);
     assert.equal(await button.textContent(),'Ersatzsuche beenden');
@@ -123,7 +130,7 @@ try {
     await original.waitForFunction(card => !card._mutationPending, await original.locator(target.card).elementHandle());
     assert.equal(await button.evaluate(node => document.activeElement===node),true,'search closure must preserve button focus, including rerendered cakes');
     const closed = await snapshot(original);
-    const retained = target.game ? closed.game.find(a => a.role==='Verkauf' && a.slot===0)
+    const retained = target.game ? closed.game.find(a => a.role==='Ordnungsdienst' && a.slot===0)
       : closed.blocks.find(a => a.block===target.block && a.slot===0);
     assert.equal(retained.person,meta.ids.Original); assert.equal(retained.request,false);
     assert.equal(closed.game.length + closed.blocks.length,wanted.game.length + wanted.blocks.length);
@@ -147,7 +154,7 @@ try {
     await replacement.locator('[data-confirmation-confirm]').click();
     await replacement.locator(target.card).locator('[data-duty-occupant]').filter({hasText:'Replacement'}).waitFor();
     const after = await snapshot(replacement);
-    const transferred = target.game ? after.game.find(a => a.role==='Verkauf' && a.slot===0)
+    const transferred = target.game ? after.game.find(a => a.role==='Ordnungsdienst' && a.slot===0)
       : after.blocks.find(a => a.block===target.block && a.slot===0);
     assert.equal(transferred.person,meta.ids.Replacement); assert.equal(transferred.request,false);
     assert.equal(after.game.length + after.blocks.length,wanted.game.length + wanted.blocks.length);

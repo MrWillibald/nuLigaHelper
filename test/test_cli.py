@@ -376,6 +376,33 @@ def test_launchers_validate_the_mandatory_secret():
         os.environ["NULIGAHELPER_SECRET"] = secret
 
 
+def test_cli_ordner_and_legacy_alias_target_one_stable_role_and_preserve_binding():
+    path = os.path.join(h._TEST_DIR, f"cli-ordner-{next(tempfile._get_candidate_names())}.db")
+    engine = db.make_engine(path)
+    db.initialize_db(engine)
+    with h.Session(engine) as session:
+        helper = db.Person(name="Steward", birth_date=h.ADULT_BIRTH_DATE)
+        games = [db.Game(season_year=h.SEASON, game_nr=str(9300 + index),
+                         date="31.12.2099", ak="BL M") for index in range(2)]
+        session.add_all([helper, *games])
+        session.commit()
+        person_id, game_ids = helper.id, [game.id for game in games]
+    for game_id, spelling in zip(game_ids, ("Ordner", "Ordnungsdienst")):
+        assert _run(path, "assign", game_id, spelling, person_id).endswith("as Ordner\n")
+        refusal = _expect_system_exit(lambda: _run(path, "unassign", game_id, spelling, person_id))
+        assert "verbindlich" in str(refusal), "aliases cannot authorize ordinary release"
+    listing = _run(path, "--season", h.SEASON, "list-games")
+    assert listing.count("Ordner: Steward") == 2 and "Ordnungsdienst" not in listing
+    with h.Session(engine) as session:
+        assert [a.role for a in session.query(db.Assignment)] == ["Ordnungsdienst"] * 2
+        assert [a.role for a in session.query(db.AssignmentAudit)] == ["Ordner"] * 2
+    parser = manage_db.build_parser()
+    with contextlib.redirect_stderr(io.StringIO()) as errors:
+        assert _expect_system_exit(lambda: parser.parse_args(["assign", "1", "invalid", "1"])).code == 2
+    assert "Ordner" in errors.getvalue() and "Ordnungsdienst" not in errors.getvalue()
+    engine.dispose()
+
+
 def test_cli_security_and_adult_timing_follow_revised_minimums_without_override():
     from datetime import date
     path = os.path.join(h._TEST_DIR, f"cli-ages-{next(tempfile._get_candidate_names())}.db")
@@ -392,7 +419,7 @@ def test_cli_security_and_adult_timing_follow_revised_minimums_without_override(
         game_id, ids = game.id, [person.id for person in people]
     for person_id in ids[1:3]:
         error = _expect_system_exit(lambda: _run(path, "assign", game_id, db.ROLE_SECURITY, person_id))
-        assert "Ordnungsdienst" in str(error)
+        assert "Ordner" in str(error)
         with h.Session(engine) as session:
             assert session.query(db.Assignment).count() == 0
             assert session.query(db.AssignmentAudit).count() == 0

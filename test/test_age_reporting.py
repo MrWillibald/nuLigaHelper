@@ -362,7 +362,7 @@ def test_retained_security_deficiencies_and_relaxed_rules_agree_across_reporting
             service = notifier.Notifier(h.load_club_config(), session, h.SEASON)
             with patch.object(service, "_notify_game_helpers", return_value=0), patch.object(service, "_dispatch", return_value=1) as dispatch:
                 assert service.notify_game_day(game.date) == 1, "retained security deficiency missed MV follow-up"
-                assert "Ordnungsdienst" in dispatch.call_args.kwargs["mail_body"]
+                assert "Ordner" in dispatch.call_args.kwargs["mail_body"]
             for category in ("BL M", "GE", "SPF Mini"):
                 game.ak = category
                 result = db.staffing_status(game)
@@ -375,10 +375,10 @@ def test_retained_security_deficiencies_and_relaxed_rules_agree_across_reporting
         assert tree.xpath('//details[@class="game-card"]//*[@data-progress-count]/text()') == ["5 von 5 Pflichtdiensten besetzt"]
         assert not tree.xpath('//details[@class="game-card"]//*[@data-vacancies]/span')
         warnings = tree.xpath('//div[@data-eligibility-status]')[0].text_content()
-        assert "Ordnungsdienst" in warnings and "Verkauf" not in warnings
+        assert "Ordner" in warnings and "Verkauf" not in warnings
         admin = _client(app, ids["admin"])
         stats = admin.get("/statistik").get_data(as_text=True)
-        assert "Ordnungsdienst" in stats and "SPF Mini" in html.fromstring(stats).text_content()
+        assert "Ordner" in html.fromstring(stats).text_content() and "SPF Mini" in html.fromstring(stats).text_content()
         candidates_text = admin.get(f'/api/games/{ids["game"]}/candidates').get_data(as_text=True)
         for response in (guest_text, stats, candidates_text):
             assert "2010-11-01" not in response and "2012-01-01" not in response and '"age"' not in response
