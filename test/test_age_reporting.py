@@ -154,7 +154,9 @@ def test_full_invalid_roster_reports_truthful_occupancy_without_private_data(_to
     tree = html.fromstring(guest_text)
     assert "7 von 7 Pflichtdiensten besetzt" in guest_text, "eligibility fabricated a vacancy"
     assert tree.xpath('//div[@data-eligibility-status and not(@hidden)]'), "full invalid staffing looked complete"
-    assert tree.xpath('//details[@class="game-card"]//*[@data-progress-count]/text()') == ["7/7"]
+    assert tree.xpath('//details[@class="game-card"]//*[@data-progress-count]/text()') == ["7 von 7 Pflichtdiensten besetzt"]
+    assert tree.xpath('//details[@class="game-card"]//*[@data-progress-percent]/text()') == ["100 %"]
+    assert tree.xpath('//details[@class="game-card"]//*[@class="coverage-fill"]/@style') == ["width:100%"]
     assert not tree.xpath('//details[@class="game-card"]//*[@data-vacancies]/span'), "age deficiency invented a vacancy badge"
     assert "Legacy helper 0" in guest_text
     assert "birth_date" not in guest_text and "1992-01-01" not in guest_text
@@ -370,7 +372,7 @@ def test_retained_security_deficiencies_and_relaxed_rules_agree_across_reporting
             session.commit()
         guest_text = app.test_client().get("/").get_data(as_text=True)
         tree = html.fromstring(guest_text)
-        assert tree.xpath('//details[@class="game-card"]//*[@data-progress-count]/text()') == ["5/5"]
+        assert tree.xpath('//details[@class="game-card"]//*[@data-progress-count]/text()') == ["5 von 5 Pflichtdiensten besetzt"]
         assert not tree.xpath('//details[@class="game-card"]//*[@data-vacancies]/span')
         warnings = tree.xpath('//div[@data-eligibility-status]')[0].text_content()
         assert "Ordnungsdienst" in warnings and "Verkauf" not in warnings

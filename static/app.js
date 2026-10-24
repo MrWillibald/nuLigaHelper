@@ -524,50 +524,42 @@ function setCoverage(coverage, filled, total) {
   const kind = coverage.dataset.progressKind;
   const unit = kind === "game" ? "Pflichtdiensten" : kind === "cake" ? "Kuchen zugesagt" : "Plätzen";
   coverage.hidden = total <= 0;
-  coverage.querySelector("[data-progress-count]").textContent = `${filled}/${total}`;
-  coverage.querySelector(".coverage-fill").setAttribute("stroke-dashoffset", String(total ? 100 - filled * 100 / total : 100));
-  const gauge = coverage.querySelector(".coverage-gauge");
+  const description = `${filled} von ${total} ${unit}${kind === "cake" ? "" : " besetzt"}`;
+  const percent = total > 0 ? Math.floor((filled * 100 + Math.floor(total / 2)) / total) : 0;
+  coverage.querySelector("[data-progress-count]").textContent = description;
+  coverage.querySelector("[data-progress-percent]").textContent = `${percent} %`;
+  coverage.querySelector(".coverage-fill").style.width = `${percent}%`;
+  const track = coverage.querySelector(".coverage-track");
   if (total > 0) {
-    gauge.setAttribute("role", "progressbar");
-    gauge.setAttribute("aria-label", kind === "game" ? "Besetzte Pflichtdienste" : kind === "cake" ? "Zugesagte Kuchen" : "Besetzte Plätze");
-    gauge.setAttribute("aria-valuemin", "0");
-    gauge.setAttribute("aria-valuenow", String(filled));
-    gauge.setAttribute("aria-valuemax", String(total));
-    gauge.setAttribute("aria-valuetext", `${filled} von ${total} ${unit}${kind === "cake" ? "" : " besetzt"}`);
+    track.setAttribute("role", "progressbar");
+    track.setAttribute("aria-label", kind === "game" ? "Besetzte Pflichtdienste" : kind === "cake" ? "Zugesagte Kuchen" : "Besetzte Plätze");
+    track.setAttribute("aria-valuemin", "0");
+    track.setAttribute("aria-valuenow", String(filled));
+    track.setAttribute("aria-valuemax", String(total));
+    track.setAttribute("aria-valuetext", description);
   } else {
     for (const attribute of ["role", "aria-label", "aria-valuemin", "aria-valuenow", "aria-valuemax", "aria-valuetext"]) {
-      gauge.removeAttribute(attribute);
+      track.removeAttribute(attribute);
     }
   }
-}
-
-function updateVacancies(coverage, vacancies = {}) {
-  const list = coverage.querySelector("[data-vacancies]");
-  const badges = Object.entries(vacancies).filter(([, count]) => count > 0).map(([label, count]) => {
-    const badge = document.createElement("span");
-    badge.className = "chip chip-gap";
-    badge.textContent = `${label}${count > 1 ? ` (${count}×)` : ""}`;
-    return badge;
-  });
-  list.replaceChildren(...badges);
-  list.hidden = badges.length === 0;
 }
 
 function updateBlockSummary(card, block) {
   const coverage = card?.querySelector(".coverage");
   if (!coverage) return;
   setCoverage(coverage, block.progress.filled, block.progress.total);
-  updateVacancies(coverage, block.vacancies);
+  if (block.phase === "cake_delivery" && (!block.configured || block.cake_quantity <= 0)) {
+    coverage.hidden = true;
+    for (const attribute of ["role", "aria-label", "aria-valuemin", "aria-valuenow", "aria-valuemax", "aria-valuetext"]) {
+      coverage.querySelector(".coverage-track").removeAttribute(attribute);
+    }
+  }
 }
 
 function updateGameStaffing(card, staffing) {
   const coverage = card?.querySelector(".coverage");
   if (coverage && coverage.dataset.progressKind === "game") {
     setCoverage(coverage, staffing.required_filled, staffing.required_total);
-    // Flask sorts JSON keys alphabetically; preserve the domain role order.
-    const vacancies = Object.fromEntries(["Zeitnehmer", "Sekretär", "Verkauf", "Ordnungsdienst", "Kasse", "Wischer"]
-      .filter((role) => staffing.vacancies?.[role] > 0).map((role) => [role, staffing.vacancies[role]]));
-    updateVacancies(coverage, vacancies);
   }
   updateEligibility(card, staffing.deficiencies);
 }

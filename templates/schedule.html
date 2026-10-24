@@ -16,21 +16,15 @@
 <p class="duty-state{% if s.seeking_replacement %} duty-state-seeking{% endif %}{% if s.locked %} duty-state-locked{% endif %}" data-duty-state{% if not s.person_id and not s.person_name %} hidden{% endif %}>{% if s.locked %}Fest eingeteilt – Änderungen im Webdienst sind geschlossen.{% elif s.seeking_replacement %}Ersatz gesucht – {{ s.person_name }} bleibt bis zur Übernahme verantwortlich.{% elif s.person_name %}Verbindlich eingeteilt.{% endif %}</p>
 {% endmacro %}
 
-{% macro coverage(progress, kind, vacancies, hidden=false) %}
-<div class="coverage" data-progress-filled="{{ progress.filled }}" data-progress-total="{{ progress.total }}" data-progress-kind="{{ kind }}"{% if hidden %} hidden{% endif %}>
-  <div class="coverage-gauge"{% if progress.total %} role="progressbar"
+{% macro coverage(progress, kind, hidden=false) %}
+{% set description = progress.filled ~ ' von ' ~ progress.total ~ (' Pflichtdiensten besetzt' if kind == 'game' else ' Kuchen zugesagt' if kind == 'cake' else ' Plätzen besetzt') %}
+<div class="coverage" data-progress-filled="{{ progress.filled }}" data-progress-total="{{ progress.total }}" data-progress-kind="{{ kind }}"{% if hidden or not progress.total %} hidden{% endif %}>
+  <div class="coverage-text"><span data-progress-count>{{ description }}</span><span data-progress-percent>{{ progress.percent }} %</span></div>
+  <div class="coverage-track"{% if progress.total and not hidden %} role="progressbar"
        aria-label="{% if kind == 'game' %}Besetzte Pflichtdienste{% elif kind == 'cake' %}Zugesagte Kuchen{% else %}Besetzte Plätze{% endif %}"
        aria-valuemin="0" aria-valuemax="{{ progress.total }}" aria-valuenow="{{ progress.filled }}"
-       aria-valuetext="{{ progress.filled }} von {{ progress.total }} {% if kind == 'game' %}Pflichtdiensten besetzt{% elif kind == 'cake' %}Kuchen zugesagt{% else %}Plätzen besetzt{% endif %}"{% endif %}>
-    <svg viewBox="0 0 48 48" aria-hidden="true" focusable="false">
-      <circle class="coverage-track" cx="24" cy="24" r="21" fill="none" stroke="#e4eaf2" stroke-width="4" />
-      <circle class="coverage-fill" cx="24" cy="24" r="21" fill="none" stroke="#0a1d4e" stroke-width="4"
-              pathLength="100" stroke-dasharray="100" stroke-dashoffset="{{ 100 - (progress.filled * 100 / progress.total) if progress.total else 100 }}" transform="rotate(-90 24 24)" />
-    </svg>
-    <span data-progress-count aria-hidden="true">{{ progress.filled }}/{{ progress.total }}</span>
-  </div>
-  <div class="vacancy-list" data-vacancies role="group" aria-label="Offene Dienste"{% if not vacancies %} hidden{% endif %}>
-    {% for label, count in vacancies.items() %}<span class="chip chip-gap">{{ label }}{% if count > 1 %} ({{ count }}×){% endif %}</span>{% endfor %}
+       aria-valuetext="{{ description }}"{% endif %}>
+    <span class="coverage-fill" style="width:{{ progress.percent }}%"></span>
   </div>
 </div>
 {% endmacro %}
@@ -48,13 +42,13 @@
       <div class="game-meta">{{ g.ak }} &middot; Halle {{ g.hall }} &middot; Nr. {{ g.nr }}</div>
       <div class="game-responsible">Verantwortlich: <strong>{{ responsible_team_name }}</strong></div>
       {% if g.classification_unresolved %}<div class="classification-status">Altersklasse prüfen · 5 Pflichtpositionen</div>{% endif %}
-      <span class="disclosure-label"><span class="disclosure-indicator" aria-hidden="true"></span>Details</span>
     </div>
     <div class="game-summary-side">
-      {{ coverage(g.progress, 'game', g.vacancies) }}
+      {{ coverage(g.progress, 'game') }}
       <div class="eligibility-status" data-eligibility-status data-eligibility-past="{{ g.past }}" role="status" {% if not g.eligibility_deficiencies %}hidden{% endif %}>
         {% for deficiency in g.eligibility_deficiencies %}<p>{{ deficiency.message }}</p>{% endfor %}
       </div>
+      <span class="disclosure-label"><span class="disclosure-indicator" aria-hidden="true"></span>Details</span>
     </div>
   </summary>
   <div class="game-detail-body"><div class="game-assign">
@@ -110,13 +104,13 @@
       <div class="game-time"><span{% if cake %} data-cake-time{% endif %}>{{ b.time or ('Lieferzeit offen' if cake else 'Zeit offen') }}</span>{% if b.time_date %}<small>{{ b.time_date }}</small>{% endif %}</div>
       <div class="game-teams"><span class="task-block-icon" aria-hidden="true">{% if b.phase == 'preparation' %}↗{% elif cake %}🍰{% else %}↘{% endif %}</span><span>{{ b.label }}</span></div>
       <div class="game-meta">{% if cake %}<span data-cake-quantity>{% if b.cake_quantity is none %}Anzahl offen{% else %}{{ b.cake_quantity }} Kuchen angefragt{% endif %}</span>{% else %}Tagesdienst{% endif %}</div>
-      <span class="disclosure-label"><span class="disclosure-indicator" aria-hidden="true"></span>Details</span>
     </div>
     <div class="game-summary-side">
       {% if cake %}
       <p class="cake-status" data-cake-status role="status"{% if b.configured and b.cake_quantity > 0 %} hidden{% endif %}>{% if not b.configured %}Admin-Einrichtung erforderlich{% elif b.cake_quantity == 0 %}Keine Kuchen angefragt{% endif %}</p>
-      {{ coverage(b.progress, 'cake', b.vacancies, not b.configured or b.cake_quantity == 0) }}
-      {% else %}{{ coverage(b.progress, 'block', b.vacancies) }}{% endif %}
+      {{ coverage(b.progress, 'cake', not b.configured or b.cake_quantity == 0) }}
+      {% else %}{{ coverage(b.progress, 'block') }}{% endif %}
+      <span class="disclosure-label"><span class="disclosure-indicator" aria-hidden="true"></span>Details</span>
     </div>
   </summary>
   <div class="game-detail-body">

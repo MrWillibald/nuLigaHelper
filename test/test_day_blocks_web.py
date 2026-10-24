@@ -123,9 +123,10 @@ def test_00_block_progress_counts_three_slots_and_starts_collapsed(_today):
     assert progress.get("aria-valuenow") == "1"
     assert progress.get("aria-valuemax") == "3"
     assert progress.get("aria-valuetext") == "1 von 3 Plätzen besetzt"
-    assert preparation.xpath('.//*[@data-progress-count]/text()') == ["1/3"]
-    assert abs(float(preparation.xpath('.//*[@class="coverage-fill"]/@stroke-dashoffset')[0]) - 200/3) < .001
-    assert preparation.xpath('.//*[@data-vacancies]/span/text()') == ["Vorbereitung (2×)"]
+    assert preparation.xpath('.//*[@data-progress-count]/text()') == ["1 von 3 Plätzen besetzt"]
+    assert preparation.xpath('.//*[@class="coverage-fill"]/@style') == ["width:33%"]
+    assert preparation.xpath('.//*[@data-progress-percent]/text()') == ["33 %"]
+    assert not preparation.xpath('.//*[@data-vacancies or @class="coverage-gauge"]')
 
 
 @patch("common.effective_today", return_value=date(2026, 9, 1))
