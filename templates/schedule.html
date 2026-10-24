@@ -156,6 +156,21 @@
 {% block content %}
 <section class="section">
   <div class="section-header"><div class="section-icon">📅</div><h2>Heimspielplan {{ season }}</h2></div>
+  {% include '_visibility_scope.html' %}
+  {% if viewer_tier == 'admin' %}
+  <form class="visibility-settings" method="post" action="{{ url_for('schedule_visibility') }}" aria-label="Sichtbarkeit der Heimspieltage">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="expected_hide_from" value="{{ visibility_boundary.isoformat() if visibility_boundary else '' }}">
+    {% if show_hidden %}<input type="hidden" name="show_hidden" value="1">{% endif %}
+    <div class="filter-field">
+      <label for="hide-from">Heimspieltage ausblenden ab</label>
+      <input id="hide-from" name="hide_from" type="date" value="{{ visibility_boundary.isoformat() if visibility_boundary else '' }}" aria-describedby="visibility-help{% if visibility_error %} visibility-error{% endif %}"{% if visibility_error %} aria-invalid="true"{% endif %}>
+    </div>
+    <p id="visibility-help" class="hint">Das gewählte Datum ist der erste ausgeblendete Spieltag. Ein neues Datum muss in der Zukunft liegen. Leer speichern zeigt wieder alle Spieltage. Die Einstellung bleibt bis zur manuellen Änderung bestehen und betrifft nur die Anzeige: Dienste bleiben verbindlich, Erinnerungen werden weiter versendet.</p>
+    {% if visibility_error %}<p id="visibility-error" class="field-error" role="alert">{{ visibility_error }}</p>{% endif %}
+    <button class="btn btn-primary" type="submit">Sichtbarkeit speichern</button>
+  </form>
+  {% endif %}
   <details class="responsive-disclosure page-introduction" data-responsive-disclosure data-desktop-open="true" open>
     <summary>Hinweise</summary>
     {% include '_responsive_disclosure_script.html' %}
@@ -191,7 +206,7 @@
     {% if filters.playing_team %}<span>Spielende Mannschaft: {{ active_filter_names.playing_team or 'Unbekannte Mannschaft' }}</span>{% endif %}
     {% if filters.responsible_team %}<span>Verantwortliche Mannschaft: {{ active_filter_names.responsible_team or 'Unbekannte Mannschaft' }}</span>{% endif %}
     {% if filters.person %}<span>Eingeteilte Person: {{ filters.person }}</span>{% endif %}
-    <a href="{{ url_for('schedule') }}">Filter löschen</a>
+    <a href="{{ url_for('schedule', **overview_args) }}">Filter löschen</a>
   </p>
   {% endif %}
   <details class="responsive-disclosure filter-disclosure" data-responsive-disclosure data-desktop-open="true" open>
@@ -199,6 +214,7 @@
     {% include '_responsive_disclosure_script.html' %}
     <div class="disclosure-content">
   <form class="schedule-filter-card" method="get" action="{{ url_for('schedule') }}" aria-label="Spielplan filtern">
+    {% if show_hidden %}<input type="hidden" name="show_hidden" value="1">{% endif %}
     <div class="filter-field">
       <label for="date-filter">Datum</label>
       <select id="date-filter" name="date">
@@ -235,7 +251,7 @@
     </div>
     <div class="filter-actions">
       <button class="btn btn-primary" type="submit">Filtern</button>
-      <a class="btn btn-secondary" href="{{ url_for('schedule') }}">Filter löschen</a>
+      <a class="btn btn-secondary" href="{{ url_for('schedule', **overview_args) }}">Filter löschen</a>
     </div>
   </form>
     </div>
@@ -244,7 +260,11 @@
   {% if not total_games %}
   <p class="hint">Noch keine Spiele vorhanden. Führe zuerst <code>main.py</code> aus, um den Spielplan zu laden.</p>
   {% elif not upcoming and not past %}
-  <p class="schedule-empty">Keine Spiele oder Tagesdienste für diese Filter gefunden. <a href="{{ url_for('schedule') }}">Filter löschen</a></p>
+  {% if visibility_restricted and not (filters.date or filters.playing_team or filters.responsible_team or filters.person) %}
+  <p class="schedule-empty">Im angezeigten Zeitraum sind keine Spiele oder Tagesdienste vorhanden. Heimspieltage ab dem {{ visibility_boundary.strftime('%d.%m.%Y') }} sind derzeit ausgeblendet.</p>
+  {% else %}
+  <p class="schedule-empty">Keine Spiele oder Tagesdienste für diese Filter gefunden. <a href="{{ url_for('schedule', **overview_args) }}">Filter löschen</a></p>
+  {% endif %}
   {% endif %}
 
   {% for item in upcoming %}

@@ -123,3 +123,18 @@ node test/js_assignment_confirmation.mjs
 node test/js_age_replacement.mjs
 node test/js_replacement_cancellation.mjs
 ```
+
+
+The optional `browser_schedule_visibility.mjs` check uses a synthetic database
+and loopback server to verify visibility settings, native form saves/clearing,
+keyboard links/disclosures, and schedule/statistics navigation with JavaScript
+both disabled and enabled. It checks 320/360 CSS pixels and doubled text at 640
+CSS pixels, including page overflow and control bounds. No provider calls or
+production configuration are used. Reports and screenshots default to
+`/tmp/nuliga-visibility-browser` (`BROWSER_REPORT_DIR` overrides this).
+
+```bash
+PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs \
+  BROWSER_EXECUTABLE=/absolute/path/to/chromium \
+  node test/browser_schedule_visibility.mjs
+```

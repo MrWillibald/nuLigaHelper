@@ -12,10 +12,10 @@
 
 <nav id="page-navigation" class="nav-strip" aria-label="Seitennavigation" tabindex="-1">
   <div class="nav-inner">
-    <a href="{{ url_for('schedule') }}" {% if active_page == '/' %}class="active"{% endif %}>Heimspielplan</a>
+    <a href="{{ url_for('schedule', **overview_args) }}" {% if active_page == '/' %}class="active"{% endif %}>Heimspielplan</a>
     {% if viewer and viewer.account_status == 'active' %}
     <a href="{{ url_for('persons') }}" {% if active_page == '/personen' %}class="active"{% endif %}>Helfer verwalten</a>
-    <a href="{{ url_for('statistics') }}" {% if active_page == '/statistik' %}class="active"{% endif %}>Statistik</a>
+    <a href="{{ url_for('statistics', **overview_args) }}" {% if active_page == '/statistik' %}class="active"{% endif %}>Statistik</a>
     {% if viewer_tier == 'admin' %}<a href="{{ url_for('audit') }}" {% if active_page == '/audit' %}class="active"{% endif %}>Änderungsprotokoll</a>{% endif %}
     {% endif %}
     {% if viewer %}

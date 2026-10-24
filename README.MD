@@ -35,7 +35,7 @@ It is then reachable in the local network at `http://<device-ip>:8080`.
 Public hosting requires a separately maintained production deployment with TLS,
 restricted secrets, monitoring and a reviewed launch procedure.
 
-- **Heimspielplan**: public, read-only schedule with assigned helper names. Use **Datum** to show one game day or all days, together with **Spielende Mannschaft**, **Verantwortliche Mannschaft** and **Eingeteilte Person**. A person search keeps only games and day-task blocks where that person is assigned; selecting a responsible team hides day-task blocks because they have no responsible team. **Filter löschen** restores the full plan. Every game and day-task block starts compact. Game summaries show four separate information rows: start time; full matchup (or Spielfest identity); age class, hall and game number; responsible team or **– offen –**. Preparation, cleanup and cake-delivery summaries show three rows: time or its open placeholder with any date qualifier; task label with its icon; task metadata such as **Tagesdienst** or cake quantity. Day-task blocks have no responsible-team row. All cards emphasize the time with slightly larger text than the matchup or task label; long text wraps within each row. This order remains visible on phones and desktop, in upcoming and past cards, collapsed or expanded, for guests and signed-in viewers, including without JavaScript. Classification warnings follow the primary game rows, and eligibility warnings remain beside the staffing status. On phones and viewports at most 900 CSS pixels wide, information appears above the staffing area; on wider displays it sits to the left. Cards use the earlier roomier padding and a prominent 1.5-rem time. Configured positive-capacity duties show a descriptive count on the left (for example **5 von 7 Pflichtdiensten besetzt**) and a whole-number percentage on the right (**71 %**) above a horizontal bar with the same rounded fill. Long counts and percentages wrap when needed. **Details** sits right-aligned beneath progress and warnings in normal flow. The triangle beside **Details** points right when closed and down when open, including without JavaScript. Expand a card through **Details** to see the game's offered positions and any retained assignments in removed duties and, when permitted, the editable responsible-team field. Assignment candidates load when an editable card opens; a loading error leaves its dropdowns disabled and offers a retry. Unopened cards carry no candidate lists, so registrations do not multiply the initial page size. Game progress counts seven required positions for adult games and five for youth/unknown games; retained removed duties allow authorized retirement only before the day-before cutoff and do not affect the required-duty bar. Each preparation and cleanup bar counts three slots (**1 von 3 Plätzen besetzt**, **33 %**); cake bars count promised contributions out of the configured positive quantity (**2 von 4 Kuchen zugesagt**, **50 %**). The bar measures physical occupancy: age/classification warnings remain separate even with a full bar. Unconfigured cakes show **Admin-Einrichtung erforderlich**, and zero cakes show **Keine Kuchen angefragt**, both without a bar, count or percentage. Schedule summaries have no staffing rings or vacancy badges; statistics retain their missing-duty badges. Counts, percentages, bar fills and accessible values are available without JavaScript and update together from saved state; seeking a replacement keeps the duty occupied and binding. Past game days appear muted under **Vergangene Spieltage**; selecting a past date opens that section. Signed-in members can claim their own future tasks and seek a replacement while keeping responsibility before the day-before cutoff. MVs can additionally staff their own team on games for which that team is responsible; admins retain roster-wide staffing and responsible-team settings, subject to the same binding and lock rules. Concurrent stale changes are rejected rather than overwriting another person's work.
+- **Heimspielplan**: public, read-only schedule with assigned helper names. Use **Datum** to show one game day or all days, together with **Spielende Mannschaft**, **Verantwortliche Mannschaft** and **Eingeteilte Person**. A person search keeps only games and day-task blocks where that person is assigned; selecting a responsible team hides day-task blocks because they have no responsible team. **Filter löschen** restores all dates within the shared visibility scope (and keeps an authorized administrator full-date view). Every game and day-task block starts compact. Game summaries show four separate information rows: start time; full matchup (or Spielfest identity); age class, hall and game number; responsible team or **– offen –**. Preparation, cleanup and cake-delivery summaries show three rows: time or its open placeholder with any date qualifier; task label with its icon; task metadata such as **Tagesdienst** or cake quantity. Day-task blocks have no responsible-team row. All cards emphasize the time with slightly larger text than the matchup or task label; long text wraps within each row. This order remains visible on phones and desktop, in upcoming and past cards, collapsed or expanded, for guests and signed-in viewers, including without JavaScript. Classification warnings follow the primary game rows, and eligibility warnings remain beside the staffing status. On phones and viewports at most 900 CSS pixels wide, information appears above the staffing area; on wider displays it sits to the left. Cards use the earlier roomier padding and a prominent 1.5-rem time. Configured positive-capacity duties show a descriptive count on the left (for example **5 von 7 Pflichtdiensten besetzt**) and a whole-number percentage on the right (**71 %**) above a horizontal bar with the same rounded fill. Long counts and percentages wrap when needed. **Details** sits right-aligned beneath progress and warnings in normal flow. The triangle beside **Details** points right when closed and down when open, including without JavaScript. Expand a card through **Details** to see the game's offered positions and any retained assignments in removed duties and, when permitted, the editable responsible-team field. Assignment candidates load when an editable card opens; a loading error leaves its dropdowns disabled and offers a retry. Unopened cards carry no candidate lists, so registrations do not multiply the initial page size. Game progress counts seven required positions for adult games and five for youth/unknown games; retained removed duties allow authorized retirement only before the day-before cutoff and do not affect the required-duty bar. Each preparation and cleanup bar counts three slots (**1 von 3 Plätzen besetzt**, **33 %**); cake bars count promised contributions out of the configured positive quantity (**2 von 4 Kuchen zugesagt**, **50 %**). The bar measures physical occupancy: age/classification warnings remain separate even with a full bar. Unconfigured cakes show **Admin-Einrichtung erforderlich**, and zero cakes show **Keine Kuchen angefragt**, both without a bar, count or percentage. Schedule summaries have no staffing rings or vacancy badges; statistics retain their missing-duty badges. Counts, percentages, bar fills and accessible values are available without JavaScript and update together from saved state; seeking a replacement keeps the duty occupied and binding. Past game days appear muted under **Vergangene Spieltage**; selecting a past date opens that section. Signed-in members can claim their own future tasks and seek a replacement while keeping responsibility before the day-before cutoff. MVs can additionally staff their own team on games for which that team is responsible; admins retain roster-wide staffing and responsible-team settings, subject to the same binding and lock rules. Concurrent stale changes are rejected rather than overwriting another person's work.
 - **Helfer verwalten**: members see names and complete team memberships but only their own contact data and birth date. Admins create, edit, deactivate/reactivate or delete erroneous entries, replace membership sets, complete missing birth dates, approve user registrations and appoint team MVs. MVs can create people with a birth date and add or remove active people only in rosters they manage; they do not see another existing person's birth date or decide pending registrations.
 - **Statistik**: games covered per team, jobs per person (incl. role breakdown) and upcoming games and day blocks with missing assignments, unresolved age eligibility or cake setup still needed.
 - **Änderungsprotokoll**: admin-only, append-only history of claims, replacement requests, atomic takeovers, first locks and permitted obsolete-duty retirement with actor, tier, person, duty, slot and timestamp.
@@ -137,6 +137,45 @@ confirmation after a completed decision. The pre-deletion warning remains separa
 Registration and login each use one two-step form: request a six-digit code, then enter it on the same page. During registration, E-Mail and SMS are individually optional, but at least one valid contact is required and both may be supplied. The selected route alone receives the verification code, while all supplied contacts are stored; after approval, either stored route can be selected independently for login. Registration additionally requires a name, valid birth date, one or more selected teams and consent to publish the name when assigned. The birth date is validated before requesting a code and preserved through verification. Successful contact verification queues the person and all selected teams as one user-level approval and notifies every active administrator; it does not itself approve the account. When an administrator approves the registration, the new active user receives a welcome notification inviting them to sign in and take open Heimspielplan duties. Both automatic notifications prefer E-Mail and use SMS only when no usable e-mail address is stored. Team membership itself has no separate confirmation. E-mail addresses are syntax-checked and stored in a canonical lowercase form. Phone input combines the selected country calling code with the national number and is stored as E.164 (for example `+491701234567`). Codes are single-use and valid for 15 minutes; sessions expire after one hour of inactivity. Active accounts land on the Heimspielplan after login, while verified registrations awaiting approval see only their status.
 
 New people need a real calendar birth date that is not after `common.effective_today()`, including contactless admin/MV creation and CLI creation. A member can complete or correct their own date; an admin can do so for any person. A known date cannot be cleared. Existing people with an unknown date can still receive unrelated profile repairs. Dates are self-reported; the application does not verify identity documents. Full dates are limited to own/admin person maintenance and are absent from schedules, candidates, statistics, ordinary notifications, diagnostic logs and assignment audits. See the [data inventory](DATA-INVENTORY.md).
+
+## Home-game-day visibility
+
+Active administrators can save **Heimspieltage ausblenden ab** on the schedule
+with **Sichtbarkeit speichern**, including without JavaScript. The selected date
+is the first hidden date, inclusive. A new or changed date must be after the
+application's effective current day. Clear the date field and save to show all
+dates again. The fixed date is shared across workers and restarts and remains
+until manually changed or cleared, even after its date or the season advances.
+An identical saved date may be submitted unchanged after it has passed. Concurrent
+stale edits are refused; review the refreshed saved value before saving again.
+
+The ordinary view hides games and all preparation, cake-delivery and cleanup
+blocks on or after that date before building date choices, filters and headings.
+Unknown/invalid game dates stay visible. The notice **Heimspieltage ab dem
+01.12.2026 sind derzeit ausgeblendet.** identifies the current scope. An empty
+limited view is described as having no content in the displayed period. Ordinary
+**Filter löschen** never clears the shared boundary.
+
+Administrators can use **Ausgeblendete Spieltage anzeigen** to inspect all dates,
+and **Ausgeblendete Spieltage wieder ausblenden** to return. This request-local
+view (`show_hidden=1`) carries across schedule/statistics navigation, filter
+submissions and filter clearing. Both pages initially use the limited view;
+copied links do not widen guest/member/MV results. Changing this view does not
+change the saved setting.
+
+In **Statistik**, only **Offene Dienste, Altersanforderungen und Einrichtung**
+and its affected-game/block count follow this scope. Full-date mode restores
+hidden current/future issues, never past issues. **Spiele pro Mannschaft**,
+**Dienste pro Person**, their role breakdowns and all season denominators remain
+season-wide, including hidden assignments and retained duties. When no visible
+issues remain, the message refers only to the displayed period.
+
+This setting affects display only. Hidden duties remain binding; scraping,
+synchronization, replacement requests, cutoff locks and notifications continue.
+Authorized direct candidate, claim and takeover flows (also confirmation without
+JavaScript) keep their existing rights, age, expected-state and lock checks.
+Saving visibility or opening/filtering/previewing an overview creates no duty,
+lock, request, assignment audit or notification transition.
 
 ## Task descriptions
 
@@ -414,7 +453,7 @@ To upgrade an existing database:
    no replacement requests, inferred confirmations or historical reminder cutoffs;
    an existing database's first authoritative runtime checks enforce the
    fixed 09:00 Europe/Berlin deadline independently of a reminder run. All upgrades require this stopped-service migration before startup.
-   Revision `0008_single_wischer` is the single current head. It renames current
+   Revision `0008_single_wischer` is the preceding duty migration. It renames current
    Reinigung position 0 to Wischer, preserving its assignment ID, helper, saved lock
    and replacement token. As the explicitly requested **one-time migration exception**
    to commitment preservation, it deletes **every current Reinigung position 1** across
@@ -430,6 +469,18 @@ To upgrade an existing database:
    This exception grants no runtime release or cutoff override. Keep the printed backup:
    on failure, stop all writers and restore that snapshot and the prior application,
    which also restores deleted second duties; never downgrade in place.
+   Revision `0009_schedule_visibility` is the single required current head. It adds
+   exactly one unrestricted `schedule_visibility_setting` row with a nullable
+   date-only boundary. It preserves every existing game, block, person, membership,
+   assignment ID, lock, replacement token and historical audit. Earlier pending
+   revisions retain their separately reviewed effects, including the one-time `0008`
+   removal described above; `0009` removes no additional duties. Stop all web/daily
+   database users, run `./venv/bin/python manage_db.py migrate-schema --confirm-stopped`,
+   retain the printed validated snapshot and restart only after postflight succeeds.
+   Startup refuses prior revisions without upgrading or seeding settings. Repeating
+   migration at head preserves a configured boundary. Recovery requires stopped
+   writers, the validated pre-upgrade snapshot and matching prior application;
+   never downgrade the active database in place.
    Verification rejects unreviewed schema differences, even if a database already
    carries the current revision label. Previously recognized historical defaults
    remain unchanged, and SQLite uniqueness checks confirm reflected constraints.
@@ -472,6 +523,7 @@ or individually via `python3 test/test_db.py` etc., or with pytest (`pytest test
 - `assignments`: one stable role/slot link between a game and person, with replacement-request token and saved lock state
 - `day_blocks`: one preparation, cake-delivery and cleanup block per season/home-game date; nullable cake quantity and delivery time belong only to cake blocks
 - `block_assignments`: one volunteer per numbered block position, with at most one position per person in each block, replacement-request token and saved lock state
+- `schedule_visibility_setting`: constrained singleton with the optional global first-hidden date, initialized unrestricted
 - `duty_cutoffs`: durable season/date cutoff markers, including positions that were empty at 09:00 Europe/Berlin on the day before the duty
 - `auth_tokens`: expiring, single-use registration/login nonces and six-digit e-mail/SMS codes
 - `assignment_audit`: append-only assignment-change snapshots that remain readable after deletion

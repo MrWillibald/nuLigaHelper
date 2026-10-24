@@ -4,6 +4,7 @@
 {% block content %}
 <section class="section">
   <div class="section-header"><div class="section-icon">📊</div><h2>Statistik {{ season }}</h2></div>
+  {% include '_visibility_scope.html' %}
   <details class="responsive-disclosure page-introduction" data-responsive-disclosure data-desktop-open="true" open>
     <summary>Hinweise</summary>
     {% include '_responsive_disclosure_script.html' %}
@@ -104,7 +105,11 @@
   </table>
   </div>
   {% else %}
+  {% if visibility_restricted %}
+  <p class="hint">Im angezeigten Zeitraum gibt es keine offenen Dienste, ungeklärten Altersanforderungen oder erforderlichen Einrichtungen.</p>
+  {% else %}
   <p class="hint">Alle anstehenden Spiele und Tagesblöcke sind vollständig besetzt und erfüllen die Altersanforderungen. 🎉</p>
+  {% endif %}
   {% endif %}
     </div>
   </details>

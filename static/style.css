@@ -173,6 +173,11 @@ select.select-warn{border-color:#e8b23c;background:#fffaf0}
 .roster-count{border-radius:999px;background:#eef3f8;color:var(--navy);padding:7px 12px;font-size:.8rem;font-weight:900}
 .roster-filter-card,.audit-filter-card{display:grid;grid-template-columns:minmax(190px,1.35fr) minmax(180px,1fr) minmax(160px,.8fr) auto;
   gap:14px;align-items:end;padding:18px;margin-bottom:22px;border:1px solid var(--line);border-radius:18px;background:#f8fafc}
+.visibility-scope,.visibility-settings{margin:16px 0;padding:16px;border:1px solid #bfc8d7;border-radius:12px;overflow-wrap:anywhere}
+.visibility-scope p{margin:0 0 8px}
+.visibility-settings .filter-field{max-width:24rem}
+.visibility-settings .hint{margin:12px 0 16px}
+.visibility-settings .btn{max-width:100%;white-space:normal}
 .filter-field{display:flex;flex-direction:column;gap:6px;min-width:0}
 .filter-field label{color:var(--navy);font-size:.78rem;font-weight:900;letter-spacing:.05em;text-transform:uppercase}
 .filter-field input,.filter-field select{width:100%;min-width:0;border:1px solid #bfc8d7;border-radius:11px;background:#fff;

@@ -448,6 +448,7 @@ def create_app() -> Flask:
             "membership_label": db.membership_label,
             "person_label": db.person_label,
             "feedback_auth_boundary": session.pop("feedback_auth_boundary", False),
+            "overview_args": {"show_hidden": "1"} if g.get("show_hidden") else {},
         }
 
     def legal_page(name):
@@ -1498,6 +1499,7 @@ def create_app() -> Flask:
 
     def build_schedule(
         session, season_year: int, filters: dict[str, str] | None = None,
+        hide_from=None,
     ):
         filters = filters or {}
         today = common.effective_today()
@@ -1506,6 +1508,7 @@ def create_app() -> Flask:
         ).all()
         games.sort(key=db.game_sort_key)
         total_games = len(games)
+        games = [game for game in games if db.schedule_date_visible(game.date, hide_from)]
         date_options = []
         seen_dates = set()
         for game in games:
@@ -1681,9 +1684,46 @@ def create_app() -> Flask:
             "date_options": date_options,
         }
 
+    def visibility_scope():
+        boundary = db.schedule_visibility_boundary(get_session())
+        g.show_hidden = g.tier == "admin" and request.args.get("show_hidden") == "1"
+        toggle_args = ({key: request.args[key] for key in
+                        ("date", "playing_team", "responsible_team", "person")
+                        if key in request.args} if request.endpoint == "schedule" else {})
+        if not g.show_hidden:
+            toggle_args["show_hidden"] = "1"
+        return {
+            "visibility_boundary": boundary,
+            "visibility_restricted": boundary is not None and not g.show_hidden,
+            "show_hidden": g.show_hidden,
+            "visibility_toggle_url": url_for(request.endpoint, **toggle_args),
+        }
+
+    @app.post("/spielplan/sichtbarkeit")
+    def schedule_visibility():
+        if g.tier != "admin":
+            return api_error("Nur aktive Administratoren dürfen die Sichtbarkeit ändern.", 403)
+        database_session = get_session()
+        try:
+            changed = db.update_schedule_visibility(
+                database_session, actor_id=g.viewer.id,
+                hide_from=request.form.get("hide_from"),
+                expected_hide_from=request.form.get("expected_hide_from"),
+            )
+            database_session.commit()
+        except (ValueError, db.AssignmentTemporarilyUnavailableError) as exc:
+            database_session.rollback()
+            session["visibility_error"] = str(exc)
+            flash(str(exc), "error")
+        else:
+            flash("Sichtbarkeit gespeichert." if changed else "Sichtbarkeit unverändert.", "success" if changed else "info")
+        return redirect(url_for("schedule", **(
+            {"show_hidden": "1"} if request.form.get("show_hidden") == "1" else {}
+        )), code=303)
+
     @app.route("/")
     def schedule():
-        session = get_session()
+        database_session = get_session()
         season_year = common.season_year_for(common.effective_today())
         filters = {
             "date": request.args.get("date", "").strip(),
@@ -1691,9 +1731,13 @@ def create_app() -> Flask:
             "responsible_team": request.args.get("responsible_team", "").strip(),
             "person": request.args.get("person", "").strip(),
         }
-        data = build_schedule(session, season_year, filters)
+        scope = visibility_scope()
+        data = build_schedule(database_session, season_year, filters,
+                              scope["visibility_boundary"] if scope["visibility_restricted"] else None)
         return render_template(
             "schedule.html",
+            **scope,
+            visibility_error=session.pop("visibility_error", None),
             upcoming=data["upcoming"],
             past=data["past"],
             teams=data["teams"],
@@ -1717,6 +1761,8 @@ def create_app() -> Flask:
         session = get_session()
         season_year = common.season_year_for(common.effective_today())
         today = common.effective_today()
+        scope = visibility_scope()
+        hide_from = scope["visibility_boundary"] if scope["visibility_restricted"] else None
 
         games = session.query(db.Game).filter(
             db.Game.season_year == season_year
@@ -1771,6 +1817,8 @@ def create_app() -> Flask:
 
         gaps = []
         for game in games:
+            if not db.schedule_date_visible(game.date, hide_from):
+                continue
             d = parse_date(game.date)
             if d is not None and d < today:
                 continue
@@ -1791,6 +1839,8 @@ def create_app() -> Flask:
                 })
 
         for block in season_blocks:
+            if not db.schedule_date_visible(block.date, hide_from):
+                continue
             d = parse_date(block.date)
             if d is None or d < today:
                 continue
@@ -1819,6 +1869,7 @@ def create_app() -> Flask:
 
         return render_template(
             "statistik.html",
+            **scope,
             season=f"{season_year}/{str(season_year + 1)[-2:]}",
             total_games=total_games,
             team_stats=team_stats,
