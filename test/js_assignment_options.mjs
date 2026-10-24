@@ -94,22 +94,26 @@ const { setCoverage, updateGameStaffing, updateBlockSummary } = globalThis.nuLig
 globalThis.document.createElement = () => ({ textContent: "" });
 const game = progressFixture();
 updateGameStaffing(game.card, { required_filled: 4, required_total: 5, vacancies: { Verkauf: 1 }, deficiencies: [] });
-if (game.count.textContent !== "4/5" || game.arc.attrs["stroke-dashoffset"] !== "20"
-    || game.gauge.attrs["aria-valuetext"] !== "4 von 5 Pflichtdiensten besetzt"
-    || game.vacancies.children[0].textContent !== "Verkauf") {
-  throw new Error("saved game summary lost its fraction, arc, semantics or vacancy");
+if (game.count.textContent !== "4 von 5 Pflichtdiensten besetzt" || game.fill.style.width !== "80%"
+    || game.track.attrs["aria-valuetext"] !== "4 von 5 Pflichtdiensten besetzt"
+    || game.percent.textContent !== "80 %") {
+  throw new Error("saved game summary lost its count, bar, percentage or semantics");
 }
 // A remote helper also claimed a position: use the saved block, not a local +1.
 for (const kind of ["preparation", "cleanup"]) {
   const block = progressFixture("block", 0, 3);
   updateBlockSummary(block.card, { phase: kind, progress: { filled: 2, total: 3 }, vacancies: { Tagesdienst: 1 } });
-  if (block.count.textContent !== "2/3" || block.vacancies.children[0].textContent !== "Tagesdienst"
-      || block.gauge.attrs["aria-valuetext"] !== "2 von 3 Plätzen besetzt") {
+  if (block.count.textContent !== "2 von 3 Plätzen besetzt" || block.fill.style.width !== "67%"
+      || block.percent.textContent !== "67 %"
+      || block.track.attrs["aria-valuetext"] !== "2 von 3 Plätzen besetzt") {
     throw new Error("saved block summary ignored concurrent occupancy");
   }
 }
 const adult = progressFixture();
-setCoverage(adult.coverage, 7, 7);
-if (adult.count.textContent !== "7/7" || adult.arc.attrs["stroke-dashoffset"] !== "0") {
-  throw new Error("adult ring lost its seven-position denominator");
+for (const [filled, percent] of [[0, 0], [1, 14], [3, 43], [5, 71], [6, 86], [7, 100]]) {
+  setCoverage(adult.coverage, filled, 7);
+  if (adult.count.textContent !== `${filled} von 7 Pflichtdiensten besetzt`
+      || adult.fill.style.width !== `${percent}%` || adult.percent.textContent !== `${percent} %`) {
+    throw new Error("adult bar lost its seven-position denominator or rounded percentage");
+  }
 }

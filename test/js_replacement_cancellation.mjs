@@ -45,7 +45,7 @@ for (const kind of cases) {
   await pending;
   assert.equal(duty.field.dataset.occupantId, "7");
   assert.equal(duty.field.dataset.replacementToken, "");
-  assert.equal(summary.snapshot(), beforeSummary, "replacement closure changed physical occupancy or vacancies");
+  assert.equal(summary.snapshot(), beforeSummary, "replacement closure changed physical occupancy or bar");
   assert.equal(duty.select.hidden, true);
   assert.equal(duty.button.textContent, "Ersatz suchen");
   assert.equal(document.activeElement, duty.button);

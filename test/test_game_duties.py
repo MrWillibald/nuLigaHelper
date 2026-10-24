@@ -237,7 +237,7 @@ def test_reports_use_offered_positions_and_count_retained_duties_without_vacanci
 
 
 @patch("common.effective_today", return_value=date(2026, 9, 1))
-def test_initial_ring_vacancies_match_statistics_for_adult_youth_spf_and_retained_duties(_today):
+def test_initial_bars_and_statistics_for_adult_youth_spf_and_retained_duties(_today):
     app, engine, _path, ids = _site()
     with h.Session(engine) as session:
         youth = session.get(db.Game, ids["games"][1])
@@ -245,7 +245,9 @@ def test_initial_ring_vacancies_match_statistics_for_adult_youth_spf_and_retaine
                                   role=db.ROLE_CASH, slot=0))
         session.commit()
     guest = html.fromstring(app.test_client().get("/").get_data(as_text=True))
-    stats = html.fromstring(_client(app, ids["admin"]).get("/statistik").get_data(as_text=True))
+    admin = _client(app, ids["admin"])
+    signed_in = html.fromstring(admin.get("/").get_data(as_text=True))
+    stats = html.fromstring(admin.get("/statistik").get_data(as_text=True))
     with h.Session(engine) as session:
         for game_id in ids["games"]:
             game = session.get(db.Game, game_id)
@@ -253,7 +255,14 @@ def test_initial_ring_vacancies_match_statistics_for_adult_youth_spf_and_retaine
             vacancies = db.staffing_status(game)["vacancies"]
             expected = [f"{role} ({count}×)" if count > 1 else role
                         for role, count in vacancies.items()]
-            assert card.xpath('.//*[@data-vacancies]/span/text()') == expected
+            staffing = db.staffing_status(game)
+            filled, total = staffing["required_filled"], staffing["required_total"]
+            percent = (filled * 100 + total // 2) // total
+            for view in (card, signed_in.get_element_by_id(f"game-{game_id}")):
+                assert view.xpath('.//*[@data-progress-count]/text()') == [f"{filled} von {total} Pflichtdiensten besetzt"]
+                assert view.xpath('.//*[@data-progress-percent]/text()') == [f"{percent} %"]
+                assert view.xpath('.//*[@class="coverage-fill"]/@style') == [f"width:{percent}%"]
+                assert not view.xpath('.//*[@data-vacancies or @class="coverage-gauge"] | .//svg')
             # The statistics row uses exactly the same public missing-duty labels.
             identity = f"Spielfest {game.ak}" if db.is_spielfest(game) else game.guest
             row = stats.xpath(f'//tr[contains(.,"{identity}")]')[0]

@@ -126,9 +126,9 @@ identify cleanup.
 
 ### Requirement: Every game and day-task card starts compact
 
-Every game, preparation block, cleanup block and cake-delivery block SHALL start collapsed on page load, regardless of responsible-team selection or occupied slots. A collapsed game card SHALL show its time, matchup or Spielfest identity, existing game metadata, responsible-team name or an open placeholder when unset, and the ring gauge and vacancy badges defined below. A collapsed preparation or cleanup card SHALL show its calculated time, block label, ring gauge and vacancy badges. Cake cards SHALL follow their configuration-specific presentation below.
+Every game, preparation block, cleanup block and cake-delivery block SHALL start collapsed on page load, regardless of responsible-team selection or occupied slots. A collapsed game card SHALL show its time, matchup or Spielfest identity, existing game metadata, responsible-team name or an open placeholder when unset, and the horizontal progress bar, descriptive occupancy count and percentage defined below. A collapsed preparation or cleanup card SHALL show its calculated time, block label, horizontal progress bar, descriptive occupancy count and percentage. Cake cards SHALL follow their configuration-specific presentation below.
 
-Each card SHALL have a labeled control that expands and collapses that card independently. Its visible caption SHALL remain "Details" with a right-pointing triangle when closed and a downward-pointing triangle when open. The caption and indicator SHALL sit in the lower right corner of the summary on mobile and desktop, with enough reserved space to avoid overlapping staffing or warnings and without a separate full-width control. The expanded game SHALL reveal the responsible team and all existing task fields according to the game's offered set, plus occupied removed duties marked as existing assignments subject to binding protection and the explicit legacy retirement policy. Expanded preparation and cleanup cards SHALL reveal all three numbered assignment fields; expanded cake cards SHALL reveal positions according to their configured quantity. All viewers SHALL be able to expand cards, while assignment controls and private data SHALL continue to depend on existing access rights. Expansion SHALL be usable with a keyboard and touch, including without JavaScript.
+Each card SHALL have a labeled control that expands and collapses that card independently. Its visible caption SHALL remain "Details" with a right-pointing triangle when closed and a downward-pointing triangle when open. The caption and indicator SHALL sit in the lower right corner of the summary on mobile and desktop, right-aligned beneath the progress/status area with enough space to avoid overlapping staffing or warnings. The expanded game SHALL reveal the responsible team and all existing task fields according to the game's offered set, plus occupied removed duties marked as existing assignments subject to binding protection and the explicit legacy retirement policy. Expanded preparation and cleanup cards SHALL reveal all three numbered assignment fields; expanded cake cards SHALL reveal positions according to their configured quantity. All viewers SHALL be able to expand cards, while assignment controls and private data SHALL continue to depend on existing access rights. Expansion SHALL be usable with a keyboard and touch, including without JavaScript.
 
 #### Scenario: Open and close a game
 
@@ -165,49 +165,66 @@ Each card SHALL have a labeled control that expands and collapses that card inde
 
 ### Requirement: Compact cards show accurate staffing progress
 
-Each game SHALL display a ring gauge whose arc represents occupied positions in that game's offered/required-position set and whose center shows a readable occupied/required fraction such as `5/7`. Retained removed-duty positions and responsible-team selection SHALL be excluded from numerator and denominator. Adult games SHALL have seven required positions; youth games SHALL have five. Preparation and cleanup gauges SHALL count occupied slots among their respective three slots. Configured cake quantities greater than zero SHALL use the same ring presentation with the requested quantity as denominator. The overview SHALL replace the horizontal progress bar and separate percentage line with this ring and fraction, including at zero and full coverage.
+Each game SHALL display a horizontal progress bar representing occupied positions in that game's offered/required-position set. Above the bar, a descriptive German occupied/required count SHALL appear on the left, such as "5 von 7 Pflichtdiensten besetzt", with the percentage on the right. Bar fill and percentage SHALL use the same ratio, rounded to the nearest whole percent. Retained removed-duty positions and responsible-team selection SHALL be excluded from numerator and denominator. Adult games SHALL have seven required positions; youth and SPF games SHALL have five. Preparation and cleanup SHALL count occupied positions among their respective three positions and use wording such as "1 von 3 Plätzen besetzt". Configured positive cake quantities SHALL use the requested quantity as denominator and wording such as "2 von 4 Kuchen zugesagt". Schedule summaries SHALL show no staffing rings, central fractions, vacancy badges or reserved badge placeholders.
 
-Each gauge SHALL expose its current value, total and a German description identifying occupied duties, block positions or promised cakes to assistive technology. Meaning SHALL NOT depend on color alone. Initial counts and arcs SHALL be available without JavaScript. A successful permitted occupancy change SHALL update the affected ring and vacancy badges together without requiring a page reload; an unsuccessful, cancelled or stale operation SHALL not show uncommitted progress or vacancies.
+Each bar SHALL expose its current value, total and a contextual German description to assistive technology. Meaning SHALL NOT depend on color alone. Counts, percentages and fills SHALL be present on initial rendering without JavaScript. Successful permitted occupancy changes and authoritative staffing refreshes, including candidate refreshes, SHALL update the count, percentage, fill and accessible values together without a page reload. Selection, opening, cancellation, dismissal, rejected writes and stale responses SHALL NOT display unsaved or older state as current progress.
 
 #### Scenario: Optional support does not complete a game
 
 - **WHEN** a youth game has three occupied required slots and an occupied retained removed Kasse slot
-- **THEN** its compact card shows `3/5` in the ring with a 60-percent arc
-- **AND** no separate percentage line is displayed
+- **THEN** its compact card shows "3 von 5 Pflichtdiensten besetzt", "60 %" and a 60-percent bar fill
+- **AND** the retained assignment does not increase required progress
 
 #### Scenario: Block coverage
 
 - **WHEN** one of a preparation block's three slots is occupied
-- **THEN** its compact card shows `1/3` in the ring with an approximately one-third arc
+- **THEN** its compact card shows "1 von 3 Plätzen besetzt", "33 %" and a matching bar fill
 
 #### Scenario: Assignment changes progress
 
 - **WHEN** a viewer successfully claims a position or completes an atomic takeover on an expanded card
-- **THEN** that card's fraction, arc and vacancy badges reflect saved staffing
-- **AND** a rejected assignment leaves the displayed progress and vacancies at their saved values
+- **THEN** that card's descriptive count, percentage, bar fill and accessible values reflect saved staffing
+- **AND** a rejected assignment leaves the displayed progress at its saved values
 
 #### Scenario: Adult additional duties count
 
 - **WHEN** an adult game has five of its seven required positions occupied
-- **THEN** its compact card shows `5/7` required slots filled
+- **THEN** its compact card shows "5 von 7 Pflichtdiensten besetzt", "71 %" and a matching bar fill
 
 #### Scenario: Retained removed duty released
 
 - **WHEN** a retained Kasse or Wischer assignment of a youth game is explicitly retired by an authorized caller before the fixed day-before cutoff
-- **THEN** its required-duty gauge and vacancy badges are unchanged and the removed duty field disappears
-- **AND** changing its sole Ordnungsdienst position updates the gauge and matching badge
+- **THEN** its required-duty progress display is unchanged and the removed duty field disappears
+- **AND** successfully claiming its empty offered Ordnungsdienst position updates required progress
 
 #### Scenario: Replacement wanted is still occupied
 
 - **WHEN** a replacement request opens or closes without takeover
-- **THEN** physical occupancy, the ring and vacancy badges stay unchanged
-- **AND** an atomic takeover changes responsibility without reducing progress or creating a vacancy badge
+- **THEN** physical occupancy and the progress display stay unchanged
+- **AND** an atomic takeover changes responsibility without reducing progress
 
 #### Scenario: Empty and full gauges
 
 - **WHEN** a card with a positive capacity has no occupied positions or every position occupied
-- **THEN** its ring shows an empty arc with `0/total` or a full arc with `total/total` respectively
+- **THEN** its bar is empty with a zero occupied count and "0 %", or full with all positions counted and "100 %", respectively
 - **AND** its count and German accessible description remain available without JavaScript
+
+#### Scenario: Cancelled confirmation and stale responses
+
+- **WHEN** a viewer cancels or dismisses confirmation, or an older candidate response arrives after a newer saved assignment
+- **THEN** the card does not display the attempted selection or older response as current progress
+- **AND** cancellation and dismissal perform no assignment or replacement-request mutation
+
+#### Scenario: Staffing refresh reflects another saved change
+
+- **WHEN** an authorized candidate refresh returns staffing changed by another saved assignment
+- **THEN** the affected game's or block's count, percentage, fill and accessible values reflect that same saved snapshot
+
+#### Scenario: Initial public staffing display
+
+- **WHEN** a guest opens the schedule without JavaScript
+- **THEN** descriptive counts, percentages and horizontal bars are visible before expanding cards
+- **AND** no staffing rings, vacancy badges, private identifiers, candidate lists, contacts, full birth dates or exact personal ages are exposed in the summaries
 
 ### Requirement: Filters are usable by all schedule viewers
 
@@ -299,16 +316,16 @@ The initial schedule response SHALL show the current assignment state without in
 
 ### Requirement: Age compliance is distinct from physical staffing progress
 
-Game cards SHALL distinguish physical required-slot occupancy from unresolved or invalid age eligibility. An age deficiency SHALL NOT invent an empty slot or vacancy badge, conceal an assigned occupant, or alter the physical occupancy count. A game with an outstanding age deficiency SHALL not be presented as having complete valid staffing solely because its occupancy ring is full.
+Game cards SHALL distinguish physical required-slot occupancy from unresolved or invalid age eligibility. An age deficiency SHALL NOT invent an empty slot, conceal an assigned occupant, or alter the physical occupancy count. A game with an outstanding age deficiency SHALL not be presented as having complete valid staffing solely because its occupancy bar shows 100 percent.
 
-Current/future game cards SHALL provide a readable German eligibility indication identifying the affected duty or adult-coverage requirement without exposing a full birth date or exact personal age. This indication SHALL remain visible while the card is collapsed and distinguishable from vacancy badges. Saved assignment changes and refreshed game data SHALL update the affected indication.
+Current/future game cards SHALL provide a readable German eligibility indication identifying the affected duty or adult-coverage requirement without exposing a full birth date or exact personal age. This indication SHALL remain visible while the card is collapsed and separate from the occupancy count and bar. Saved assignment changes and refreshed game data SHALL update the affected indication.
 
 The displayed guidance SHALL explain that Ordnungsdienst requires 18 for every game, adult-game Zeitnehmer and Sekretär require 16, and youth/SPF timing duties require 14. It SHALL explain that youth/SPF Verkauf has no age requirement while adult and unresolved-category games retain collective adult coverage. Guidance SHALL remain consistent with saved-state eligibility indications.
 
 #### Scenario: Full game lacks an adult seller
 
 - **WHEN** every required slot of a current/future adult or unresolved-category game is occupied but Verkauf has no qualifying adult seller
-- **THEN** the occupancy ring remains full with an accurate fraction and no invented Verkauf vacancy
+- **THEN** the occupancy bar remains full with an accurate descriptive count and "100 %" and no invented Verkauf vacancy
 - **AND** the collapsed card visibly reports outstanding adult coverage instead of complete valid staffing
 
 #### Scenario: Timing eligibility is unresolved
@@ -333,7 +350,7 @@ The displayed guidance SHALL explain that Ordnungsdienst requires 18 for every g
 
 - **WHEN** a recognized youth or SPF game's Verkauf positions contain only younger helpers or legacy helpers with unknown birth dates
 - **THEN** its card shows no sale adult-coverage or sale unknown-birth-date deficiency
-- **AND** its physical occupancy ring and unrelated eligibility warnings remain accurate
+- **AND** its physical occupancy bar and unrelated eligibility warnings remain accurate
 
 #### Scenario: Retained Ordnungsdienst fails the new rule
 
@@ -353,9 +370,9 @@ The displayed guidance SHALL explain that Ordnungsdienst requires 18 for every g
 
 ### Requirement: Cake delivery appears as a compact dated task card
 
-The overview SHALL show the date's cake-delivery block alongside its existing preparation, game and cleanup cards. The cake card SHALL start collapsed and SHALL show its label, configured delivery time or setup-needed state, requested cake quantity and staffing status. Expanding it SHALL reveal one numbered volunteer position per requested cake and each position's assigned helper name. Each position SHALL represent one cake contribution. For a configured positive quantity, the ring SHALL count occupied positions out of that quantity and a grouped red vacancy badge SHALL identify remaining cake contributions. Ring, badge, time and quantity SHALL update together after successful assignments or configuration edits. A refused or stale operation SHALL not show uncommitted progress or configuration.
+The overview SHALL show the date's cake-delivery block alongside its existing preparation, game and cleanup cards. The cake card SHALL start collapsed and SHALL show its label, configured delivery time or setup-needed state, requested cake quantity and staffing status. Expanding it SHALL reveal one numbered volunteer position per requested cake and each position's assigned helper name. Each position SHALL represent one cake contribution. For a configured positive quantity, a horizontal bar, descriptive German count and percentage SHALL show promised cakes out of that quantity. Count, percentage, fill, accessible values, time and quantity SHALL update together after successful assignments or configuration edits. A refused or stale operation SHALL not show uncommitted progress or configuration.
 
-Configured zero SHALL show "Keine Kuchen angefragt" without a ring, vacancy badge, division-by-zero or invented staffing percentages. An unconfigured block SHALL visibly require administrator setup, show no ring or invented vacancy count and SHALL not offer claim controls.
+Configured zero SHALL show "Keine Kuchen angefragt" without a progress bar, occupancy count, percentage, division-by-zero or vacancy badge. An unconfigured block SHALL visibly require administrator setup, show no progress bar, occupancy count, percentage or invented vacancy count and SHALL not offer claim controls.
 
 The cake card SHALL use the established plain card treatment, a small 🍰 emoji beside its label and a labeled keyboard-operable expansion control. It SHALL have no responsible-team field. Administrators SHALL be offered controls for the date's delivery time and quantity; delivery time entry SHALL consistently use 24-hour `HH:MM` regardless of the browser locale. Other viewers SHALL see those settings without edit controls.
 
@@ -369,25 +386,25 @@ The cake card SHALL use the established plain card treatment, a small 🍰 emoji
 
 - **WHEN** a cake block has no delivery time or requested quantity
 - **THEN** it shows that administrator setup is needed
-- **AND** no invented time, quantity, gauge, vacancy count or claimable volunteer positions are shown
+- **AND** no invented time, quantity, progress bar, percentage, vacancy count or claimable volunteer positions are shown
 
 #### Scenario: Administrator adjusts delivery settings
 
 - **WHEN** an administrator saves valid new delivery settings
 - **THEN** the card shows the saved time and requested quantity
-- **AND** its position count, ring and vacancy badge reflect the saved configuration
+- **AND** its position count, descriptive count, percentage and bar reflect the saved configuration
 
 #### Scenario: No cakes requested
 
 - **WHEN** a cake block is configured with a quantity of zero
 - **THEN** its collapsed summary shows "Keine Kuchen angefragt"
-- **AND** it shows no ring or vacancy badge
+- **AND** it shows no progress bar, occupancy count, percentage or vacancy badge
 
 #### Scenario: Remaining cake contributions are grouped
 
 - **WHEN** two of four requested cakes have been promised
-- **THEN** the ring shows `2/4` and one red badge identifies two missing cake contributions
-- **AND** a successful further claim updates both to `3/4` and one missing contribution
+- **THEN** the summary shows "2 von 4 Kuchen zugesagt", "50 %" and a half-filled horizontal bar
+- **AND** a successful further claim updates the count to "3 von 4 Kuchen zugesagt", percentage to "75 %" and bar fill accordingly
 
 ### Requirement: Cake cards follow day-block filtering and privacy
 
@@ -461,104 +478,57 @@ Every game and day-block duty SHALL show its assigned helper and persistent `Ers
 - **WHEN** a date has reached cutoff with some occupied and some genuinely empty duties
 - **THEN** occupied duties show fixed state and permitted empty duties remain claimable
 
-### Requirement: Collapsed cards identify grouped staffing vacancies
-
-Each collapsed game card SHALL show red vacancy badges beside its ring, using the visual language and vacancy meaning of the statistics page. Each missing offered duty type SHALL appear once in a stable duty order, with its readable German name and a count when more than one position is vacant, such as "Verkauf (2×)" for two vacant Verkauf positions or "Wischer" for its single vacant position. Occupied roles, retained removed-duty roles and responsible-team selection SHALL NOT produce vacancy badges. Preparation and cleanup SHALL each show one grouped badge for their remaining positions; configured positive cake quantities SHALL show one grouped badge for missing cake contributions. Fully occupied containers SHALL show no vacancy badges or empty badge placeholders.
-
-The same vacancy information SHALL be available to guests and signed-in viewers on initial rendering without JavaScript. New summary content SHALL contain no person identifiers, candidate lists, contacts, full birth dates or exact personal ages. Badge updates SHALL reflect saved state from successful mutations and staffing refreshes, including candidate refreshes that return current staffing. Cancelled or dismissed confirmation, failed writes and stale responses SHALL NOT remove badges based on an unsaved selection. Existing replacement and fixed-duty states SHALL remain available in the expanded duty fields.
-
-#### Scenario: Several roles are vacant
-
-- **WHEN** both Verkauf positions and the single Kasse position are vacant in an adult game
-- **THEN** its summary shows one red "Verkauf (2×)" badge and one red "Kasse" badge beside the ring
-- **AND** the badges agree with the same game's vacancies on statistics
-
-#### Scenario: Game type determines offered vacancies
-
-- **WHEN** a youth or Spielfest card has empty Kasse and Wischer positions outside its offered set
-- **THEN** those roles produce no vacancy badges
-- **AND** its ring continues to use its five required positions
-
-#### Scenario: Fully occupied container
-
-- **WHEN** every offered game duty or configured block position is occupied
-- **THEN** its full ring remains visible without vacancy badges or reserved badge rows
-- **AND** any applicable eligibility warning remains independently visible
-
-#### Scenario: Cancellation and failed claim
-
-- **WHEN** a viewer selects a candidate and cancels confirmation, or a confirmed claim is rejected
-- **THEN** the ring and badges do not display the unsaved selection as an occupied position
-
-#### Scenario: Staffing refresh reflects another saved change
-
-- **WHEN** a permitted refresh returns staffing changed by another saved assignment
-- **THEN** the affected card's ring and vacancy badges reflect that returned state together
-
-#### Scenario: Guest sees public staffing needs
-
-- **WHEN** a guest opens the schedule without JavaScript
-- **THEN** the rings and grouped vacancy badges are present before any card is expanded
-- **AND** their summary content exposes no private roster or person data
-
 ### Requirement: Staffing summaries use a compact responsive layout
 
-Collapsed game and day-task summaries SHALL keep identity, staffing needs and actionable warnings readable with compact padding and line spacing around their separate information rows. The ring and vacancy badges SHALL form one shared status area with the ring beside content-sized badges placed directly next to each other. Badges SHALL flow in reading order with small gaps and wrap onto a new line only when the next badge does not fit; they SHALL NOT reserve equal-width columns or stretch to fill the row; long labels and enlarged text SHALL reflow without clipping or horizontal page scrolling. Absent badges SHALL NOT reserve width or additional rows. The "Details" control SHALL share existing summary space.
+Game and day-task summaries SHALL restore the roomier card presentation shown in the agreed reference screenshot, retaining the established navy/neutral palette, plain card surfaces, date grouping and task icons. On viewports at most 900 CSS pixels wide, game/block information SHALL appear above the progress/status area, with the horizontal bar spanning the available inner width. On wider viewports, information SHALL appear on the left and progress/status on the right. The "Details" caption and triangle SHALL be right-aligned beneath progress and associated warnings in normal reading order. No ring-and-badge status area SHALL appear.
 
-On wide screens the status area SHALL sit beside the game/block information. On narrow screens it SHALL move below that information when necessary, keeping the ring beside the badge group as space permits. Each game summary SHALL display four separate primary information rows in this order: start time; full matchup or existing Spielfest identity; age class, hall and game number together; responsible-team name prefixed by "Verantwortlich:" or the existing open placeholder when unset. The time SHALL occupy its own row even when the viewport has room to place it beside the matchup. Preparation, cleanup and cake-delivery summaries SHALL display three separate primary information rows in this order: calculated/configured time or the existing time placeholder, with any associated date qualifier; task label with its existing icon; existing task metadata such as "Tagesdienst" or requested cake quantity. Day-task cards SHALL NOT show a responsible-team row or reserve a blank fourth row.
+Each game summary SHALL display four primary information rows: prominent start time; full matchup or existing Spielfest identity; age class, hall and game number together; responsible-team name prefixed by "Verantwortlich:" or the existing open placeholder. Preparation, cleanup and cake-delivery summaries SHALL display three primary information rows: calculated/configured time or existing time placeholder with any date qualifier; task label with its existing icon; existing task metadata such as "Tagesdienst" or requested cake quantity. Day-task cards SHALL have no responsible-team row or blank fourth row. Time SHALL remain larger than the matchup/task label, using the earlier presentation's emphasis rather than an additional size increase.
 
-The start time or time placeholder on every game and day-task card SHALL be slightly larger than its previous presentation and larger than the matchup or task-label text. The time row SHALL have additional space before the matchup or task label to separate it visually from the remaining information. Full matchup names, game metadata, responsible-team identity, eligibility and classification warnings and setup-needed states SHALL remain available without truncation or opening the card. Supplemental warnings SHALL NOT replace the primary information rows. Each primary row SHALL start below the preceding row, but its content SHALL wrap naturally when necessary. The row order and time emphasis SHALL apply at mobile and desktop widths, to upcoming and past cards, to guests and signed-in viewers, and while a card is collapsed or expanded, including without JavaScript. Ring counts and labels SHALL remain readable at 320, 360 and 390 CSS pixel viewport widths and with enlarged text. Readability and keyboard/touch access SHALL take precedence over a fixed card height or physical line count.
+Full names, metadata, descriptive counts, percentages, eligibility/classification warnings and setup-needed states SHALL remain readable without truncation or opening the card. Labels and percentages SHALL wrap when necessary while retaining reading order and an unobstructed bar. Content SHALL NOT clip, overlap the disclosure control or require horizontal page scrolling at 320, 360 or 390 CSS pixels or with 200-percent text enlargement. Card height SHALL follow content. This presentation SHALL apply to upcoming and past cards, guests and signed-in viewers, collapsed and expanded summaries, and initial rendering without JavaScript.
 
 #### Scenario: Phone with several missing roles
 
-- **WHEN** the schedule is viewed at 360 CSS pixels wide with several vacant game roles
-- **THEN** the ring appears beside content-sized badges placed directly next to each other, wrapping when the next badge no longer fits
-- **AND** the card requires no horizontal scrolling and the disclosure control has no separate full-width action row
+- **WHEN** the schedule is viewed at 360 CSS pixels wide with several vacant roles
+- **THEN** game information is followed by a descriptive count and percentage above a full-width horizontal bar
+- **AND** "Details" appears right-aligned below progress/status without badges or horizontal scrolling
 
 #### Scenario: Wide display
 
-- **WHEN** a summary has sufficient width for game information and the badge group
-- **THEN** the status area appears beside the information and the badges fill each line in reading order before wrapping, without equal-width column gaps
-- **AND** the time remains in its own information row above the matchup or task label
+- **WHEN** a summary is viewed above 900 CSS pixels wide
+- **THEN** information appears beside the progress/status column
+- **AND** time remains above the title and "Details" appears beneath progress/status
 
 #### Scenario: Long names and text enlargement
 
-- **WHEN** a 320 CSS pixel viewport displays a long matchup, "Ordnungsdienst", a long responsible-team name or enlarged text
-- **THEN** the text and badges wrap as needed without clipping, overlap or horizontal page scrolling
-- **AND** ring counts, warnings and disclosure focus remain readable and usable
-- **AND** wrapping preserves the order of the primary information rows without forcing ellipses or a fixed card height
+- **WHEN** a 320 CSS pixel viewport displays long matchup/responsible-team names or text is enlarged to 200 percent
+- **THEN** names, counts and percentages wrap without clipping, overlap or horizontal page scrolling
+- **AND** warnings, the bar and disclosure focus remain readable and usable
 
 #### Scenario: Few or no vacancies
 
-- **WHEN** a card has one or no vacancy badges
-- **THEN** the status area reserves no height for unused badge rows or a repeated percentage/count line
+- **WHEN** a positive-capacity card has one or no vacant positions
+- **THEN** descriptive count, percentage and bar remain visible without reserved badge space
 
 #### Scenario: Four game information rows
 
 - **WHEN** a guest or signed-in viewer views an upcoming or past game at mobile or desktop width, with or without JavaScript
-- **THEN** its summary shows the start time in a separate first row with slightly larger text than before and larger text than the matchup
-- **AND** the full matchup or existing Spielfest identity starts in the second row
-- **AND** age class, hall and game number share the third information row, allowing natural wrapping
-- **AND** "Verantwortlich:" and the responsible team or existing open placeholder start in the fourth row
-- **AND** opening the card preserves that summary structure
+- **THEN** time appears above the full matchup, metadata and responsible-team row in that order
+- **AND** opening the card preserves that structure
 
 #### Scenario: Preparation and cleanup follow the same hierarchy
 
 - **WHEN** a viewer views a preparation or cleanup card
-- **THEN** its calculated time or existing "Zeit offen" placeholder starts in a separate, slightly enlarged first row, retaining any date qualifier
-- **AND** the task label with its existing icon starts in the second row and "Tagesdienst" starts in the third row
-- **AND** the summary has no responsible-team row or blank row reserved for one
+- **THEN** its prominent time or "Zeit offen" placeholder retains any date qualifier above the task label and "Tagesdienst" metadata
+- **AND** no responsible-team row or blank fourth row is reserved
 
 #### Scenario: Cake cards preserve configuration states
 
-- **WHEN** a viewer views a cake-delivery card with a positive quantity, an explicit zero quantity or incomplete configuration
-- **THEN** its delivery time or existing "Lieferzeit offen" placeholder starts in a separate, slightly enlarged first row
-- **AND** the cake label with its icon starts in the second row and the configured quantity or existing "Anzahl offen" metadata starts in the third row
-- **AND** setup-needed and "Keine Kuchen angefragt" states and the applicable presence or absence of ring and badges remain visible according to the existing cake-card requirements
-- **AND** no responsible-team row or blank fourth row appears
+- **WHEN** a viewer views a cake card with a positive quantity, explicit zero or incomplete configuration
+- **THEN** delivery time or "Lieferzeit offen" appears above the cake label and quantity or "Anzahl offen" metadata
+- **AND** the applicable progress display, setup-needed indication or "Keine Kuchen angefragt" status remains visible without a responsible-team row
 
 #### Scenario: Warnings remain visible beside ordered information
 
-- **WHEN** a game has an unresolved classification or staffing eligibility deficiency
+- **WHEN** a game has unresolved classification or a staffing eligibility deficiency
 - **THEN** all four primary information rows remain visible in order
-- **AND** the existing warning remains visible as supplemental information without overlap with the time, responsible team, staffing area or "Details" control
+- **AND** the supplemental warning stays readable without overlapping time, responsible team, progress or "Details"

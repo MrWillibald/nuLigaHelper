@@ -1,0 +1,3794 @@
+{
+  "widths": [
+    {
+      "width": 320,
+      "textPercent": 100,
+      "overflow": false,
+      "overlap": false,
+      "cards": [
+        {
+          "info": "Tagesdienst",
+          "height": 189.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "212px"
+        },
+        {
+          "info": "4 Kuchen angefragt",
+          "height": 189.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "212px"
+        },
+        {
+          "info": "BL M · Halle 1 · Nr. 9500",
+          "height": 261.125,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "212px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 189.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "212px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 189.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "212px"
+        },
+        {
+          "info": "0 Kuchen angefragt",
+          "height": 171.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "212px"
+        },
+        {
+          "info": "BL M · Halle 1 · Nr. 9501",
+          "height": 330.125,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "212px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 189.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "212px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 189.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "212px"
+        },
+        {
+          "info": "Anzahl offen",
+          "height": 171.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "212px"
+        },
+        {
+          "info": "SPF Mini · Halle 1 · Nr. 9502",
+          "height": 239.53125,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "212px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 189.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "212px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 189.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "212px"
+        },
+        {
+          "info": "Anzahl offen",
+          "height": 171.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "212px"
+        },
+        {
+          "info": "GE · Halle 1 · Nr. 9503",
+          "height": 581.09375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "212px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 189.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "212px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 215.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "182px"
+        },
+        {
+          "info": "Anzahl offen",
+          "height": 187.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "182px"
+        },
+        {
+          "info": "BL wD · Halle 1 · Nr. 9600",
+          "height": 277.125,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "182px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 215.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "182px"
+        }
+      ],
+      "reference": [
+        {
+          "height": 187,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "212px"
+        },
+        {
+          "height": 187,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "212px"
+        },
+        {
+          "height": 258.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "212px"
+        },
+        {
+          "height": 187,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "212px"
+        },
+        {
+          "height": 187,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "212px"
+        },
+        {
+          "height": 169,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "212px"
+        },
+        {
+          "height": 327.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "212px"
+        },
+        {
+          "height": 187,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "212px"
+        },
+        {
+          "height": 187,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "212px"
+        },
+        {
+          "height": 169,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "212px"
+        },
+        {
+          "height": 236.59375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "212px"
+        },
+        {
+          "height": 187,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "212px"
+        },
+        {
+          "height": 187,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "212px"
+        },
+        {
+          "height": 169,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "212px"
+        },
+        {
+          "height": 522.5625,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "240.984px"
+        },
+        {
+          "height": 187,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "212px"
+        },
+        {
+          "height": 175,
+          "padding": "12px 16px",
+          "gap": "12px",
+          "columns": "190px"
+        },
+        {
+          "height": 173,
+          "padding": "12px 16px",
+          "gap": "12px",
+          "columns": "190px"
+        },
+        {
+          "height": 262.1875,
+          "padding": "12px 16px",
+          "gap": "12px",
+          "columns": "190px"
+        },
+        {
+          "height": 175,
+          "padding": "12px 16px",
+          "gap": "12px",
+          "columns": "190px"
+        }
+      ]
+    },
+    {
+      "width": 320,
+      "textPercent": 200,
+      "overflow": false,
+      "overlap": false,
+      "cards": [
+        {
+          "info": "Tagesdienst",
+          "height": 404.25,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "212px"
+        },
+        {
+          "info": "4 Kuchen angefragt",
+          "height": 436.25,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "212px"
+        },
+        {
+          "info": "BL M · Halle 1 · Nr. 9500",
+          "height": 594.4375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "212px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 404.25,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "212px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 404.25,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "212px"
+        },
+        {
+          "info": "0 Kuchen angefragt",
+          "height": 376.25,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "212px"
+        },
+        {
+          "info": "BL M · Halle 1 · Nr. 9501",
+          "height": 810.4375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "212px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 404.25,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "212px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 404.25,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "212px"
+        },
+        {
+          "info": "Anzahl offen",
+          "height": 436.25,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "212px"
+        },
+        {
+          "info": "SPF Mini · Halle 1 · Nr. 9502",
+          "height": 551.25,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "212px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 404.25,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "212px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 404.25,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "212px"
+        },
+        {
+          "info": "Anzahl offen",
+          "height": 436.25,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "212px"
+        },
+        {
+          "info": "GE · Halle 1 · Nr. 9503",
+          "height": 1930.875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "212px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 404.25,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "212px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 469.046875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "182px"
+        },
+        {
+          "info": "Anzahl offen",
+          "height": 479.4375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "182px"
+        },
+        {
+          "info": "BL wD · Halle 1 · Nr. 9600",
+          "height": 637.625,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "182px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 436.25,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "182px"
+        }
+      ],
+      "reference": [
+        {
+          "height": 355.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "229.75px"
+        },
+        {
+          "height": 355.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "285.469px"
+        },
+        {
+          "height": 588.5625,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "212px"
+        },
+        {
+          "height": 355.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "212px"
+        },
+        {
+          "height": 355.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "229.75px"
+        },
+        {
+          "height": 295.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "285.469px"
+        },
+        {
+          "height": 804.5625,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "212px"
+        },
+        {
+          "height": 355.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "212px"
+        },
+        {
+          "height": 355.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "229.75px"
+        },
+        {
+          "height": 350.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "285.469px"
+        },
+        {
+          "height": 545.375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "212px"
+        },
+        {
+          "height": 355.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "212px"
+        },
+        {
+          "height": 355.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "229.75px"
+        },
+        {
+          "height": 350.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "285.469px"
+        },
+        {
+          "height": 951.125,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "457.984px"
+        },
+        {
+          "height": 355.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "212px"
+        },
+        {
+          "height": 343.1875,
+          "padding": "12px 16px",
+          "gap": "12px",
+          "columns": "246.047px"
+        },
+        {
+          "height": 338.1875,
+          "padding": "12px 16px",
+          "gap": "12px",
+          "columns": "285.469px"
+        },
+        {
+          "height": 619.75,
+          "padding": "12px 16px",
+          "gap": "12px",
+          "columns": "203.391px"
+        },
+        {
+          "height": 375.1875,
+          "padding": "12px 16px",
+          "gap": "12px",
+          "columns": "201.906px"
+        }
+      ]
+    },
+    {
+      "width": 360,
+      "textPercent": 100,
+      "overflow": false,
+      "overlap": false,
+      "cards": [
+        {
+          "info": "Tagesdienst",
+          "height": 189.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "info": "4 Kuchen angefragt",
+          "height": 189.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "info": "BL M · Halle 1 · Nr. 9500",
+          "height": 213.53125,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 189.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 189.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "info": "0 Kuchen angefragt",
+          "height": 171.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "info": "BL M · Halle 1 · Nr. 9501",
+          "height": 282.53125,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 189.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 189.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "info": "Anzahl offen",
+          "height": 171.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "info": "SPF Mini · Halle 1 · Nr. 9502",
+          "height": 239.53125,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 189.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 189.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "info": "Anzahl offen",
+          "height": 171.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "info": "GE · Halle 1 · Nr. 9503",
+          "height": 499.5,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 189.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 189.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "222px"
+        },
+        {
+          "info": "Anzahl offen",
+          "height": 171.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "222px"
+        },
+        {
+          "info": "BL wD · Halle 1 · Nr. 9600",
+          "height": 261.125,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "222px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 189.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "222px"
+        }
+      ],
+      "reference": [
+        {
+          "height": 187,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "height": 187,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "height": 210.59375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "height": 187,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "height": 187,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "height": 169,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "height": 279.59375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "height": 187,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "height": 187,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "height": 169,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "height": 236.59375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "height": 187,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "height": 187,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "height": 169,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "height": 496.5625,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "height": 187,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "height": 175,
+          "padding": "12px 16px",
+          "gap": "12px",
+          "columns": "230px"
+        },
+        {
+          "height": 157,
+          "padding": "12px 16px",
+          "gap": "12px",
+          "columns": "230px"
+        },
+        {
+          "height": 246.1875,
+          "padding": "12px 16px",
+          "gap": "12px",
+          "columns": "230px"
+        },
+        {
+          "height": 175,
+          "padding": "12px 16px",
+          "gap": "12px",
+          "columns": "230px"
+        }
+      ]
+    },
+    {
+      "width": 360,
+      "textPercent": 200,
+      "overflow": false,
+      "overlap": false,
+      "cards": [
+        {
+          "info": "Tagesdienst",
+          "height": 404.25,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "info": "4 Kuchen angefragt",
+          "height": 404.25,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "info": "BL M · Halle 1 · Nr. 9500",
+          "height": 551.25,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 365.875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 404.25,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "info": "0 Kuchen angefragt",
+          "height": 344.25,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "info": "BL M · Halle 1 · Nr. 9501",
+          "height": 735.25,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 365.875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 404.25,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "info": "Anzahl offen",
+          "height": 436.25,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "info": "SPF Mini · Halle 1 · Nr. 9502",
+          "height": 551.25,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 365.875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 404.25,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "info": "Anzahl offen",
+          "height": 436.25,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "info": "GE · Halle 1 · Nr. 9503",
+          "height": 1629.3125,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 365.875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 437.046875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "222px"
+        },
+        {
+          "info": "Anzahl offen",
+          "height": 436.25,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "222px"
+        },
+        {
+          "info": "BL wD · Halle 1 · Nr. 9600",
+          "height": 637.625,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "222px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 404.25,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "222px"
+        }
+      ],
+      "reference": [
+        {
+          "height": 355.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "height": 355.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "285.469px"
+        },
+        {
+          "height": 545.375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "height": 355.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "height": 355.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "height": 295.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "285.469px"
+        },
+        {
+          "height": 729.375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "height": 355.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "height": 355.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "height": 350.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "285.469px"
+        },
+        {
+          "height": 545.375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "height": 355.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "height": 355.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "height": 350.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "285.469px"
+        },
+        {
+          "height": 951.125,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "457.984px"
+        },
+        {
+          "height": 355.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "height": 343.1875,
+          "padding": "12px 16px",
+          "gap": "12px",
+          "columns": "246.047px"
+        },
+        {
+          "height": 338.1875,
+          "padding": "12px 16px",
+          "gap": "12px",
+          "columns": "285.469px"
+        },
+        {
+          "height": 576.5625,
+          "padding": "12px 16px",
+          "gap": "12px",
+          "columns": "230px"
+        },
+        {
+          "height": 343.1875,
+          "padding": "12px 16px",
+          "gap": "12px",
+          "columns": "230px"
+        }
+      ]
+    },
+    {
+      "width": 390,
+      "textPercent": 100,
+      "overflow": false,
+      "overlap": false,
+      "cards": [
+        {
+          "info": "Tagesdienst",
+          "height": 189.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "info": "4 Kuchen angefragt",
+          "height": 189.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "info": "BL M · Halle 1 · Nr. 9500",
+          "height": 213.53125,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 189.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 189.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "info": "0 Kuchen angefragt",
+          "height": 171.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "info": "BL M · Halle 1 · Nr. 9501",
+          "height": 267.53125,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 189.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 189.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "info": "Anzahl offen",
+          "height": 171.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "info": "SPF Mini · Halle 1 · Nr. 9502",
+          "height": 213.53125,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 189.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 189.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "info": "Anzahl offen",
+          "height": 171.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "info": "GE · Halle 1 · Nr. 9503",
+          "height": 447.90625,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 189.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 189.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "info": "Anzahl offen",
+          "height": 171.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "info": "BL wD · Halle 1 · Nr. 9600",
+          "height": 235.125,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 189.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        }
+      ],
+      "reference": [
+        {
+          "height": 187,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "height": 187,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "height": 210.59375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "height": 187,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "height": 187,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "height": 169,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "height": 264.59375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "height": 187,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "height": 187,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "height": 169,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "height": 210.59375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "height": 187,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "height": 187,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "height": 169,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "height": 444.96875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "height": 187,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "height": 175,
+          "padding": "12px 16px",
+          "gap": "12px",
+          "columns": "260px"
+        },
+        {
+          "height": 157,
+          "padding": "12px 16px",
+          "gap": "12px",
+          "columns": "260px"
+        },
+        {
+          "height": 198.59375,
+          "padding": "12px 16px",
+          "gap": "12px",
+          "columns": "260px"
+        },
+        {
+          "height": 175,
+          "padding": "12px 16px",
+          "gap": "12px",
+          "columns": "260px"
+        }
+      ]
+    },
+    {
+      "width": 390,
+      "textPercent": 200,
+      "overflow": false,
+      "overlap": false,
+      "cards": [
+        {
+          "info": "Tagesdienst",
+          "height": 365.875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "info": "4 Kuchen angefragt",
+          "height": 404.25,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "info": "BL M · Halle 1 · Nr. 9500",
+          "height": 551.25,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 365.875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 365.875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "info": "0 Kuchen angefragt",
+          "height": 344.25,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "info": "BL M · Halle 1 · Nr. 9501",
+          "height": 703.25,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 365.875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 365.875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "info": "Anzahl offen",
+          "height": 404.25,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "info": "SPF Mini · Halle 1 · Nr. 9502",
+          "height": 551.25,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 365.875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 365.875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "info": "Anzahl offen",
+          "height": 404.25,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "info": "GE · Halle 1 · Nr. 9503",
+          "height": 1478.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 365.875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 404.25,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "info": "Anzahl offen",
+          "height": 436.25,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "info": "BL wD · Halle 1 · Nr. 9600",
+          "height": 594.4375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 365.875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "252px"
+        }
+      ],
+      "reference": [
+        {
+          "height": 355.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "height": 355.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "285.469px"
+        },
+        {
+          "height": 545.375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "height": 355.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "height": 355.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "height": 295.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "285.469px"
+        },
+        {
+          "height": 697.375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "height": 355.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "height": 355.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "height": 350.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "285.469px"
+        },
+        {
+          "height": 545.375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "height": 355.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "height": 355.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "height": 350.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "285.469px"
+        },
+        {
+          "height": 951.125,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "457.984px"
+        },
+        {
+          "height": 355.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "282px"
+        },
+        {
+          "height": 343.1875,
+          "padding": "12px 16px",
+          "gap": "12px",
+          "columns": "260px"
+        },
+        {
+          "height": 338.1875,
+          "padding": "12px 16px",
+          "gap": "12px",
+          "columns": "285.469px"
+        },
+        {
+          "height": 533.375,
+          "padding": "12px 16px",
+          "gap": "12px",
+          "columns": "260px"
+        },
+        {
+          "height": 343.1875,
+          "padding": "12px 16px",
+          "gap": "12px",
+          "columns": "260px"
+        }
+      ]
+    },
+    {
+      "width": 700,
+      "textPercent": 100,
+      "overflow": false,
+      "overlap": false,
+      "cards": [
+        {
+          "info": "Tagesdienst",
+          "height": 189.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "info": "4 Kuchen angefragt",
+          "height": 189.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "info": "BL M · Halle 1 · Nr. 9500",
+          "height": 213.53125,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 189.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 189.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "info": "0 Kuchen angefragt",
+          "height": 171.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "info": "BL M · Halle 1 · Nr. 9501",
+          "height": 252.53125,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 189.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 189.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "info": "Anzahl offen",
+          "height": 171.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "info": "SPF Mini · Halle 1 · Nr. 9502",
+          "height": 213.53125,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 189.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 189.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "info": "Anzahl offen",
+          "height": 171.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "info": "GE · Halle 1 · Nr. 9503",
+          "height": 355.71875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 189.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 189.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "562px"
+        },
+        {
+          "info": "Anzahl offen",
+          "height": 171.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "562px"
+        },
+        {
+          "info": "BL wD · Halle 1 · Nr. 9600",
+          "height": 213.53125,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "562px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 189.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "562px"
+        }
+      ],
+      "reference": [
+        {
+          "height": 187,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "height": 187,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "height": 210.59375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "height": 187,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "height": 187,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "height": 169,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "height": 249.59375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "height": 187,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "height": 187,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "height": 169,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "height": 210.59375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "height": 187,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "height": 187,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "height": 169,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "height": 352.78125,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "height": 187,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "height": 175,
+          "padding": "12px 16px",
+          "gap": "12px",
+          "columns": "570px"
+        },
+        {
+          "height": 157,
+          "padding": "12px 16px",
+          "gap": "12px",
+          "columns": "570px"
+        },
+        {
+          "height": 198.59375,
+          "padding": "12px 16px",
+          "gap": "12px",
+          "columns": "570px"
+        },
+        {
+          "height": 175,
+          "padding": "12px 16px",
+          "gap": "12px",
+          "columns": "570px"
+        }
+      ]
+    },
+    {
+      "width": 700,
+      "textPercent": 200,
+      "overflow": false,
+      "overlap": false,
+      "cards": [
+        {
+          "info": "Tagesdienst",
+          "height": 291.875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "info": "4 Kuchen angefragt",
+          "height": 291.875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "info": "BL M · Halle 1 · Nr. 9500",
+          "height": 332.0625,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 291.875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 291.875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "info": "0 Kuchen angefragt",
+          "height": 273.875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "info": "BL M · Halle 1 · Nr. 9501",
+          "height": 420.0625,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 291.875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 291.875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "info": "Anzahl offen",
+          "height": 273.875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "info": "SPF Mini · Halle 1 · Nr. 9502",
+          "height": 332.0625,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 291.875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 291.875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "info": "Anzahl offen",
+          "height": 273.875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "info": "GE · Halle 1 · Nr. 9503",
+          "height": 775.8125,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 291.875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 291.875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "562px"
+        },
+        {
+          "info": "Anzahl offen",
+          "height": 273.875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "562px"
+        },
+        {
+          "info": "BL wD · Halle 1 · Nr. 9600",
+          "height": 332.0625,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "562px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 291.875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "562px"
+        }
+      ],
+      "reference": [
+        {
+          "height": 281.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "height": 281.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "height": 326.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "height": 281.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "height": 281.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "height": 263.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "height": 414.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "height": 281.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "height": 281.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "height": 263.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "height": 326.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "height": 281.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "height": 281.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "height": 263.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "height": 769.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "height": 281.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "592px"
+        },
+        {
+          "height": 269.1875,
+          "padding": "12px 16px",
+          "gap": "12px",
+          "columns": "570px"
+        },
+        {
+          "height": 251.1875,
+          "padding": "12px 16px",
+          "gap": "12px",
+          "columns": "570px"
+        },
+        {
+          "height": 314.1875,
+          "padding": "12px 16px",
+          "gap": "12px",
+          "columns": "570px"
+        },
+        {
+          "height": 269.1875,
+          "padding": "12px 16px",
+          "gap": "12px",
+          "columns": "570px"
+        }
+      ]
+    },
+    {
+      "width": 900,
+      "textPercent": 100,
+      "overflow": false,
+      "overlap": false,
+      "cards": [
+        {
+          "info": "Tagesdienst",
+          "height": 189.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "info": "4 Kuchen angefragt",
+          "height": 189.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "info": "BL M · Halle 1 · Nr. 9500",
+          "height": 213.53125,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 189.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 189.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "info": "0 Kuchen angefragt",
+          "height": 171.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "info": "BL M · Halle 1 · Nr. 9501",
+          "height": 252.53125,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 189.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 189.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "info": "Anzahl offen",
+          "height": 171.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "info": "SPF Mini · Halle 1 · Nr. 9502",
+          "height": 213.53125,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 189.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 189.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "info": "Anzahl offen",
+          "height": 171.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "info": "GE · Halle 1 · Nr. 9503",
+          "height": 315.125,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 189.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 189.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "718px"
+        },
+        {
+          "info": "Anzahl offen",
+          "height": 171.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "718px"
+        },
+        {
+          "info": "BL wD · Halle 1 · Nr. 9600",
+          "height": 213.53125,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "718px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 189.9375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "718px"
+        }
+      ],
+      "reference": [
+        {
+          "height": 187,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "height": 187,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "height": 210.59375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "height": 187,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "height": 187,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "height": 169,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "height": 249.59375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "height": 187,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "height": 187,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "height": 169,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "height": 210.59375,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "height": 187,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "height": 187,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "height": 169,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "height": 312.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "height": 187,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "height": 175,
+          "padding": "12px 16px",
+          "gap": "12px",
+          "columns": "726px"
+        },
+        {
+          "height": 157,
+          "padding": "12px 16px",
+          "gap": "12px",
+          "columns": "726px"
+        },
+        {
+          "height": 198.59375,
+          "padding": "12px 16px",
+          "gap": "12px",
+          "columns": "726px"
+        },
+        {
+          "height": 175,
+          "padding": "12px 16px",
+          "gap": "12px",
+          "columns": "726px"
+        }
+      ]
+    },
+    {
+      "width": 900,
+      "textPercent": 200,
+      "overflow": false,
+      "overlap": false,
+      "cards": [
+        {
+          "info": "Tagesdienst",
+          "height": 291.875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "info": "4 Kuchen angefragt",
+          "height": 291.875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "info": "BL M · Halle 1 · Nr. 9500",
+          "height": 332.0625,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 291.875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 291.875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "info": "0 Kuchen angefragt",
+          "height": 273.875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "info": "BL M · Halle 1 · Nr. 9501",
+          "height": 420.0625,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 291.875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 291.875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "info": "Anzahl offen",
+          "height": 273.875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "info": "SPF Mini · Halle 1 · Nr. 9502",
+          "height": 332.0625,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 291.875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 291.875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "info": "Anzahl offen",
+          "height": 273.875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "info": "GE · Halle 1 · Nr. 9503",
+          "height": 694.625,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 291.875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 291.875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "718px"
+        },
+        {
+          "info": "Anzahl offen",
+          "height": 273.875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "718px"
+        },
+        {
+          "info": "BL wD · Halle 1 · Nr. 9600",
+          "height": 332.0625,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "718px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 291.875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "718px"
+        }
+      ],
+      "reference": [
+        {
+          "height": 281.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "height": 281.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "height": 326.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "height": 281.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "height": 281.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "height": 263.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "height": 414.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "height": 281.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "height": 281.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "height": 263.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "height": 326.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "height": 281.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "height": 281.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "height": 263.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "height": 688.75,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "height": 281.1875,
+          "padding": "18px 20px",
+          "gap": "12px",
+          "columns": "748px"
+        },
+        {
+          "height": 269.1875,
+          "padding": "12px 16px",
+          "gap": "12px",
+          "columns": "726px"
+        },
+        {
+          "height": 251.1875,
+          "padding": "12px 16px",
+          "gap": "12px",
+          "columns": "726px"
+        },
+        {
+          "height": 314.1875,
+          "padding": "12px 16px",
+          "gap": "12px",
+          "columns": "726px"
+        },
+        {
+          "height": 269.1875,
+          "padding": "12px 16px",
+          "gap": "12px",
+          "columns": "726px"
+        }
+      ]
+    },
+    {
+      "width": 901,
+      "textPercent": 100,
+      "overflow": false,
+      "overlap": false,
+      "cards": [
+        {
+          "info": "Tagesdienst",
+          "height": 120,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "info": "4 Kuchen angefragt",
+          "height": 120,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "info": "BL M · Halle 1 · Nr. 9500",
+          "height": 143.59375,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 120,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 120,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "info": "0 Kuchen angefragt",
+          "height": 120,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "info": "BL M · Halle 1 · Nr. 9501",
+          "height": 147.9375,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 120,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 120,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "info": "Anzahl offen",
+          "height": 120,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "info": "SPF Mini · Halle 1 · Nr. 9502",
+          "height": 143.59375,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 120,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 120,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "info": "Anzahl offen",
+          "height": 120,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "info": "GE · Halle 1 · Nr. 9503",
+          "height": 289.96875,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 120,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 120,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 357px"
+        },
+        {
+          "info": "Anzahl offen",
+          "height": 120,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 357px"
+        },
+        {
+          "info": "BL wD · Halle 1 · Nr. 9600",
+          "height": 143.59375,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 357px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 120,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 357px"
+        }
+      ],
+      "reference": [
+        {
+          "height": 118,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "height": 118,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "height": 141.59375,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "height": 118,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "height": 118,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "height": 118,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "height": 147,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "height": 118,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "height": 118,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "height": 118,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "height": 141.59375,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "height": 118,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "height": 118,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "height": 118,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "height": 287.96875,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "height": 118,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "height": 106,
+          "padding": "12px 16px",
+          "gap": "22px",
+          "columns": "340px 365px"
+        },
+        {
+          "height": 106,
+          "padding": "12px 16px",
+          "gap": "22px",
+          "columns": "340px 365px"
+        },
+        {
+          "height": 129.59375,
+          "padding": "12px 16px",
+          "gap": "22px",
+          "columns": "340px 365px"
+        },
+        {
+          "height": 106,
+          "padding": "12px 16px",
+          "gap": "22px",
+          "columns": "340px 365px"
+        }
+      ]
+    },
+    {
+      "width": 901,
+      "textPercent": 200,
+      "overflow": false,
+      "overlap": false,
+      "cards": [
+        {
+          "info": "Tagesdienst",
+          "height": 190,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "info": "4 Kuchen angefragt",
+          "height": 190,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "info": "BL M · Halle 1 · Nr. 9500",
+          "height": 273.375,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 190,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 190,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "info": "0 Kuchen angefragt",
+          "height": 190,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "info": "BL M · Halle 1 · Nr. 9501",
+          "height": 351.875,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 190,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 190,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "info": "Anzahl offen",
+          "height": 250,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "info": "SPF Mini · Halle 1 · Nr. 9502",
+          "height": 262.1875,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 190,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 190,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "info": "Anzahl offen",
+          "height": 250,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "info": "GE · Halle 1 · Nr. 9503",
+          "height": 879.875,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 190,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 190,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 357px"
+        },
+        {
+          "info": "Anzahl offen",
+          "height": 250,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 357px"
+        },
+        {
+          "info": "BL wD · Halle 1 · Nr. 9600",
+          "height": 273.375,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 357px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 190,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 357px"
+        }
+      ],
+      "reference": [
+        {
+          "height": 180.1875,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "height": 180.1875,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "height": 268.375,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "height": 180.1875,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "height": 180.1875,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "height": 180.1875,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "height": 351,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "height": 180.1875,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "height": 180.1875,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "height": 235.1875,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "height": 257.1875,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "height": 180.1875,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "height": 180.1875,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "height": 235.1875,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "height": 702.125,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "height": 180.1875,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 387px"
+        },
+        {
+          "height": 168.1875,
+          "padding": "12px 16px",
+          "gap": "22px",
+          "columns": "340px 365px"
+        },
+        {
+          "height": 223.1875,
+          "padding": "12px 16px",
+          "gap": "22px",
+          "columns": "340px 365px"
+        },
+        {
+          "height": 256.375,
+          "padding": "12px 16px",
+          "gap": "22px",
+          "columns": "340px 365px"
+        },
+        {
+          "height": 168.1875,
+          "padding": "12px 16px",
+          "gap": "22px",
+          "columns": "340px 365px"
+        }
+      ]
+    },
+    {
+      "width": 1280,
+      "textPercent": 100,
+      "overflow": false,
+      "overlap": false,
+      "cards": [
+        {
+          "info": "Tagesdienst",
+          "height": 120,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "info": "4 Kuchen angefragt",
+          "height": 120,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "info": "BL M · Halle 1 · Nr. 9500",
+          "height": 143.59375,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 120,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 120,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "info": "0 Kuchen angefragt",
+          "height": 120,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "info": "BL M · Halle 1 · Nr. 9501",
+          "height": 143.59375,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 120,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 120,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "info": "Anzahl offen",
+          "height": 120,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "info": "SPF Mini · Halle 1 · Nr. 9502",
+          "height": 143.59375,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 120,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 120,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "info": "Anzahl offen",
+          "height": 120,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "info": "GE · Halle 1 · Nr. 9503",
+          "height": 289.96875,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 120,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 120,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 636px"
+        },
+        {
+          "info": "Anzahl offen",
+          "height": 120,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 636px"
+        },
+        {
+          "info": "BL wD · Halle 1 · Nr. 9600",
+          "height": 143.59375,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 636px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 120,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 636px"
+        }
+      ],
+      "reference": [
+        {
+          "height": 118,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "height": 118,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "height": 141.59375,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "height": 118,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "height": 118,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "height": 118,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "height": 141.59375,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "height": 118,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "height": 118,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "height": 118,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "height": 141.59375,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "height": 118,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "height": 118,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "height": 118,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "height": 287.96875,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "height": 118,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "height": 106,
+          "padding": "12px 16px",
+          "gap": "22px",
+          "columns": "340px 644px"
+        },
+        {
+          "height": 106,
+          "padding": "12px 16px",
+          "gap": "22px",
+          "columns": "340px 644px"
+        },
+        {
+          "height": 129.59375,
+          "padding": "12px 16px",
+          "gap": "22px",
+          "columns": "340px 644px"
+        },
+        {
+          "height": 106,
+          "padding": "12px 16px",
+          "gap": "22px",
+          "columns": "340px 644px"
+        }
+      ]
+    },
+    {
+      "width": 1280,
+      "textPercent": 200,
+      "overflow": false,
+      "overlap": false,
+      "cards": [
+        {
+          "info": "Tagesdienst",
+          "height": 190,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "info": "4 Kuchen angefragt",
+          "height": 190,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "info": "BL M · Halle 1 · Nr. 9500",
+          "height": 273.375,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 190,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 190,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "info": "0 Kuchen angefragt",
+          "height": 190,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "info": "BL M · Halle 1 · Nr. 9501",
+          "height": 273.375,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 190,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 190,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "info": "Anzahl offen",
+          "height": 250,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "info": "SPF Mini · Halle 1 · Nr. 9502",
+          "height": 262.1875,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 190,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 190,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "info": "Anzahl offen",
+          "height": 250,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "info": "GE · Halle 1 · Nr. 9503",
+          "height": 879.875,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 190,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 190,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 636px"
+        },
+        {
+          "info": "Anzahl offen",
+          "height": 250,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 636px"
+        },
+        {
+          "info": "BL wD · Halle 1 · Nr. 9600",
+          "height": 273.375,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 636px"
+        },
+        {
+          "info": "Tagesdienst",
+          "height": 190,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 636px"
+        }
+      ],
+      "reference": [
+        {
+          "height": 180.1875,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "height": 180.1875,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "height": 268.375,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "height": 180.1875,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "height": 180.1875,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "height": 180.1875,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "height": 268.375,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "height": 180.1875,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "height": 180.1875,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "height": 235.1875,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "height": 257.1875,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "height": 180.1875,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "height": 180.1875,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "height": 235.1875,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "height": 702.125,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "height": 180.1875,
+          "padding": "18px 20px",
+          "gap": "22px",
+          "columns": "340px 666px"
+        },
+        {
+          "height": 168.1875,
+          "padding": "12px 16px",
+          "gap": "22px",
+          "columns": "340px 644px"
+        },
+        {
+          "height": 223.1875,
+          "padding": "12px 16px",
+          "gap": "22px",
+          "columns": "340px 644px"
+        },
+        {
+          "height": 256.375,
+          "padding": "12px 16px",
+          "gap": "22px",
+          "columns": "340px 644px"
+        },
+        {
+          "height": 168.1875,
+          "padding": "12px 16px",
+          "gap": "22px",
+          "columns": "340px 644px"
+        }
+      ]
+    }
+  ],
+  "checks": [
+    "320px: guest layout at 200% text, no private identifiers or assignment controls",
+    "901px: guest layout at 200% text, no private identifiers or assignment controls",
+    "1280px: guest layout at 200% text, no private identifiers or assignment controls",
+    "360px: delayed script, read-only candidate refresh, unchanged database, disclosure defaults, reduced motion, large cake counts",
+    "360px: statistics badges retained",
+    "1280px: delayed script, read-only candidate refresh, unchanged database, disclosure defaults, reduced motion, large cake counts",
+    "1280px: statistics badges retained"
+  ],
+  "browser": "156.0.8078.47"
+}

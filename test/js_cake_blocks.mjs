@@ -118,7 +118,7 @@ class Element {
 const coverage = new Element();
 coverage.dataset = { progressKind: "cake", progressFilled: "0", progressTotal: "0" };
 coverage.elements = Object.fromEntries([
-  "[data-progress-count]", ".coverage-fill", ".coverage-gauge", "[data-vacancies]",
+  "[data-progress-count]", ".coverage-fill", ".coverage-track", "[data-progress-percent]",
 ].map((selector) => [selector, new Element()]));
 const positions = new Element();
 const time = new Element("input");
@@ -251,7 +251,9 @@ check(!card.open && positions.children.length === 4, "saved setup expanded card 
 checkTaskHelpForSlots(4);
 check(requests.join() === form.dataset.settingsUrl, "collapsed setup loaded candidates");
 check(coverage.dataset.progressTotal === "4" && coverage.dataset.progressFilled === "0", "saved quantity did not refresh progress");
-check(coverage.elements["[data-vacancies]"].children[0].textContent === "Kuchenlieferung (4×)", "setup lost grouped vacancies");
+check(coverage.elements["[data-progress-count]"].textContent === "0 von 4 Kuchen zugesagt"
+  && coverage.elements["[data-progress-percent]"].textContent === "0 %"
+  && coverage.elements[".coverage-fill"].style.width === "0%", "setup lost cake count, percentage or bar");
 check(card.querySelectorAll("").every((select) => select.disabled), "new positions enabled without candidates");
 card.open = true;
 await globalThis.nuLigaCandidateTools.loadCandidateCard(card, true);
@@ -302,7 +304,9 @@ check(retry.hidden === false && card.querySelectorAll("").every((control) => con
 candidateFailure = false;
 await globalThis.nuLigaCandidateTools.loadCandidateCard(card, true);
 check(coverage.dataset.progressFilled === "1" && positions.children[0].dataset.occupantId === "7", "cake claim did not show saved progress and occupant");
-check(coverage.elements["[data-vacancies]"].children[0].textContent === "Kuchenlieferung (3×)", "claim updated ring without vacancies");
+check(coverage.elements["[data-progress-count]"].textContent === "1 von 4 Kuchen zugesagt"
+  && coverage.elements["[data-progress-percent]"].textContent === "25 %"
+  && coverage.elements[".coverage-fill"].style.width === "25%", "claim lost saved cake presentation");
 check(card.querySelectorAll("")[1].options.every((option) => option.value !== "7"), "cake volunteer still offered for another cake");
 
 configurationReply = { status: 400, json: async () => ({ ok: false, error: "Belegte Plätze freigeben." }) };
@@ -424,7 +428,8 @@ finishOldCandidates({ block: oldBlock, people: [person], slots: Object.fromEntri
 await oldCandidateRead;
 check(coverage.dataset.progressTotal === "4" && coverage.dataset.progressFilled === "0"
   && positions.children.length === 4, "delayed pre-mutation candidates replaced newer saved cake progress");
-check(coverage.elements["[data-vacancies]"].children[0].textContent === "Kuchenlieferung (4×)", "old candidates replaced newer vacancy count");
+check(coverage.elements["[data-progress-count]"].textContent === "0 von 4 Kuchen zugesagt"
+  && coverage.elements[".coverage-fill"].style.width === "0%", "old candidates replaced newer bar state");
 globalThis.fetch = ordinaryFetch;
 
 candidateFailure = true;
@@ -450,8 +455,7 @@ check(removedDescription.hidden && !removedDescription.popoverOpen
   "removing a configured cake position left its floating task guidance visible");
 check(positions.children.length === 0 && coverage.hidden, "zero cakes left positions or a visible percentage");
 check(card.elements["[data-cake-status]"].textContent === "Keine Kuchen angefragt", "zero cake status confused with setup");
-check(!coverage.elements[".coverage-gauge"].hasAttribute("role")
-  && coverage.elements["[data-vacancies]"].hidden, "zero cakes exposed an invalid progressbar or invented vacancy");
+check(!coverage.elements[".coverage-track"].hasAttribute("role"), "zero cakes exposed an invalid progressbar");
 globalThis.nuLigaCakeTools.renderBlockView(card, savedBlock(null));
 check(coverage.hidden && card.elements["[data-cake-status]"].textContent.includes("Einrichtung"), "unset cake status appears fully staffed");
 

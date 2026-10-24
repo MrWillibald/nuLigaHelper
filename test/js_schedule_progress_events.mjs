@@ -47,7 +47,7 @@ if (assignmentSelect.value !== "" || coverage.dataset.progressFilled !== "3") {
   throw new Error("rejected claim changed the selected person or displayed progress");
 }
 
-assert.equal(summary.snapshot(), beforeRefusal, "refused selection changed ring, semantics or vacancies");
+assert.equal(summary.snapshot(), beforeRefusal, "refused selection changed bar, percentage or semantics");
 
 // Adult Wischer and Kasse receive saved staffing, without deriving
 // requiredness from their role text or from the locally selected value.
@@ -65,9 +65,10 @@ for (const [role, slot, total, filled] of [
     staffing: { required_filled: filled, required_total: total, vacancies: {}, deficiencies: [] },
   }) });
   await listeners.change();
-  assert.equal(summary.count.textContent, `${filled}/${total}`);
-  assert.equal(Number(summary.arc.attrs["stroke-dashoffset"]), 100 - filled * 100 / total);
-  assert.equal(summary.gauge.attrs["aria-valuetext"], `${filled} von ${total} Pflichtdiensten besetzt`);
+  assert.equal(summary.count.textContent, `${filled} von ${total} Pflichtdiensten besetzt`);
+  assert.equal(summary.fill.style.width, `${Math.round(filled * 100 / total)}%`);
+  assert.equal(summary.percent.textContent, `${Math.round(filled * 100 / total)} %`);
+  assert.equal(summary.track.attrs["aria-valuetext"], `${filled} von ${total} Pflichtdiensten besetzt`);
   if (assignmentSelect.value !== "7"
       || coverage.dataset.progressFilled !== String(filled)
       || coverage.dataset.progressTotal !== String(total)) {
@@ -126,22 +127,22 @@ if (feedback.at(-1).severity !== "warning" || !feedback.at(-1).message.includes(
 const tools = globalThis.nuLigaProgressTools;
 tools.updateGameStaffing(card, { required_filled: 3, required_total: 7,
   vacancies: { Wischer: 1, Verkauf: 2, Kasse: 1 }, deficiencies: [] });
-assert.deepEqual(summary.vacancies.children.map(badge => badge.textContent),
-  ["Verkauf (2×)", "Kasse", "Wischer"], "JSON key sorting must not reorder role badges");
-assert.equal(summary.vacancies.hidden, false);
+assert.equal(summary.count.textContent, "3 von 7 Pflichtdiensten besetzt");
+assert.equal(summary.percent.textContent, "43 %");
 card.querySelectorAll = () => [];
 globalThis.nuLigaCandidateTools.populateCandidateCard(card, { people: [], slots: {}, staffing: {
   required_filled: 6, required_total: 7, vacancies: { Wischer: 1 }, deficiencies: [],
 } });
-assert.equal(summary.count.textContent, "6/7");
-assert.deepEqual(summary.vacancies.children.map(badge => badge.textContent), ["Wischer"]);
+assert.equal(summary.count.textContent, "6 von 7 Pflichtdiensten besetzt");
+assert.equal(summary.fill.style.width, "86%");
+assert.equal(summary.percent.textContent, "86 %");
 for (const filled of [0, 7]) {
   tools.updateGameStaffing(card, { required_filled: filled, required_total: 7,
     vacancies: filled ? {} : { Verkauf: 2 }, deficiencies: [] });
-  assert.equal(summary.arc.attrs["stroke-dashoffset"], filled ? "0" : "100");
-  assert.equal(summary.vacancies.hidden, filled === 7);
+  assert.equal(summary.fill.style.width, filled ? "100%" : "0%");
+  assert.equal(summary.percent.textContent, filled ? "100 %" : "0 %");
 }
-// A pre-write candidate read cannot roll back the saved ring and chips.
+// A pre-write candidate read cannot roll back the saved count and bar.
 card.dataset = { candidateUrl: "/api/games/1/candidates" };
 let finishOld;
 globalThis.fetch = async () => ({ ok: true, status: 200,
@@ -167,10 +168,10 @@ assignmentSelect.value = "7";
 const savedBlock = { phase: "preparation", progress: { filled: 2, total: 3 }, vacancies: { Vorbereitung: 1 } };
 globalThis.fetch = async () => ({ status: 200, json: async () => ({ ok: true, block: savedBlock }) });
 await listeners.change();
-assert.equal(summary.count.textContent, "2/3", "local +1 lost a concurrent saved block claim");
-assert.deepEqual(summary.vacancies.children.map(badge => badge.textContent), ["Vorbereitung"]);
+assert.equal(summary.count.textContent, "2 von 3 Plätzen besetzt", "local +1 lost a concurrent saved block claim");
+assert.equal(summary.fill.style.width, "67%");
 globalThis.nuLigaCandidateTools.populateCandidateCard(card, { people: [], slots: {}, block: {
   phase: "cleanup", progress: { filled: 3, total: 3 }, vacancies: {},
 } });
-assert.equal(summary.count.textContent, "3/3");
-assert.equal(summary.vacancies.hidden, true);
+assert.equal(summary.count.textContent, "3 von 3 Plätzen besetzt");
+assert.equal(summary.percent.textContent, "100 %");

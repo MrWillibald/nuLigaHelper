@@ -81,7 +81,7 @@ for (const fixture of settings) {
   assert.equal(field.dataset.occupantId, "9");
   assert.equal(field.dataset.replacementToken, "");
   assert.equal(coverage.dataset.progressFilled, "2");
-  assert.equal(summary.snapshot(), initialSummary, "takeover must preserve the occupied ring and vacancies");
+  assert.equal(summary.snapshot(), initialSummary, "takeover must preserve the occupied count and bar");
   assert.equal(select.hidden, true);
   assert.match(status.textContent, /Verbindlich/);
 }

@@ -87,22 +87,39 @@ PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs \
   BROWSER_EXECUTABLE=/absolute/path/to/chromium node test/browser_binding_assignments.mjs
 ```
 
-The optional `browser_schedule_gauges.mjs` check covers compact schedule rings,
-role/block vacancy badges, native disclosures and saved-state initialization at
-320, 360, 390, 700, 900 and 1280 CSS pixels, with normal and doubled text. It uses
-`test/schedule_gauge_fixture.py`, a temporary synthetic database and a loopback
-server; no production configuration or providers are used. Like the browser
-checks above, it requires an already installed Playwright module and Chromium:
+The optional `browser_schedule_progress.mjs` check covers horizontal schedule bars,
+German occupied/required counts, rounded percentages, separate warnings and native
+keyboard/touch disclosures at 320, 360, 390, 700, 900, 901 and 1280 CSS pixels,
+with normal and doubled text. It uses `test/schedule_progress_fixture.py`, a
+throwaway synthetic database and a loopback server; no production settings or
+providers are used. Partial/empty/full staffing, long names, classification and
+eligibility warnings, cake setup/zero/positive states and past cards are included.
+It also checks delayed scripts, reduced motion, disclosure defaults and statistics
+badges. Like the checks above, it requires preinstalled Playwright and Chromium:
 
 ```bash
 PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs \
   BROWSER_EXECUTABLE=/absolute/path/to/chromium \
-  BROWSER_REPORT_PATH=/tmp/gauge-layout.json \
-  BROWSER_SCREENSHOT_DIR=/tmp/gauge-screens \
-  node test/browser_schedule_gauges.mjs
+  BROWSER_REPORT_PATH=/tmp/progress-layout.json \
+  BROWSER_SCREENSHOT_DIR=/tmp/progress-screens \
+  node test/browser_schedule_progress.mjs
 ```
 
-Optional `GAUGE_BEFORE_DIR` points to captured pre-change `schedule.html` and
-`style.css` files. The fixture renders those assets with the same saved data to
-measure before/after heights. Results for the gauge change are retained in
-`openspec/changes/archive/2026-10-21-compact-schedule-gauges/verification.md` and `verification/`.
+Optional `PROGRESS_REFERENCE_DIR` points to captured reference `schedule.html` and
+`style.css` files (for example from `1859deb`, before the ring layout). Those assets
+render against the same saved data for comparison; there is no height reduction
+target. Implementation evidence is retained in
+`openspec/changes/archive/2026-10-24-restore-schedule-progress-layout/verification.md` and `verification/`.
+
+The affected dependency-free JavaScript regressions also run in `test/run_tests.sh`:
+
+```bash
+node test/js_assignment_options.mjs
+node test/js_schedule_progress_events.mjs
+node test/js_candidate_loading.mjs
+node test/js_candidate_toggle.mjs
+node test/js_cake_blocks.mjs
+node test/js_assignment_confirmation.mjs
+node test/js_age_replacement.mjs
+node test/js_replacement_cancellation.mjs
+```

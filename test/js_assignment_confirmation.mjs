@@ -48,7 +48,7 @@ for (const settings of cases) {
     assert.equal(field.dataset.occupantId, ""); assert.equal(select.value, "");
     assert.equal(document.activeElement, select, "cancellation must return focus to the initiating control");
     assert.equal(page.dialog.open, false);
-    assert.equal(summary.snapshot(), beforeSummary, `${dismissal} changed the ring or vacancy badges`);
+    assert.equal(summary.snapshot(), beforeSummary, `${dismissal} changed the count, percentage or bar`);
   }
   const { select, field, status } = page.createDuty({ ...settings, late: true });
   tools.bindAssignmentSelect(select); select.focus(); select.value = "9";

@@ -105,8 +105,10 @@ def test_setup_zero_and_four_cakes_are_distinct_saved_collapsed_states(_today):
     card = tree.get_element_by_id(f'block-{ids["cake"]}')
     assert len(card.xpath('.//select[@data-block-assignment]')) == 4
     assert "4 Kuchen angefragt" in card.xpath("./summary")[0].text_content()
-    assert card.xpath('.//*[@data-vacancies]/span/text()') == ["Kuchenlieferung (4×)"]
-    assert card.xpath('.//*[@data-progress-count]/text()') == ["0/4"]
+    assert card.xpath('.//*[@data-progress-percent]/text()') == ["0 %"]
+    assert card.xpath('.//*[@class="coverage-fill"]/@style') == ["width:0%"]
+    assert not card.xpath('.//*[@data-vacancies or @class="coverage-gauge"]')
+    assert card.xpath('.//*[@data-progress-count]/text()') == ["0 von 4 Kuchen zugesagt"]
     assert not card.xpath('.//*[contains(@class,"game-responsible")]')
     cards = tree.xpath('//details[contains(@class,"game-card")]')
     assert "task-block-preparation" in cards[0].get("class")
