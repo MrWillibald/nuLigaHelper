@@ -1,0 +1,11 @@
+{% if visibility_boundary %}
+<div class="visibility-scope" role="note" aria-label="Angezeigter Zeitraum">
+  {% if show_hidden %}
+  <p>Ausgeblendete Heimspieltage ab dem {{ visibility_boundary.strftime('%d.%m.%Y') }} werden in dieser Ansicht angezeigt.</p>
+  {% else %}
+  <p>Heimspieltage ab dem {{ visibility_boundary.strftime('%d.%m.%Y') }} sind derzeit ausgeblendet.</p>
+  {% endif %}
+  {% if active_page == '/statistik' %}<p>Die Einschränkung betrifft offene Dienste, Altersanforderungen und Einrichtung. Spiele pro Mannschaft und Dienste pro Person beziehen sich auf die gesamte Saison.</p>{% endif %}
+  {% if viewer_tier == 'admin' %}<a href="{{ visibility_toggle_url }}">{{ 'Ausgeblendete Spieltage wieder ausblenden' if show_hidden else 'Ausgeblendete Spieltage anzeigen' }}</a>{% endif %}
+</div>
+{% endif %}

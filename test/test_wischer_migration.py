@@ -75,7 +75,7 @@ def _app(path):
 
 def test_successor_preserves_first_state_all_other_data_and_exact_old_plus_new_audits():
     assert sm.head_revisions() == (sm.HEAD_REVISION,)
-    assert ScriptDirectory.from_config(sm.alembic_config()).get_revision(sm.HEAD_REVISION).down_revision == PREVIOUS
+    assert ScriptDirectory.from_config(sm.alembic_config()).get_revision(sm.WISCHER_REVISION).down_revision == PREVIOUS
     for source in ("0006_game_duty_staffing", PREVIOUS):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "source.db"

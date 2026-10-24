@@ -20,7 +20,7 @@ import backup
 
 BASELINE_REVISION = "0001_current_schema_baseline"
 WISCHER_REVISION = "0008_single_wischer"
-HEAD_REVISION = WISCHER_REVISION
+HEAD_REVISION = "0009_schedule_visibility"
 
 # Only historical source revisions may translate the former per-game cleaning
 # role. Current Reinigung from 0006/0007 instead becomes the single Wischer.
@@ -366,7 +366,8 @@ def _unreviewed_metadata_drift(engine, metadata, inherited_defaults: dict) -> li
     return remaining
 
 
-def verify_head_schema(engine, *, inherited_defaults: dict | None = None) -> None:
+def verify_head_schema(engine, *, inherited_defaults: dict | None = None,
+                       before_visibility: bool = False) -> None:
     """Verify actual current schema, including an already-head database, read-only."""
     try:
         with engine.connect() as connection:
@@ -382,10 +383,13 @@ def verify_head_schema(engine, *, inherited_defaults: dict | None = None) -> Non
         elif actual_defaults != inherited_defaults:
             raise SchemaMigrationError("Schema verification changed recognized historical defaults")
         import db
-        if _unreviewed_metadata_drift(engine, db.Base.metadata, inherited_defaults):
+        metadata = _pre_visibility_metadata() if before_visibility else db.Base.metadata
+        if _unreviewed_metadata_drift(engine, metadata, inherited_defaults):
             raise SchemaMigrationError("Schema verification found unreviewed model metadata drift")
-        if _check_constraint_drift(engine, db.Base.metadata):
+        if _check_constraint_drift(engine, metadata):
             raise SchemaMigrationError("Schema verification found unreviewed check-constraint drift")
+        if not before_visibility:
+            _verify_visibility_state(engine)
     except SchemaMigrationError:
         raise
     except Exception as exc:
@@ -413,11 +417,35 @@ def _check_constraint_drift(engine, metadata) -> bool:
     return False
 
 
-def _pre_binding_metadata():
-    """Reviewed storage before durable request and cutoff state existed."""
+def _verify_visibility_state(engine, *, unrestricted=False):
+    from datetime import date
+    with engine.connect() as connection:
+        rows = connection.exec_driver_sql("SELECT id, hide_from FROM schedule_visibility_setting").fetchall()
+    if len(rows) != 1 or rows[0][0] != 1:
+        raise SchemaMigrationError("Schema verification found invalid visibility singleton state")
+    value = rows[0][1]
+    try:
+        if value is not None and date.fromisoformat(value).isoformat() != value:
+            raise ValueError
+    except (TypeError, ValueError):
+        raise SchemaMigrationError("Schema verification found invalid visibility date") from None
+    if unrestricted and value is not None:
+        raise SchemaMigrationError("Visibility migration must begin unrestricted")
+
+
+def _pre_visibility_metadata():
     import db
     metadata = MetaData()
     for table in db.Base.metadata.tables.values():
+        if table.name != "schedule_visibility_setting":
+            table.to_metadata(metadata)
+    return metadata
+
+
+def _pre_binding_metadata():
+    """Reviewed storage before durable request and cutoff state existed."""
+    metadata = MetaData()
+    for table in _pre_visibility_metadata().tables.values():
         if table.name != "duty_cutoffs":
             table.to_metadata(metadata)
     for name in ("assignments", "block_assignments"):
@@ -497,14 +525,15 @@ def migrate_to_head(database_path: str | Path, engine) -> MigrationResult:
             raise SchemaMigrationError(
                 f"The game-duty source schema does not match its reviewed revision: {exc}"
             ) from exc
-    elif state.revision == "0007_binding_duty_assignments":
-        verify_head_schema(engine, inherited_defaults=inherited_defaults)
+    elif state.revision in {"0007_binding_duty_assignments", WISCHER_REVISION}:
+        verify_head_schema(engine, inherited_defaults=inherited_defaults, before_visibility=True)
 
     backup_path = _create_backup(path)
     try:
         wischer = ScriptDirectory.from_config(alembic_config()).get_revision(WISCHER_REVISION).module
         with engine.connect() as connection:
-            removals = wischer.removal_plan(connection, state.revision)
+            removals = (wischer.removal_plan(connection, state.revision)
+                        if state.revision != WISCHER_REVISION else [])
         retained_columns, retained_fingerprints = _retained_data(backup_path, appended_audits=removals)
         with engine.connect() as connection:
             connection.commit()
@@ -549,6 +578,7 @@ def migrate_to_head(database_path: str | Path, engine) -> MigrationResult:
                 f"Retained-data postflight failed for tables: {', '.join(sorted(changed))}"
             )
         verify_head_schema(engine, inherited_defaults=inherited_defaults)
+        _verify_visibility_state(engine, unrestricted=True)
     except BaseException as exc:
         if isinstance(exc, SchemaMigrationError):
             message = str(exc)
