@@ -160,6 +160,7 @@ def _send_notifications(
             cnt += notifier.notify_cleanup_early(next_week)
             cnt += notifier.notify_cakes_early(next_week)
             cnt += notifier.notify_pre(next_week)
+            cnt += notifier.notify_team_vacancies_early(next_week)
             logging.info(f"Number of sent service notifications: {cnt}")
             logging.info("-------------------------------------------------")
 

@@ -475,6 +475,25 @@ or individually via `python3 test/test_db.py` etc., or with pytest (`pytest test
 
 The active MV of a game's responsible team receives an MV notification as long as required positions of that game are still unassigned or have unresolved/invalid age eligibility. Adult games require all seven offered positions; youth games and unresolved classes require the baseline five. Retained removed duties do not affect completeness. Day blocks have no responsible team and therefore never create an MV reminder.
 
+Exactly seven calendar days ahead, the daily job also sends a personal German vacancy
+invitation for each game with physically free required positions and a saved responsible
+team. It lists the open tasks and number of free places and invites members to choose a
+suitable duty in the Heimspielplan; actual claims retain all eligibility and confirmation
+rules. Recipients are current active members of that responsible team, including its MV
+under the same rules; an MV appointment is not required. Pending, rejected and inactive
+accounts and non-members receive none. Anyone holding any assignment in that game is
+excluded, including retained removed duties and duties seeking replacement. Assignments
+in another game or a day block do not exclude a member, and invitation recipients have no
+additional birth-date filter. Each qualifying person receives one invitation per game per
+invocation, with e-mail preferred, SMS as fallback when no usable e-mail is stored, and a
+warning/zero sent count when neither contact is available. Spielfeste use their full event
+label without invented opponents. Replacement searches, age/classification deficiencies
+alone and gaps in preparation, cleanup or cake blocks do not trigger this invitation.
+Existing assigned-helper weekly reminders and day-before MV follow-up retain their
+conditions. A missed daily run misses that seven-day invitation; a same-day rerun can send
+it again. There is no catch-up or persistent delivery deduplication, and several qualifying
+games can produce several messages for one person. No new configuration is needed.
+
 Preparation, cake delivery and cleanup are date-level duties rather than duties of an individual game. Active members and MVs may claim or take over only for themselves and seek replacement only for their own unlocked block duty; admins retain roster-wide staffing scope under the same binding and lock rules. A person may hold one task in each block independently of any game assignment on the same date. Preparation helpers receive the special one-week reminder, cleanup and cake helpers an ordinary one-week reminder, and all occupied block slots a day-before reminder. Cake reminders include the saved delivery time and ask each volunteer for one cake. Empty positions send no helper reminder; ordinary reminders prefer e-mail, fall back to SMS and skip contactless helpers. Game-level `Verkauf` helpers always use the normal game reminder flow.
 
 ## Cake delivery

@@ -54,7 +54,9 @@ FIELD_DESCRIPTIONS = {
     "age_class_display_label": "Newspaper display name derived from the scraped age class.",
     "home_team_name": "Ordinary game's home team.",
     "away_team_name": "Ordinary game's away team.",
-    "responsible_team_name": "The team's name whose MV receives the follow-up.",
+    "responsible_team_name": "Saved responsible team receiving member invitations or MV follow-up.",
+    "open_tasks_text": "Catalog-rendered required physical vacancies in display order, grouped by task.",
+    "vacancy_count": "Number of physically free required positions for one semantic task.",
     "timekeeper_name": "Saved timekeeper name, or staffing.position_unassigned when vacant.",
     "timekeeper_task_label": "Current display label for the timekeeper duty.",
     "secretary_name": "Saved secretary name, or staffing.position_unassigned when vacant.",
@@ -85,8 +87,62 @@ _SPF_FIELDS = ("recipient_name", "game_date", "task_label", "age_class", "game_s
 _MV_FIELDS = ("recipient_name", "responsible_team_name", "game_date", "timekeeper_name", "secretary_name", "timekeeper_task_label", "secretary_task_label", "age_class", "game_start_time", "age_eligibility_feedback")
 _BLOCK_FIELDS = ("recipient_name", "block_date", "task_label", "block_meeting_time")
 _SHIFT_FIELDS = ("recipient_name", "task_label", "age_class", "old_game_date", "old_game_start_time", "new_game_date", "new_game_start_time")
+_TEAM_VACANCY_FIELDS = ("recipient_name", "responsible_team_name", "game_date", "game_start_time", "age_class", "open_tasks_text")
 
 CATALOG: dict[str, MessageTemplate | FragmentTemplate] = {
+    "team.game.vacancies.weekly": MessageTemplate(
+        _TEAM_VACANCY_FIELDS + ("home_team_name", "away_team_name"),
+        'Deine Unterstützung beim Heimspiel am {game_date}',
+        'Hallo {recipient_name},\n\n'
+        'nächste Woche, am {game_date}, ist deine Mannschaft {responsible_team_name} '
+        'für die Dienste beim Spiel {home_team_name} gegen {away_team_name} '
+        '({age_class}) verantwortlich. Das Spiel beginnt um {game_start_time}.\n\n'
+        'Wir möchten dich freundlich daran erinnern, dass für dieses Spiel noch '
+        'folgende Pflichtaufgaben zu besetzen sind:\n\n{open_tasks_text}\n\n'
+        'Vielleicht kannst du einen der offenen Dienste übernehmen? Bitte schau im '
+        'Heimspielplan nach und trage dich gerne für eine passende Aufgabe ein. '
+        'Mit deiner Unterstützung trägst du dazu bei, dass unser Heimspieltag gut gelingt.\n\n'
+        'Vielen Dank für deine Unterstützung!\n\nViele Grüße\nTuS Raubling Handball',
+        'Hallo {recipient_name}, nächste Woche ({game_date}, {game_start_time}) '
+        'übernimmt deine Mannschaft {responsible_team_name} die Dienste beim Spiel '
+        'der {age_class}. Noch offen: {open_tasks_text}. Kannst du uns unterstützen? '
+        'Bitte schau im Heimspielplan nach und übernimm gerne einen passenden Dienst. '
+        'Vielen Dank! VG TuS Handball',
+        purpose='Seven-day invitation to unassigned active responsible-team members for an ordinary game.',
+        caller='Notifier.notify_team_vacancies_early',
+    ),
+    "team.spielfest.vacancies.weekly": MessageTemplate(
+        _TEAM_VACANCY_FIELDS,
+        'Deine Unterstützung beim Spielfest am {game_date}',
+        'Hallo {recipient_name},\n\n'
+        'nächste Woche, am {game_date}, ist deine Mannschaft {responsible_team_name} '
+        'für die Dienste beim Spielfest {age_class} verantwortlich. '
+        'Das Spielfest beginnt um {game_start_time}.\n\n'
+        'Wir möchten dich freundlich daran erinnern, dass für dieses Spielfest noch '
+        'folgende Pflichtaufgaben zu besetzen sind:\n\n{open_tasks_text}\n\n'
+        'Vielleicht kannst du einen der offenen Dienste übernehmen? Bitte schau im '
+        'Heimspielplan nach und trage dich gerne für eine passende Aufgabe ein. '
+        'Mit deiner Unterstützung trägst du dazu bei, dass unser Heimspieltag gut gelingt.\n\n'
+        'Vielen Dank für deine Unterstützung!\n\nViele Grüße\nTuS Raubling Handball',
+        'Hallo {recipient_name}, nächste Woche ({game_date}, {game_start_time}) '
+        'übernimmt deine Mannschaft {responsible_team_name} die Dienste beim Spielfest '
+        '{age_class}. Noch offen: {open_tasks_text}. Kannst du uns unterstützen? '
+        'Bitte schau im Heimspielplan nach und übernimm gerne einen passenden Dienst. '
+        'Vielen Dank! VG TuS Handball',
+        purpose='Seven-day invitation to unassigned active responsible-team members for a Spielfest.',
+        caller='Notifier.notify_team_vacancies_early',
+    ),
+    "team.vacancies.one": FragmentTemplate(
+        ("task_label", "vacancy_count"), '{task_label}: {vacancy_count} Platz',
+        'One physically free required task position.', 'Notifier.notify_team_vacancies_early',
+    ),
+    "team.vacancies.many": FragmentTemplate(
+        ("task_label", "vacancy_count"), '{task_label}: {vacancy_count} Plätze',
+        'Several physically free required positions under one task label.', 'Notifier.notify_team_vacancies_early',
+    ),
+    "team.vacancies.separator": FragmentTemplate(
+        (), '; ', 'Separator between counted task vacancies.', 'Notifier.notify_team_vacancies_early',
+    ),
     "game.day_before": MessageTemplate(
         _GAME_FIELDS,
         'Benachrichtigung Dienst {task_label}',
