@@ -138,6 +138,23 @@ Registration and login each use one two-step form: request a six-digit code, the
 
 New people need a real calendar birth date that is not after `common.effective_today()`, including contactless admin/MV creation and CLI creation. A member can complete or correct their own date; an admin can do so for any person. A known date cannot be cleared. Existing people with an unknown date can still receive unrelated profile repairs. Dates are self-reported; the application does not verify identity documents. Full dates are limited to own/admin person maintenance and are absent from schedules, candidates, statistics, ordinary notifications, diagnostic logs and assignment audits. See the [data inventory](DATA-INVENTORY.md).
 
+## Benutzerdokumentation
+
+Die deutschsprachigen Handbücher erklären die Weboberfläche ohne technische
+Vorkenntnisse und verwenden Farben und Gestaltung der Webseite:
+
+- [Mitgliederhandbuch](docs/MITGLIEDERHANDBUCH.md) mit Registrierung, Anmeldung,
+  eigenen Diensten, Ersatzsuche, Kuchenlieferung, Profil und Statistik;
+  zusätzlich als [PDF für Mitglieder](output/pdf/nuLigaHelper_Mitgliederhandbuch.pdf).
+  Diese Ausgabe enthält keine zusätzlichen MV- oder Adminfunktionen.
+- [Vollständiges Benutzerhandbuch](docs/BENUTZERHANDBUCH.md) mit allen
+  Benutzerfunktionen und eigenen Abschnitten für Mannschaftsverantwortliche und
+  Admins; zusätzlich als [vollständige PDF](output/pdf/nuLigaHelper_Benutzerhandbuch.pdf).
+
+Beide Fassungen enthalten erläuterte Screenshots mit ausschließlich erfundenen
+Beispieldaten. Hinweise zur Pflege und PDF-Erzeugung stehen unter
+[Dokumentation pflegen](docs/README.md).
+
 ## Home-game-day visibility
 
 Active administrators can save **Heimspieltage ausblenden ab** on the schedule
