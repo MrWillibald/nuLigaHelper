@@ -1,5 +1,5 @@
 /** Optional real-browser verification; uses installed Playwright/Chromium only.
- * PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node test/browser_binding_assignments.mjs
+ * PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node tests/js/browser_binding_assignments.mjs
  * Serves only synthetic fixtures on loopback; no real config, DB or providers.
  */
 import assert from 'node:assert/strict';
@@ -175,7 +175,9 @@ try {
     role:'Kasse',slot:0,person_id:meta.ids.MV,expected_person_id:null}})).status(),200);
   const secondWinner = await snapshot(original);
   const conflict = original.waitForResponse(response => response.url().endsWith('/api/assignment/claim') && response.status()===409);
-  await original.locator('[data-confirmation-confirm]').click(); await conflict;
+  // A conflict reloads the page with feedback; finish that navigation before the next goto.
+  const reloaded = original.waitForEvent('load');
+  await original.locator('[data-confirmation-confirm]').click(); await conflict; await reloaded;
   assert.deepEqual(await snapshot(original),secondWinner,'confirmed stale selection must not overwrite the winner');
   console.log('PASS native concurrent Cancel and confirmed CAS conflict');
   await original.request.post(origin+'/__binding_clock',{headers:csrf});
