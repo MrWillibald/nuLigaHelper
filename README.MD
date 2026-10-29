@@ -59,6 +59,15 @@ scripts. Keep it stable: changing it invalidates every session. `NULIGAHELPER_DB
 overrides the SQLite path locally; production requires `NULIGAHELPER_ENV=production`, an
 absolute `NULIGAHELPER_DB` and exact `NULIGAHELPER_TRUSTED_HOSTS` entries.
 
+For local tests of date-dependent notifications, `NULIGAHELPER_TODAY=YYYY-MM-DD` pins the
+effective date and `NULIGAHELPER_DRY_RUN=1` suppresses outbound mail and SMS:
+
+```bash
+NULIGAHELPER_TODAY=2025-11-21 NULIGAHELPER_DRY_RUN=1 ./run.sh
+```
+
+Production refuses to start while either variable is set.
+
 ```bash
 python3 -c 'import secrets; print(secrets.token_urlsafe(48))' > .nuligahelper_secret
 ./venv/bin/python manage_db.py init           # create an empty database

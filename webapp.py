@@ -232,6 +232,7 @@ def _ordered_person_options(
 
 
 def create_app() -> Flask:
+    common.refuse_overrides_in_production()
     app = Flask(__name__)
     production = _production_mode()
     if production:

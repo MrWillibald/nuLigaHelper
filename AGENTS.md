@@ -43,7 +43,7 @@ Daily job and notifications:
 | `notifier.py` | All mail/SMS notifications; reads assignments from the DB |
 | `messages.py` | Authoritative German notification catalog with named fields and validated rendering |
 | `message_config.py` | Read-only legacy-message preflight and referee-recipient compatibility |
-| `common.py` | VERSION, `DEBUG_FLAG`/`CHANGE_DAY`/`DEBUG_TODAY`, `effective_today()`, season-year helper, `load_config()` |
+| `common.py` | VERSION, `effective_today()` and the `NULIGAHELPER_TODAY`/`NULIGAHELPER_DRY_RUN` overrides, season-year helper, `load_config()` |
 
 Web interface:
 
@@ -131,14 +131,18 @@ test/run_tests.sh                          # whole suite, must stay green
   persistent random value in the environment or the gitignored
   `.nuligahelper_secret` file; rotating it invalidates all sessions.
 - `NULIGAHELPER_DB` optionally overrides the SQLite path.
-- Two independent debug switches in `common.py`, both `False` in the committed state:
-  - `DEBUG_FLAG = True` disables all outbound mail/SMS (`send_Mail`/`send_SMS` return
-    early) **and** pins "today" to `DEBUG_TODAY`.
-  - `CHANGE_DAY = True` only pins "today" to `DEBUG_TODAY` — messages are still sent,
-    so combine it with `DEBUG_FLAG` unless you really want real notifications.
-  Everything date-dependent must go through `common.effective_today()`, never
-  `datetime.date.today()`, or these switches stop working. Reset both to `False`
-  before committing.
+- Two independent local development overrides, read from the environment on every
+  use (nothing to reset before committing):
+  - `NULIGAHELPER_TODAY=YYYY-MM-DD` pins `common.effective_today()`; messages are still
+    sent.
+  - `NULIGAHELPER_DRY_RUN=1` makes `send_Mail`/`send_SMS` return early; dispatch counts
+    are unchanged and the date is not pinned. Set both for a dry run on a fixed day.
+  Invalid values stop with a German error naming the variable. With
+  `NULIGAHELPER_ENV=production`, `common.refuse_overrides_in_production()` refuses either
+  variable in web startup, the daily job, `runtime_check.py` and the operations
+  preflight/launch check. Everything date-dependent must go through
+  `common.effective_today()`, never `datetime.date.today()`, or the date override stops
+  working; check `common.dry_run()` at send time, never at import time.
 
 ## Domain rules (do not break silently)
 

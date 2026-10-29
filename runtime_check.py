@@ -6,6 +6,9 @@ import production as p
 
 
 def check():
+    for name in common.OVERRIDE_ENV:
+        if os.environ.get(name) not in (None, ''):
+            return name
     for name in ('NULIGAHELPER_SECRET', 'NULIGAHELPER_CONFIG', 'NULIGAHELPER_DB',
                  'NULIGAHELPER_STATE_DIR', 'NULIGAHELPER_OPERATIONS'):
         if not os.environ.get(name):

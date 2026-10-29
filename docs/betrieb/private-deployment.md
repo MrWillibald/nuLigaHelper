@@ -34,6 +34,11 @@ variables. Production `config.json` contains club, recipient and operational set
 not email, Twilio or Dropbox provider sections. Host setup and public launch
 require separate operator review.
 
+The local development overrides `NULIGAHELPER_TODAY` and `NULIGAHELPER_DRY_RUN` must
+not appear in `/etc/nuligahelper/web.env` or any unit environment: `runtime_check.py`,
+web startup, the daily job and the operations preflight/launch check refuse to run
+and name the variable.
+
 Authentication does not make the Flask development server suitable for public use.
 Generic Gunicorn and systemd templates are tracked in `release-assets/`;
 hostnames, credentials, environment files, and installed host configuration

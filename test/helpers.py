@@ -23,6 +23,9 @@ if PROJECT_DIR not in sys.path:
 _TEST_DIR = tempfile.mkdtemp(prefix="nuligahelper-test-")
 os.environ.pop("NULIGAHELPER_ENV", None)
 os.environ.pop("NULIGAHELPER_TRUSTED_HOSTS", None)
+# Development overrides from the caller's shell must not change test outcomes.
+os.environ.pop("NULIGAHELPER_TODAY", None)
+os.environ.pop("NULIGAHELPER_DRY_RUN", None)
 os.environ["NULIGAHELPER_DB"] = os.path.join(_TEST_DIR, "webapp.db")
 os.environ["NULIGAHELPER_SECRET"] = "test-only-secret-not-for-production"
 

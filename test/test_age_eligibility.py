@@ -2,6 +2,7 @@
 
 from datetime import date, datetime
 import json
+import os
 import threading
 from unittest.mock import patch
 
@@ -37,24 +38,16 @@ def _person(session, name, born=None):
 
 
 def test_birth_date_validation_uses_effective_day_and_never_echoes_private_input():
-    previous = (common.DEBUG_FLAG, common.CHANGE_DAY, common.DEBUG_TODAY)
-    try:
-        common.DEBUG_FLAG = False
-        common.CHANGE_DAY = True
-        common.DEBUG_TODAY = date(2026, 10, 5)
+    with patch.dict(os.environ, {"NULIGAHELPER_TODAY": "2026-10-05"}):
         assert db.validate_birth_date("2008-02-29") == date(2008, 2, 29)
         assert db.validate_birth_date("29.02.2008") == date(2008, 2, 29)
-        assert db.validate_birth_date(date(2026, 10, 5)) == common.DEBUG_TODAY
+        assert db.validate_birth_date(date(2026, 10, 5)) == common.effective_today()
         for value in (None, "", "2009-02-29", "2026-10-06", "20080101", datetime(2008, 1, 1)):
             exc = _refused(lambda value=value: db.validate_birth_date(value))
             if isinstance(value, str) and value:
                 assert value not in str(exc), "validation must not echo a raw birth date"
-        common.CHANGE_DAY = False
-        common.DEBUG_FLAG = True
-        common.DEBUG_TODAY = date(2000, 1, 1)
+    with patch.dict(os.environ, {"NULIGAHELPER_TODAY": "2000-01-01"}):
         _refused(lambda: db.validate_birth_date(date(2000, 1, 2)))
-    finally:
-        common.DEBUG_FLAG, common.CHANGE_DAY, common.DEBUG_TODAY = previous
 
 
 def test_registration_validation_refuses_partial_creation_and_preserves_explicit_date():

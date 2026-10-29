@@ -204,7 +204,7 @@ Jede Phase ist ein eigener PR, verhaltensneutral, Testsuite grün. Phasen 1–2 
 
 | # | Thema | Vorschlag | Aufwand |
 |---|---|---|---|
-| 4.1 | **Debug-Schalter im Code** (`DEBUG_FLAG`, `CHANGE_DAY`, `DEBUG_TODAY` in `common.py`, müssen vor jedem Commit zurückgesetzt werden) | Ersetzen durch Umgebungsvariablen, z. B. `NULIGAHELPER_DRY_RUN=1` und `NULIGAHELPER_TODAY=2025-11-21`. Kein „vergessen zurückzusetzen“ mehr; in Produktion per `production.py` verbieten. | klein |
+| 4.1 | **Debug-Schalter im Code** (`DEBUG_FLAG`, `CHANGE_DAY`, `DEBUG_TODAY` in `common.py`, müssen vor jedem Commit zurückgesetzt werden) | **Umgesetzt** (`move-debug-switches-to-environment`): `NULIGAHELPER_TODAY` und `NULIGAHELPER_DRY_RUN`, in Produktion abgewiesen | – |
 | 4.2 | **Doppelte SQLite-Hilfsfunktionen**: `_backup_path`/`_create_backup` in `schema_migrations.py` **und** `game_identity_migration.py`; `_readonly_uri` in `backup.py` **und** `schema_migrations.py` | Die Backup-Duplikate entfallen mit 4.4; `_readonly_uri` wird eine öffentliche Funktion in `backup.py` | klein |
 | 4.3 | **Ruhende Zeitungsartikel-Funktion**: `Notifier.send_article`, auskommentierter Aufruf in `main.py` (mit altem `strGameDateSa`-Stil), 5 `dormant`-Texte in `messages.py` | **Entschieden: bleibt vorerst deaktiviert erhalten**, wird nicht angefasst | – |
 | 4.4 | **Einmal-Migration `game_identity_migration.py`** (Legacy `games.source_key`) | **Umgesetzt** (`remove-legacy-game-identity-migration`): entfernt, Altschema wird weiterhin erkannt und abgewiesen | – |

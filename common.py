@@ -73,12 +73,17 @@ def load_config(filename: str | None = None) -> dict:
 # Version string
 VERSION = "0.30"
 
-# Debug flag: disables all outbound mail/SMS and fixes "today" for testing
-DEBUG_FLAG = False
+# Local development overrides, read from the environment on every use and
+# refused in production (see refuse_overrides_in_production()):
+#   NULIGAHELPER_TODAY=YYYY-MM-DD  pins "today" for all date-dependent decisions
+#   NULIGAHELPER_DRY_RUN=1         suppresses outbound mail and SMS
+TODAY_ENV = "NULIGAHELPER_TODAY"
+DRY_RUN_ENV = "NULIGAHELPER_DRY_RUN"
+OVERRIDE_ENV = (TODAY_ENV, DRY_RUN_ENV)
 
-# Change day flag: fixes "today" to the date below (for testing notifications)
-CHANGE_DAY = False
-DEBUG_TODAY = datetime.date(2025, 11, 21)
+
+class OverrideError(RuntimeError):
+    """Raised for an invalid development override or one set in production."""
 
 
 def season_year_for(today: datetime.date) -> int:
@@ -86,10 +91,49 @@ def season_year_for(today: datetime.date) -> int:
     return today.year if today.month >= 7 else today.year - 1
 
 
+def _production_environment() -> bool:
+    return os.environ.get("NULIGAHELPER_ENV", "").strip().lower() == "production"
+
+
+def pinned_today() -> datetime.date | None:
+    """Return the NULIGAHELPER_TODAY override, or None when it is unset."""
+    raw = os.environ.get(TODAY_ENV)
+    if raw is None or raw == "":
+        return None
+    refuse_overrides_in_production()
+    try:
+        return datetime.date.fromisoformat(raw.strip())
+    except ValueError:
+        raise OverrideError(
+            f"{TODAY_ENV} muss ein gültiges Datum im Format JJJJ-MM-TT sein."
+        ) from None
+
+
+def dry_run() -> bool:
+    """Return True when NULIGAHELPER_DRY_RUN=1 suppresses outbound mail and SMS."""
+    raw = os.environ.get(DRY_RUN_ENV)
+    if raw is None or raw == "":
+        return False
+    refuse_overrides_in_production()
+    if raw.strip() == "1":
+        return True
+    raise OverrideError(f"{DRY_RUN_ENV} darf nur 1 sein oder fehlen.")
+
+
+def refuse_overrides_in_production() -> None:
+    """Fail before any work when a development override reaches production."""
+    if not _production_environment():
+        return
+    for name in OVERRIDE_ENV:
+        if os.environ.get(name) not in (None, ""):
+            raise OverrideError(f"{name} ist im Produktionsbetrieb nicht erlaubt.")
+
+
 def effective_today() -> datetime.date:
-    """Return today's date, overridden in debug mode."""
-    if DEBUG_FLAG or CHANGE_DAY:
-        return DEBUG_TODAY
+    """Return today's date, or the NULIGAHELPER_TODAY override."""
+    pinned = pinned_today()
+    if pinned is not None:
+        return pinned
     if os.environ.get("NULIGAHELPER_ENV") == "production":
         from zoneinfo import ZoneInfo
         return datetime.datetime.now(ZoneInfo("Europe/Berlin")).date()

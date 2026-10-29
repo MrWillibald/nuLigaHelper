@@ -227,7 +227,8 @@ def main(argv=None):
             for variable, key in [('NULIGAHELPER_DB', 'database'), ('NULIGAHELPER_CONFIG', 'config_file'),
                                   ('NULIGAHELPER_STATE_DIR', 'state_dir'), ('NULIGAHELPER_TRUSTED_HOSTS', 'hostname')]:
                 p.require(os.environ.get(variable) == config[key], variable)
-            p.require(common.DEBUG_FLAG is False and common.CHANGE_DAY is False, 'debug_flags')
+            for variable in common.OVERRIDE_ENV:
+                p.require(os.environ.get(variable) in (None, ''), variable)
             common.load_config(config['config_file'])
             policy, legal = validate_documents(config)
             if args.action == "launch-check":

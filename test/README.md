@@ -43,7 +43,7 @@ synthetic data.
 | Domain and sync | `test_db.py`, `test_scraper.py`, `test_game_duties.py`, `test_binding_assignments.py`, `test_replacement_cancellation.py`, `test_day_blocks.py`, `test_cake_blocks.py`, `test_memberships.py`, `test_contacts.py`, `test_age_*.py`, `test_person_birth_dates.py`, `test_spielfest_presentation.py`, `test_task_descriptions.py` |
 | Concurrency and SQLite runtime | `test_concurrency.py`, `test_cake_concurrency.py`, `test_sqlite_runtime.py`, `test_daily_lock.py` |
 | Web interface and access | `test_webapp.py`, `test_auth.py`, `test_auth_abuse.py`, `test_refusals.py`, `test_management_ui.py`, `test_schedule_*.py`, `test_sticky_web.py`, `test_day_blocks_web.py`, `test_cake_blocks_web.py`, `test_mobile_*.py`, `test_action_feedback.py`, `test_javascript.py` (runs the `js_*.mjs` checks) |
-| Daily job and notifications | `test_main.py`, `test_notifier.py`, `test_cake_reminders.py`, `test_messages.py`, `test_message_config.py`, `test_message_accounts.py`, `test_provider_env.py` |
+| Daily job and notifications | `test_main.py`, `test_development_overrides.py`, `test_notifier.py`, `test_cake_reminders.py`, `test_messages.py`, `test_message_config.py`, `test_message_accounts.py`, `test_provider_env.py` |
 | Schema migrations | `test_schema_migrations.py`, `test_*_migration.py` |
 | Backup, CLI and operations | `test_backup.py`, `test_cli.py`, `test_operations*.py`, `test_host_operations.py`, `test_privacy.py`, `test_production_runtime.py`, `test_recovery_check.py`, `test_deployment_assets.py`, `test_release_prepare.py` |
 | Optional browser checks | `browser_*.mjs` (need a preinstalled Playwright/Chromium, see below) |

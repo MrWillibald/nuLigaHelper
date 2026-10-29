@@ -166,6 +166,7 @@ def _send_notifications(
 
 
 def main():
+    common.refuse_overrides_in_production()
     if not os.environ.get("NULIGAHELPER_SECRET"):
         raise RuntimeError("NULIGAHELPER_SECRET muss gesetzt sein.")
     if os.environ.get("NULIGAHELPER_ENV") == "production":

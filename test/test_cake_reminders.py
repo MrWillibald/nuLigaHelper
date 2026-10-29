@@ -1,5 +1,6 @@
 """Cake reminders use synthetic transports, saved clocks and one-cake duties."""
 
+import os
 from unittest.mock import patch
 
 import helpers as h
@@ -66,11 +67,11 @@ def test_unconfigured_and_zero_cakes_send_no_reminders():
     session.close()
 
 
-def test_debug_cake_reminders_use_the_existing_provider_suppression():
+def test_dry_run_cake_reminders_use_the_existing_provider_suppression():
     session, cake, sender, recorded = _cake_scenario()
     sender.send_Mail = notifier.Notifier.send_Mail.__get__(sender)
     sender.send_SMS = notifier.Notifier.send_SMS.__get__(sender)
-    with patch("notifier.DEBUG_FLAG", True), patch("notifier.smtplib.SMTP_SSL") as smtp, patch("notifier.Client") as twilio:
+    with patch.dict(os.environ, {"NULIGAHELPER_DRY_RUN": "1"}), patch("notifier.smtplib.SMTP_SSL") as smtp, patch("notifier.Client") as twilio:
         assert sender.notify_cakes_early(GAME_DATE) == 2
         smtp.assert_not_called()
         twilio.assert_not_called()

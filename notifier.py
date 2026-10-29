@@ -13,7 +13,6 @@ from email.message import EmailMessage
 from twilio.rest import Client
 from sqlalchemy import select
 
-from common import DEBUG_FLAG
 import common
 import db
 import messages
@@ -50,7 +49,7 @@ class Notifier:
 
     def send_Mail(self, msg: EmailMessage, ID: str, password: str):
         """Send e-mail via specified SMTP server."""
-        if DEBUG_FLAG:
+        if common.dry_run():
             return None
         with smtplib.SMTP_SSL(self.smtpserver) as server:
             server.login(ID, password)
@@ -59,7 +58,7 @@ class Notifier:
 
     def send_SMS(self, toaddr: str, text: str):
         """Send SMS via specified Twilio account."""
-        if DEBUG_FLAG:
+        if common.dry_run():
             return None
         client = Client(self.twilio_sid, self.twilio_token)
         message = client.messages.create(
