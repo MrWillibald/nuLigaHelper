@@ -32,8 +32,8 @@ python3 -c 'import secrets; print(secrets.token_urlsafe(48))' > .nuligahelper_se
 
 It is then reachable in the local network at `http://<device-ip>:8080`.
 `run_webapp.sh` is development-only and must not be exposed to the public internet.
-Public hosting requires a separately maintained production deployment with TLS,
-restricted secrets, monitoring and a reviewed launch procedure.
+Public hosting uses the accepted production deployment (Caddy with TLS,
+Gunicorn and systemd); see [Private deployment](#private-deployment).
 
 - **Heimspielplan**: public, read-only schedule with assigned helper names. Use **Datum** to show one game day or all days, together with **Spielende Mannschaft**, **Verantwortliche Mannschaft** and **Eingeteilte Person**. A person search keeps only games and day-task blocks where that person is assigned; selecting a responsible team hides day-task blocks because they have no responsible team. **Filter löschen** restores all dates within the shared visibility scope (and keeps an authorized administrator full-date view). Every game and day-task block starts compact. Game summaries show four separate information rows: start time; full matchup (or Spielfest identity); age class, hall and game number; responsible team or **– offen –**. Preparation, cleanup and cake-delivery summaries show three rows: time or its open placeholder with any date qualifier; task label with its icon; task metadata such as **Tagesdienst** or cake quantity. Day-task blocks have no responsible-team row. All cards emphasize the time with slightly larger text than the matchup or task label; long text wraps within each row. This order remains visible on phones and desktop, in upcoming and past cards, collapsed or expanded, for guests and signed-in viewers, including without JavaScript. Classification warnings follow the primary game rows, and eligibility warnings remain beside the staffing status. On phones and viewports at most 900 CSS pixels wide, information appears above the staffing area; on wider displays it sits to the left. Cards use the earlier roomier padding and a prominent 1.5-rem time. Configured positive-capacity duties show a descriptive count on the left (for example **5 von 7 Pflichtdiensten besetzt**) and a whole-number percentage on the right (**71 %**) above a horizontal bar with the same rounded fill. Long counts and percentages wrap when needed. **Details** sits right-aligned beneath progress and warnings in normal flow. The triangle beside **Details** points right when closed and down when open, including without JavaScript. Expand a card through **Details** to see the game's offered positions and any retained assignments in removed duties and, when permitted, the editable responsible-team field. Assignment candidates load when an editable card opens; a loading error leaves its dropdowns disabled and offers a retry. Unopened cards carry no candidate lists, so registrations do not multiply the initial page size. Game progress counts seven required positions for adult games and five for youth/unknown games; retained removed duties allow authorized retirement only before the day-before cutoff and do not affect the required-duty bar. Each preparation and cleanup bar counts three slots (**1 von 3 Plätzen besetzt**, **33 %**); cake bars count promised contributions out of the configured positive quantity (**2 von 4 Kuchen zugesagt**, **50 %**). The bar measures physical occupancy: age/classification warnings remain separate even with a full bar. Unconfigured cakes show **Admin-Einrichtung erforderlich**, and zero cakes show **Keine Kuchen angefragt**, both without a bar, count or percentage. Schedule summaries have no staffing rings or vacancy badges; statistics retain their missing-duty badges. Counts, percentages, bar fills and accessible values are available without JavaScript and update together from saved state; seeking a replacement keeps the duty occupied and binding. Past game days appear muted under **Vergangene Spieltage**; selecting a past date opens that section. Signed-in members can claim their own future tasks and seek a replacement while keeping responsibility before the day-before cutoff. MVs can additionally staff their own team on games for which that team is responsible; admins retain roster-wide staffing and responsible-team settings, subject to the same binding and lock rules. Concurrent stale changes are rejected rather than overwriting another person's work.
 - **Helfer verwalten**: members see names and complete team memberships but only their own contact data and birth date. Admins create, edit, deactivate/reactivate or delete erroneous entries, replace membership sets, complete missing birth dates, approve user registrations and appoint team MVs. MVs can create people with a birth date and add or remove active people only in rosters they manage; they do not see another existing person's birth date or decide pending registrations.
@@ -658,8 +658,8 @@ they are never represented by placeholder games.
 
 For repeat updates to an existing installation, follow the tracked
 [deployment guide](DEPLOYMENT.md). It uses a pinned commit on protected `master`
-and the installed release command; first-cutover host acceptance remains a
-separate prerequisite.
+and the installed release command. The first production cutover has been
+accepted.
 
 The operator-triggered release workflow has tracked, non-secret
 templates in `release-assets/`. Its deploy command now implements separate
@@ -667,12 +667,10 @@ preparation, guarded activation, explicit timer resumption, and conditional
 code-only rollback. Activation and compatible rollback wait up to 60 seconds
 for Gunicorn's loopback listener and local `/healthz` after the `Type=simple`
 web service starts; Caddy and timers remain closed if readiness fails or times
-out. These commands are **not yet approved for production**:
-the deployer is merged into protected `master`, but host preflight and the
-first-cutover operator review in the private operations runbook remain
-outstanding. Do not activate a candidate or switch `current` from these
-templates before that acceptance. `release-assets/README.md` explains the
-intended operator command sequence and recovery gates.
+out. Host preflight and the first-cutover operator review in the private
+operations runbook are complete, so these commands are approved for production
+releases from protected `master`. `release-assets/README.md` explains the
+operator command sequence and recovery gates for setting up a host.
 The production database remains `/var/lib/nuligahelper/nuliga_helper.db`, and
 `/etc/nuligahelper/web.env` remains private and shared by the services.
 

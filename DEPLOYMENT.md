@@ -11,10 +11,10 @@ Run these commands on the server over SSH as an operator with `sudo` access.
 This guide assumes the deploy command, its root-owned
 `/etc/nuligahelper/deployment.json`, the `current` link, and the compatible
 systemd units are installed and have passed the host preflight. The first
-production cutover also needs the operator acceptance described in the private
-operations runbook. The tracked [release asset guide](release-assets/README.md)
-explains the setup and the legacy-release Gunicorn compatibility requirement.
-Complete those gates before using `activate` on production.
+production cutover has been accepted as described in the private operations
+runbook. The tracked [release asset guide](release-assets/README.md) explains the
+setup and the legacy-release Gunicorn compatibility requirement; repeat those
+gates only when a host is rebuilt or re-installed.
 
 Keep `/etc/nuligahelper/web.env`, site configuration, secrets, and the database
 outside every release. The deploy command reads the approved paths from its
@@ -67,8 +67,7 @@ step uses no providers/database and creates no notification trigger.
 
 ## 2. Activate in a maintenance window
 
-Keep a second SSH session open for recovery. Verify that the host preflight and
-first-cutover acceptance are complete. Activation takes an exclusive lock,
+Keep a second SSH session open for recovery. Activation takes an exclusive lock,
 pauses the daily and cleanup timers, waits for active jobs, stops public ingress
 and the web service, and checks that no database user remains. It creates a
 validated recovery snapshot and checks schema compatibility before switching

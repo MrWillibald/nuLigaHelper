@@ -7,16 +7,17 @@ paid for.
 ## What this project is
 
 nuLigaHelper organizes home games of the handball department of TuS Raubling.
-It runs as a **daily cron job on a Raspberry Pi** and:
+It runs on a Linux host (e.g. a Raspberry Pi) as a **daily scheduled job** and a web service:
 
 1. scrapes all home games from the BHV/nuLiga Hallenspielplan,
 2. syncs them into a local **SQLite** database (SQLAlchemy 2.x ORM),
 3. reports shifts, missing referees ("§77") and unknown new games,
 4. sends notifications by e-mail or SMS (Twilio) to assigned helpers,
 5. backs up the database file to Dropbox (backup only – no Excel anymore),
-6. serves a **Flask web interface** (local network, port 8080) with passwordless
-   authentication, tiered rights, self-service assignments and statistics.
-   Production serving, TLS and public exposure remain separate work.
+6. serves a **Flask web interface** with passwordless authentication, tiered
+   rights, self-service assignments and statistics. Production runs publicly
+   behind Caddy (TLS) → Gunicorn → systemd; the first cutover has been accepted
+   (see `DEPLOYMENT.md`). `run_webapp.sh` (port 8080) is for local development only.
 
 Language: code/comments in English, UI texts and notification templates in German.
 
