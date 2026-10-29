@@ -1,8 +1,9 @@
 # ---------------------------------------------------------------
 #                          nuLigaHelper
 # ---------------------------------------------------------------
-# Small CLI to manage persons, games and assignments until the
-# web interface is available.
+# Operator CLI: database initialization, guarded migration and
+# restore, plus persons, memberships, games and assignments.
+# Full reference: docs/betrieb/cli.md
 #
 # Examples:
 #   python manage_db.py init

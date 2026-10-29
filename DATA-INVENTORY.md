@@ -32,5 +32,5 @@ active/inactive approved people and protected audit/assignment references remain
 Backups are not edited individually. Public notice updates belong in the private
 deployment's legal content; no provider notification body needs the full date.
 
-See [schema upgrade and recovery](README.MD#initialize-or-migrate-the-application-schema)
+See [schema upgrade and recovery](docs/betrieb/schema-migration.md)
 and [deployment procedures](DEPLOYMENT.md).

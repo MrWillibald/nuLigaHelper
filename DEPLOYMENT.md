@@ -62,7 +62,7 @@ status without private text or recipient values. Privately reconcile customized
 wording in `messages.py`, move referee recipients to
 `club.notifications.referee_targets`, and remove `club.texts`. Keep the previous
 configuration with its compatible application release for rollback. See the
-[message migration guide](README.MD#notification-wording-and-migration); this
+[message migration guide](docs/betrieb/notification-wording.md); this
 step uses no providers/database and creates no notification trigger.
 
 ## 2. Activate in a maintenance window
@@ -164,6 +164,6 @@ sudo /usr/local/sbin/nuligahelper-deploy rollback-code --deployment-id "$DEPLOYM
 
 After a schema migration or possible public writes, stop and follow the private
 recovery decision path. Do not automatically restore an older snapshot over
-new assignments or audit entries. The [database restore and migration guide](README.MD#sqlite-production-profile-and-backups)
+new assignments or audit entries. The [database restore and migration guide](docs/betrieb/sqlite-and-backups.md)
 describes the guarded SQLite procedures; the private runbook governs the host
 and service recovery sequence.

@@ -1,4 +1,15 @@
-# Benutzerdokumentation pflegen
+# Dokumentation
+
+| Ordner / Datei | Inhalt |
+| --- | --- |
+| `MITGLIEDERHANDBUCH.md`, `BENUTZERHANDBUCH.md` | Handbücher für Mitglieder bzw. alle Rollen (Deutsch) |
+| [`betrieb/`](betrieb/README.md) | Betriebsdokumentation: Backups, Schema-Migration, CLI, Benachrichtigungstexte, Produktionsbetrieb (Englisch) |
+| [`entwicklung/`](entwicklung/database-schema.md) | Entwicklerdokumentation, z. B. Datenbankschema (Englisch) |
+| `REFACTORING-VORSCHLAG.md` | Vorschlag zur Refaktorisierung und neuen Ordnerstruktur |
+
+Das verbindliche Verhalten steht in den Spezifikationen unter `openspec/specs/`.
+
+## Benutzerdokumentation pflegen
 
 Es gibt zwei eigenständige deutschsprachige Ausgaben:
 
