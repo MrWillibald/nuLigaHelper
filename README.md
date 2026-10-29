@@ -35,12 +35,32 @@ outside this repository.
 
 | Topic | Where |
 | --- | --- |
-| User manuals (German) | [Mitgliederhandbuch](docs/MITGLIEDERHANDBUCH.md) ([PDF](output/pdf/nuLigaHelper_Mitgliederhandbuch.pdf)) for members, [Benutzerhandbuch](docs/BENUTZERHANDBUCH.md) ([PDF](output/pdf/nuLigaHelper_Benutzerhandbuch.pdf)) for all roles; maintenance notes in [docs/README.md](docs/README.md) |
+| User manuals (German) | [Mitgliederhandbuch](docs/benutzer/MITGLIEDERHANDBUCH.md) ([PDF](docs/benutzer/pdf/nuLigaHelper_Mitgliederhandbuch.pdf)) for members, [Benutzerhandbuch](docs/benutzer/BENUTZERHANDBUCH.md) ([PDF](docs/benutzer/pdf/nuLigaHelper_Benutzerhandbuch.pdf)) for all roles; maintenance notes in [docs/benutzer/README.md](docs/benutzer/README.md) |
 | Behavior contract | [`openspec/specs/`](openspec/specs/) – one specification per capability; planned changes in [`openspec/changes/`](openspec/changes/) |
 | Operations | [docs/betrieb/](docs/betrieb/README.md): SQLite profile and backups, schema migration, management CLI, notification wording, private deployment |
-| Releases to production | [DEPLOYMENT.md](DEPLOYMENT.md) (routine updates), [release-assets/README.md](release-assets/README.md) (host setup) |
-| Data inventory | [DATA-INVENTORY.md](DATA-INVENTORY.md) |
-| Development | [AGENTS.md](AGENTS.md) (rules and module map), [database schema](docs/entwicklung/database-schema.md), [tests](test/README.md), [refactoring proposal](docs/REFACTORING-VORSCHLAG.md) |
+| Releases to production | [docs/betrieb/deployment.md](docs/betrieb/deployment.md) (routine updates), [release-assets/README.md](release-assets/README.md) (host setup) |
+| Data inventory | [docs/betrieb/data-inventory.md](docs/betrieb/data-inventory.md) |
+| Development | [AGENTS.md](AGENTS.md) (rules and module map), [database schema](docs/entwicklung/database-schema.md), [tests](tests/README.md) |
+
+All documentation is indexed in [docs/README.md](docs/README.md).
+
+# Project layout
+
+| Path | Content |
+| --- | --- |
+| `nuligahelper/db/` | Domain layer: models, rules, sync, schema migrations |
+| `nuligahelper/web/` | Flask web interface with templates and static files |
+| `nuligahelper/jobs/` | Daily job: scraper, notifications, message catalog |
+| `nuligahelper/ops/` | Backups, production settings, monitoring, privacy cleanup |
+| `nuligahelper/cli.py`, `common.py` | Operator CLI; shared configuration and date helpers |
+| `tests/` | Offline test suite, one folder per area of `nuligahelper/` |
+| `docs/` | User manuals (`benutzer/`), operations (`betrieb/`), development notes (`entwicklung/`) |
+| `release-assets/` | Reviewed systemd, Caddy, Gunicorn and deploy-command templates |
+| `openspec/` | Behavior specifications and changes |
+
+The Python files at the repository root (`main.py`, `webapp.py`, …) and `test/run_tests.sh`
+only forward to the package for already installed systemd units and deploy commands; they
+are removed once every host runs the updated units.
 
 # Getting started
 
@@ -53,7 +73,7 @@ test tools, so local runs use the same library versions as CI and production
 (CPython 3.13).
 
 Copy `config_template.json` to `config.json` and adjust the club and recipient settings.
-Notification wording lives in `messages.py`. E-mail, Twilio and Dropbox settings come from
+Notification wording lives in `nuligahelper/jobs/messages.py`. E-mail, Twilio and Dropbox settings come from
 environment variables mapped in `common.PROVIDER_ENV`; production refuses provider sections
 in `config.json`.
 
@@ -74,8 +94,8 @@ Production refuses to start while either variable is set.
 
 ```bash
 python3 -c 'import secrets; print(secrets.token_urlsafe(48))' > .nuligahelper_secret
-./venv/bin/python manage_db.py init           # create an empty database
-./venv/bin/python manage_db.py grant-admin 1  # after adding the first person
+./venv/bin/python -m nuligahelper.cli init           # create an empty database
+./venv/bin/python -m nuligahelper.cli grant-admin 1  # after adding the first person
 ./run.sh                                      # daily job: scrape, sync, notify, back up
 ./run_webapp.sh                               # local web interface on http://<ip>:8080
 ```
@@ -87,17 +107,17 @@ commands are described in [docs/betrieb/cli.md](docs/betrieb/cli.md).
 `run_webapp.sh` starts the Flask development server for local or trusted-LAN use only.
 Public hosting uses the accepted production deployment (Caddy with TLS, Gunicorn and
 systemd); see [private deployment](docs/betrieb/private-deployment.md) and
-[DEPLOYMENT.md](DEPLOYMENT.md).
+[deployment](docs/betrieb/deployment.md).
 
 # Testing
 
-The `test/` folder contains offline tests for the database, notifications, authentication,
+The `tests/` folder contains offline tests for the database, notifications, authentication,
 authorization, CLI, concurrent claims, migrations, deployment assets and the web flow.
 Every test uses synthetic secrets and throwaway databases:
 
 ```bash
-test/run_tests.sh
+tests/run_tests.sh
 ```
 
-Single files run with `./venv/bin/python test/test_db.py`, or use pytest
-(`./venv/bin/python -m pytest test/ -v`). See [test/README.md](test/README.md) for details.
+Single files run with `./venv/bin/python -m tests.db.test_db`, or use pytest
+(`./venv/bin/python -m pytest tests/ -v`). See [tests/README.md](tests/README.md) for details.

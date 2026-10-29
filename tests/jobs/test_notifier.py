@@ -12,8 +12,8 @@
 #   Frank is MV of "BL mD" and receives the MV notification by SMS
 #   as long as tasks of the game are still open.
 #
-# Run standalone:  python test/test_notifier.py
-# Or via pytest:   pytest test/test_notifier.py
+# Run standalone:  python -m tests.jobs.test_notifier
+# Or via pytest:   pytest tests/jobs/test_notifier.py
 # ---------------------------------------------------------------
 
 from dataclasses import replace

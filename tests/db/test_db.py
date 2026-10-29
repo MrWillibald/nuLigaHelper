@@ -3,8 +3,8 @@
 # ---------------------------------------------------------------
 # Database layer: bootstrap, game sync events, ordering, helpers.
 #
-# Run standalone:  python test/test_db.py
-# Or via pytest:   pytest test/test_db.py
+# Run standalone:  python -m tests.db.test_db
+# Or via pytest:   pytest tests/db/test_db.py
 # ---------------------------------------------------------------
 
 import os

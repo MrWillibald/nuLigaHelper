@@ -1,8 +1,8 @@
 """Build both German handbook editions using the web application's visual design.
 
 Optional documentation dependencies: reportlab and Pillow. Run:
-    python docs/build_handbook.py
-    python docs/build_handbook.py --edition members
+    python docs/benutzer/build_handbook.py
+    python docs/benutzer/build_handbook.py --edition members
 """
 
 from argparse import ArgumentParser
@@ -24,8 +24,8 @@ from reportlab.platypus import (
 )
 from reportlab.platypus.tableofcontents import TableOfContents
 
-ROOT = Path(__file__).resolve().parents[1]
-DOCS = ROOT / 'docs'
+ROOT = Path(__file__).resolve().parents[2]
+DOCS = ROOT / 'docs' / 'benutzer'
 W, H = A4
 PAGE_WIDTH = W - 44*mm
 FONT_DIR = Path('/usr/share/fonts/truetype/liberation')
@@ -310,7 +310,7 @@ class Cover(Flowable):
 class Manual(BaseDocTemplate):
     def __init__(self,edition):
         self.edition=edition
-        self.target=ROOT/'output/pdf'/edition.output
+        self.target=DOCS/'pdf'/edition.output
         super().__init__(str(self.target),pagesize=A4,leftMargin=22*mm,
             rightMargin=22*mm,topMargin=27*mm,bottomMargin=21*mm,
             title=f'nuLigaHelper {edition.title}',author='TuS Raubling Handball',
@@ -503,7 +503,7 @@ def build(edition):
         else:
             story.append(ChapterHeading(number, title))
         story.extend(body_flowables)
-    target=ROOT/'output/pdf'/edition.output
+    target=DOCS/'pdf'/edition.output
     target.parent.mkdir(parents=True,exist_ok=True)
     Manual(edition).multiBuild(story)
     print(target)

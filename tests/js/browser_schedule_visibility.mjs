@@ -1,5 +1,5 @@
 /** Opt-in Playwright regression using only a synthetic helper-backed app.
- * PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node test/browser_schedule_visibility.mjs
+ * PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node tests/js/browser_schedule_visibility.mjs
  * Optional: BROWSER_EXECUTABLE, PYTHON_EXECUTABLE, BROWSER_REPORT_DIR.
  */
 import assert from 'node:assert/strict';

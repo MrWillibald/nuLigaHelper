@@ -18,7 +18,7 @@ The application runs from a checkout without packaging: `run.sh` executes `pytho
 
 ### 2. Names describe responsibility
 
-`common` → `config`, `production` → `ops.settings`, `operations` → `ops.monitoring`, `monitor_watchdog` → `ops.watchdog`, `main` → `jobs.daily`, `manage_db` → `cli`, `schema_migrations` → `db.schema_upgrade`, `contact_validation` → `db.contacts`. `production_logging` becomes `ops.journal_logging` (not `ops.logging`, which would shadow the standard library inside the package for relative imports and confuse readers).
+`production` → `ops.settings`, `operations` → `ops.monitoring`, `monitor_watchdog` → `ops.watchdog`, `main` → `jobs.daily`, `manage_db` → `cli`, `schema_migrations` → `db.schema_upgrade`, `contact_validation` → `db.contacts`. `production_logging` becomes `ops.journal_logging` (not `ops.logging`, which would shadow the standard library inside the package for relative imports and confuse readers).
 
 ### 3. Two-step unit migration with shims
 
@@ -38,11 +38,21 @@ raise SystemExit(main())
 
 ### 5. Import style
 
-Inside the package: absolute imports (`from nuligahelper import db, config`) and call-through-module for patchable functions (`config.effective_today()`, `db.clock.duty_now()`), so test patch targets are unambiguous: `nuligahelper.config.effective_today`, `nuligahelper.db.clock.duty_now`.
+Inside the package: absolute imports (`from nuligahelper import db, common`) and call-through-module for patchable functions (`common.effective_today()`, `db.clock.duty_now()`), so test patch targets are unambiguous: `nuligahelper.common.effective_today`, `nuligahelper.db.clock.duty_now`.
 
 ## Risks / Trade-offs
 
-- **Old units break if shims are missing or wrong** → `test_deployment_assets.py` executes every shim path in a synthetic release directory and asserts it imports the intended module; the deploy rehearsal in `DEPLOYMENT.md` covers both unit forms.
+- **Old units break if shims are missing or wrong** → `test_deployment_assets.py` executes every shim path in a synthetic release directory and asserts it imports the intended module; `docs/betrieb/deployment.md` describes the order of the one-time unit update.
 - **Large diff hides mistakes** → one commit per area (`ops`, `jobs`, `db`, `web`, tests, docs), each green; `git mv` keeps blame; no content edits mixed into move commits beyond import lines.
-- **Patch targets missed** (52 `common.effective_today` patches) → a guard test fails if any `patch("common.` or `patch("db.` string remains in `tests/`.
+- **Patch targets missed** (52 `common.effective_today` patches) → a guard test fails if any import or `patch(...)` string in `nuligahelper/` or `tests/` still names a former top-level module.
 - **Alembic path** → `alembic.ini` `script_location = %(here)s/nuligahelper/db/migrations`; existing revision IDs and files are unchanged, so deployed databases need no migration.
+
+## Implementation notes
+
+- **`common` keeps its name.** Renaming it to `config` would have collided with the many local `config` variables (`load_config()` results, Flask `app.config`) and added churn to 50+ patch targets without making the module clearer; it moved to `nuligahelper/common.py`.
+- **`task_labels` stays a separate module** (`nuligahelper/db/task_labels.py`): it exists to break an import cycle between roles and age eligibility, so folding it into `roles` would reintroduce the cycle.
+- **`auth_abuse` sits at package top level** (`nuligahelper/auth_abuse.py`): `ops/privacy.py` uses it, and importing it from `nuligahelper.web` would build the Flask app (`web/__init__.py` creates `app`) during a privacy cleanup.
+- **Tests are a package** run as modules (`python -m tests.db.test_db`) instead of scripts with a path-patching `helpers.py`; `tests/run_tests.sh` iterates `tests/*/test_*.py`. `test/run_tests.sh` stays as a forwarding shim because the installed deploy command runs it inside every candidate release; the updated deploy command prefers `tests/run_tests.sh`.
+- **Code moves landed in one commit** (`Move the application into the nuligahelper package`) rather than one per area: the areas import each other, so intermediate states would have needed temporary aliases. The move was scripted (`git mv` plus mechanical import/patch rewriting) and verified by the unchanged suite; the second commit moves the tests and the third the documentation.
+- **Behavior-neutral path fixes:** `PROJECT_DIR` in `nuligahelper/__init__.py` anchors `config.json`, the default database path, `alembic.ini` and relative `message_config` paths to the repository root as before; journal logger names changed from `webapp` to `nuligahelper.web` together with the journal classifier.
+- **Regressions from `split-domain-module` found and fixed here:** `db.storage.resolve_db_path` had resolved relative paths against `db/` instead of the project root (fixed in a separate commit with a test), and the browser fixtures still assigned `db.duty_now` instead of `db.clock.duty_now`; the stale-patch guard now also scans `.mjs` files.

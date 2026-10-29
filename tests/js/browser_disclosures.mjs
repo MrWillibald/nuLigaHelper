@@ -3,7 +3,7 @@
  *
  * Uses a preinstalled Playwright runtime and Chromium; installs nothing. Run:
  * PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs \
- *   node test/browser_disclosures.mjs
+ *   node tests/js/browser_disclosures.mjs
  * Optional: BROWSER_EXECUTABLE, PYTHON_EXECUTABLE, BROWSER_REPORT_PATH.
  * Only a synthetic helper-backed app on loopback is served; all other browser
  * requests are refused in fault-injection cases. No production config is read.

@@ -1,6 +1,6 @@
 # Initialize or migrate the application schema
 
-Schema revisions are managed by pinned Alembic migrations, but application startup never creates or upgrades schema implicitly. `manage_db.py init` is only for an absent or empty database; web and daily startup require the configured database to be at the current revision. Existing databases are upgraded only through the guarded, stopped-services `migrate-schema` workflow below. A database with the older source-key game identity is refused; see [legacy game identity](#legacy-game-identity).
+Schema revisions are managed by pinned Alembic migrations, but application startup never creates or upgrades schema implicitly. `python -m nuligahelper.cli init` is only for an absent or empty database; web and daily startup require the configured database to be at the current revision. Existing databases are upgraded only through the guarded, stopped-services `migrate-schema` workflow below. A database with the older source-key game identity is refused; see [legacy game identity](#legacy-game-identity).
 
 ## Legacy game identity
 
@@ -8,14 +8,14 @@ Databases created before canonical game-number identity contain a non-null
 `games.source_key` column. All deployed databases have been converted. This release no
 longer contains the one-time converter: startup and `migrate-schema` refuse such a
 database unchanged. Convert it first with an earlier release that still provides
-`manage_db.py migrate-game-identity --confirm-stopped`, then continue below.
+`python -m nuligahelper.cli migrate-game-identity --confirm-stopped`, then continue below.
 
 ## Initialize or upgrade a database
 
 Fresh installation is explicit and only accepts an absent or empty target:
 
 ```bash
-python3 manage_db.py --db /absolute/path/nuliga_helper.db init
+python3 -m nuligahelper.cli --db /absolute/path/nuliga_helper.db init
 ```
 
 Normal web and daily startup perform read-only revision classification before opening the
@@ -29,7 +29,7 @@ To upgrade an existing database:
 2. Run the guarded schema migration:
 
    ```bash
-   python3 manage_db.py --db /absolute/path/nuliga_helper.db \
+   python3 -m nuligahelper.cli --db /absolute/path/nuliga_helper.db \
        migrate-schema --confirm-stopped
    ```
 
@@ -81,7 +81,7 @@ To upgrade an existing database:
    assignment ID, lock, replacement token and historical audit. Earlier pending
    revisions retain their separately reviewed effects, including the one-time `0008`
    removal described above; `0009` removes no additional duties. Stop all web/daily
-   database users, run `./venv/bin/python manage_db.py migrate-schema --confirm-stopped`,
+   database users, run `./venv/bin/python -m nuligahelper.cli migrate-schema --confirm-stopped`,
    retain the printed validated snapshot and restart only after postflight succeeds.
    Startup refuses prior revisions without upgrading or seeding settings. Repeating
    migration at head preserves a configured boundary. Recovery requires stopped
@@ -108,4 +108,4 @@ as a release smoke test.
 
 
 ---
-Back to the [README](../../README.MD) · [Operations index](README.md)
+Back to the [README](../../README.md) · [Operations index](README.md)

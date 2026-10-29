@@ -1,5 +1,5 @@
 /** Opt-in synthetic layout verification using preinstalled Playwright/Chromium.
- * See test/README.md for environment variables and retained evidence commands.
+ * See tests/README.md for environment variables and retained evidence commands.
  */
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';

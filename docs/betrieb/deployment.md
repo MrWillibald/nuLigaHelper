@@ -12,13 +12,37 @@ This guide assumes the deploy command, its root-owned
 `/etc/nuligahelper/deployment.json`, the `current` link, and the compatible
 systemd units are installed and have passed the host preflight. The first
 production cutover has been accepted as described in the private operations
-runbook. The tracked [release asset guide](release-assets/README.md) explains the
+runbook. The tracked [release asset guide](../../release-assets/README.md) explains the
 setup and the legacy-release Gunicorn compatibility requirement; repeat those
 gates only when a host is rebuilt or re-installed.
 
+### One-time transition to the package layout
+
+Releases with the `nuligahelper/` package keep thin root shims (`main.py`,
+`webapp.py`, `manage_db.py`, `operations.py`, `privacy.py`, `runtime_check.py`,
+`monitor_watchdog.py`, `schema_migrations.py` and `test/run_tests.sh`), so the
+installed units and the installed deploy command keep working unchanged. Change
+the host in this order:
+
+1. Deploy and accept the first package-layout release with the **existing** units
+   and deploy command, following the steps below.
+2. While that release is current, install the reviewed copies of
+   `release-assets/systemd/*.service`, `release-assets/nuligahelper-watchdog.cron`
+   and `release-assets/nuligahelper-deploy.py` as root. The new units start
+   `python -B -m nuligahelper.…` and Gunicorn loads `nuligahelper.web:app`. Verify
+   them with `systemd-analyze verify`, run `systemctl daemon-reload`, restart the
+   web service in a maintenance window and run the post-activation checks in
+   section 4 again.
+3. From then on the code rollback may only select package-layout releases: a
+   release from before the package layout cannot start under the new units. To
+   return to such a release, reinstall the previous unit files first.
+
+A follow-up release removes the shims; deploy it only after every host runs the
+updated units and deploy command.
+
 Keep `/etc/nuligahelper/web.env`, site configuration, secrets, and the database
 outside every release. The deploy command reads the approved paths from its
-private configuration. Never use an in-place `git pull`, run `manage_db.py init`
+private configuration. Never use an in-place `git pull`, run `python -m nuligahelper.cli init`
 against the existing database, or copy only a live SQLite `.db` file while WAL
 may contain committed data.
 
@@ -44,7 +68,7 @@ sudo /usr/local/sbin/nuligahelper-deploy inspect --sha "$RELEASE_SHA"
 
 `prepare` exports the pinned commit to `/opt/nuligahelper/releases/<sha>`,
 builds its own virtual environment, checks dependencies and service syntax,
-and runs `test/run_tests.sh`. It does not change `current`, the live database,
+and runs `tests/run_tests.sh`. It does not change `current`, the live database,
 or running services. Check its result and the second `inspect` output before
 activation. If the candidate already exists, inspect that prepared candidate;
 `prepare` deliberately refuses to overwrite it.
@@ -56,13 +80,13 @@ release before activation. Application releases do not automatically replace
 host files.
 
 When deploying the message-catalog transition, run the candidate release's
-`./venv/bin/python -m message_config --config /path/to/private/config.json`
+`./venv/bin/python -m nuligahelper.jobs.message_config --config /path/to/private/config.json`
 before activation. This read-only command reports legacy keys/customization
 status without private text or recipient values. Privately reconcile customized
-wording in `messages.py`, move referee recipients to
+wording in `nuligahelper/jobs/messages.py`, move referee recipients to
 `club.notifications.referee_targets`, and remove `club.texts`. Keep the previous
 configuration with its compatible application release for rollback. See the
-[message migration guide](docs/betrieb/notification-wording.md); this
+[message migration guide](notification-wording.md); this
 step uses no providers/database and creates no notification trigger.
 
 ## 2. Activate in a maintenance window
@@ -94,7 +118,7 @@ printed by activation:
 RELEASE_SHA='same-full-40-character-sha-used-for-prepare'
 DEPLOYMENT_ID='paste-deployment-id-from-activate-output'
 sudo -u nuligahelper "/opt/nuligahelper/releases/$RELEASE_SHA/venv/bin/python" -B \
-  "/opt/nuligahelper/releases/$RELEASE_SHA/manage_db.py" \
+  "/opt/nuligahelper/releases/$RELEASE_SHA/nuligahelper.cli" \
   --db /var/lib/nuligahelper/nuliga_helper.db migrate-schema --confirm-stopped
 sudo /usr/local/sbin/nuligahelper-deploy continue --deployment-id "$DEPLOYMENT_ID"
 ```
@@ -109,7 +133,7 @@ memberships, status, MV appointments, assignments and audit snapshots. Existing
 dates remain unknown. After application verification, use authorized self/admin
 maintenance or `set-birth-date PERSON_ID YYYY-MM-DD` to complete the roster;
 review current/future eligibility warnings without deleting existing appointments.
-The [data inventory](DATA-INVENTORY.md) records visibility and backup scope.
+The [data inventory](data-inventory.md) records visibility and backup scope.
 
 ## 3. Decide when scheduled work resumes
 
@@ -164,6 +188,6 @@ sudo /usr/local/sbin/nuligahelper-deploy rollback-code --deployment-id "$DEPLOYM
 
 After a schema migration or possible public writes, stop and follow the private
 recovery decision path. Do not automatically restore an older snapshot over
-new assignments or audit entries. The [database restore and migration guide](docs/betrieb/sqlite-and-backups.md)
+new assignments or audit entries. The [database restore and migration guide](sqlite-and-backups.md)
 describes the guarded SQLite procedures; the private runbook governs the host
 and service recovery sequence.

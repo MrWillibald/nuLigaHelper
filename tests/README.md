@@ -2,24 +2,22 @@
 
 Automated tests for the nuLigaHelper database, notification and web layers.
 All tests run offline against throwaway SQLite databases (sample game plan from
-`helpers.py`, settings from `config_template.json`, wording from `messages.py`) – no real mails/SMS are
+`helpers.py`, settings from `config_template.json`, wording from `nuligahelper/jobs/messages.py`) – no real mails/SMS are
 sent and neither `config.json` nor `nuliga_helper.db` are touched.
 
 ## Run
 
+`tests/` is a Python package; run test modules from the project root with `-m`:
+
 ```bash
-# all tests, standalone runner (no extra dependencies)
-./venv/bin/python test/test_db.py
-./venv/bin/python test/test_notifier.py
-./venv/bin/python test/test_webapp.py
-
-# or everything at once via the helper script
-test/run_tests.sh
-
-# or with pytest (nicer output, selective runs)
-./venv/bin/pip install pytest
-./venv/bin/python -m pytest test/ -v
+tests/run_tests.sh                               # everything (standalone runner)
+./venv/bin/python -m tests.db.test_db            # one file
+./venv/bin/python -m pytest tests/ -v            # pytest (nicer output, -k selection)
+./venv/bin/python -m pytest tests/web -k login   # one area / pattern
 ```
+
+`test/run_tests.sh` only forwards to `tests/run_tests.sh` for deploy commands installed
+before the package layout; remove it together with the root shims.
 
 The optional `browser_disclosures.mjs` check uses an already installed Playwright
 module and Chromium browser; it installs no packages. It serves only a synthetic
@@ -27,26 +25,28 @@ app on loopback and checks delayed scripts, native fallbacks and a larger roster
 
 ```bash
 PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs \
-  BROWSER_EXECUTABLE=/absolute/path/to/chromium node test/browser_disclosures.mjs
+  BROWSER_EXECUTABLE=/absolute/path/to/chromium node tests/js/browser_disclosures.mjs
 ```
 
-## Test groups
+## Layout
 
-Each `test_*.py` file is self-contained and named after the behavior it covers; the
-groups below describe where to look. `helpers.py` provides import paths, temporary
-databases, the synthetic game plan and the mini runner; `schema_fixtures.py`,
-`schedule_progress_fixture.py`, `disclosure_markup.py` and `fixtures/` hold shared
-synthetic data.
+The folders mirror the application package. Each `test_*.py` file is self-contained
+and named after the behavior it covers.
 
-| Area | Files |
+| Folder | Covers |
 | --- | --- |
-| Domain and sync | `test_db.py`, `test_db_structure.py`, `test_scraper.py`, `test_game_duties.py`, `test_binding_assignments.py`, `test_replacement_cancellation.py`, `test_day_blocks.py`, `test_cake_blocks.py`, `test_memberships.py`, `test_contacts.py`, `test_age_*.py`, `test_person_birth_dates.py`, `test_spielfest_presentation.py`, `test_task_descriptions.py` |
-| Concurrency and SQLite runtime | `test_concurrency.py`, `test_cake_concurrency.py`, `test_sqlite_runtime.py`, `test_daily_lock.py` |
-| Web interface and access | `test_webapp.py`, `test_webapp_structure.py`, `test_auth.py`, `test_auth_abuse.py`, `test_refusals.py`, `test_management_ui.py`, `test_schedule_*.py`, `test_sticky_web.py`, `test_day_blocks_web.py`, `test_cake_blocks_web.py`, `test_mobile_*.py`, `test_action_feedback.py`, `test_javascript.py` (runs the `js_*.mjs` checks) |
-| Daily job and notifications | `test_main.py`, `test_development_overrides.py`, `test_notifier.py`, `test_cake_reminders.py`, `test_messages.py`, `test_message_config.py`, `test_message_accounts.py`, `test_provider_env.py` |
-| Schema migrations | `test_schema_migrations.py`, `test_*_migration.py` |
-| Backup, CLI and operations | `test_backup.py`, `test_cli.py`, `test_operations*.py`, `test_host_operations.py`, `test_privacy.py`, `test_production_runtime.py`, `test_recovery_check.py`, `test_deployment_assets.py`, `test_release_prepare.py` |
-| Optional browser checks | `browser_*.mjs` (need a preinstalled Playwright/Chromium, see below) |
+| `db/` | Domain rules, sync, duties, day blocks, memberships, contacts, age rules, concurrency and SQLite runtime, db package structure |
+| `web/` | Pages, JSON APIs, authentication, refusals, access tiers, mobile presentation, web package structure; `test_javascript.py` runs the `js/js_*.mjs` checks |
+| `jobs/` | Daily job orchestration, daily lock, scraper, notifications, message catalog and legacy wording, development overrides, provider settings |
+| `migrations/` | Guarded schema upgrades and every revision's retention rules |
+| `ops/` | Backup/restore, CLI, monitoring, privacy cleanup, production runtime, recovery check, deployment assets, release preparation, project layout guards |
+| `js/` | Dependency-free JavaScript checks (`js_*.mjs`) and optional browser checks (`browser_*.mjs`, need a preinstalled Playwright/Chromium, see below) |
+
+Shared helpers stay at the top: `helpers.py` (synthetic databases, game plan, test
+clock, mini runner; import as `from tests import helpers as h`), `schema_fixtures.py`,
+`schedule_progress_fixture.py`, `disclosure_markup.py` and `fixtures/`. Tests patch
+package modules, e.g. `nuligahelper.common.effective_today` and
+`nuligahelper.db.clock.duty_now`; `ops/test_project_layout.py` rejects old module names.
 
 ## Notes
 
@@ -72,13 +72,13 @@ non-JavaScript confirmation path. It installs nothing and never uses real provid
 
 ```bash
 PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs \
-  BROWSER_EXECUTABLE=/absolute/path/to/chromium node test/browser_binding_assignments.mjs
+  BROWSER_EXECUTABLE=/absolute/path/to/chromium node tests/js/browser_binding_assignments.mjs
 ```
 
 The optional `browser_schedule_progress.mjs` check covers horizontal schedule bars,
 German occupied/required counts, rounded percentages, separate warnings and native
 keyboard/touch disclosures at 320, 360, 390, 700, 900, 901 and 1280 CSS pixels,
-with normal and doubled text. It uses `test/schedule_progress_fixture.py`, a
+with normal and doubled text. It uses `tests/schedule_progress_fixture.py`, a
 throwaway synthetic database and a loopback server; no production settings or
 providers are used. Partial/empty/full staffing, long names, classification and
 eligibility warnings, cake setup/zero/positive states and past cards are included.
@@ -90,7 +90,7 @@ PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs \
   BROWSER_EXECUTABLE=/absolute/path/to/chromium \
   BROWSER_REPORT_PATH=/tmp/progress-layout.json \
   BROWSER_SCREENSHOT_DIR=/tmp/progress-screens \
-  node test/browser_schedule_progress.mjs
+  node tests/js/browser_schedule_progress.mjs
 ```
 
 Optional `PROGRESS_REFERENCE_DIR` points to captured reference `schedule.html` and
@@ -99,17 +99,17 @@ render against the same saved data for comparison; there is no height reduction
 target. Implementation evidence is retained in
 `openspec/changes/archive/2026-10-24-restore-schedule-progress-layout/verification.md` and `verification/`.
 
-The affected dependency-free JavaScript regressions also run in `test/run_tests.sh`:
+The affected dependency-free JavaScript regressions also run in `tests/run_tests.sh`:
 
 ```bash
-node test/js_assignment_options.mjs
-node test/js_schedule_progress_events.mjs
-node test/js_candidate_loading.mjs
-node test/js_candidate_toggle.mjs
-node test/js_cake_blocks.mjs
-node test/js_assignment_confirmation.mjs
-node test/js_age_replacement.mjs
-node test/js_replacement_cancellation.mjs
+node tests/js/js_assignment_options.mjs
+node tests/js/js_schedule_progress_events.mjs
+node tests/js/js_candidate_loading.mjs
+node tests/js/js_candidate_toggle.mjs
+node tests/js/js_cake_blocks.mjs
+node tests/js/js_assignment_confirmation.mjs
+node tests/js/js_age_replacement.mjs
+node tests/js/js_replacement_cancellation.mjs
 ```
 
 
@@ -124,5 +124,5 @@ production configuration are used. Reports and screenshots default to
 ```bash
 PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs \
   BROWSER_EXECUTABLE=/absolute/path/to/chromium \
-  node test/browser_schedule_visibility.mjs
+  node tests/js/browser_schedule_visibility.mjs
 ```
