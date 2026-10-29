@@ -23,7 +23,7 @@ Restoration is an offline operation. Copying only a live WAL-mode main file is n
 3. Run the guarded command against the configured target:
 
    ```bash
-   python3 manage_db.py --db /absolute/path/nuliga_helper.db \
+   python3 -m nuligahelper.cli --db /absolute/path/nuliga_helper.db \
        restore-snapshot /path/to/downloaded-snapshot.db --confirm-stopped
    ```
 
@@ -35,4 +35,4 @@ Before deploying these settings to an existing database, stop writers, preserve 
 
 
 ---
-Back to the [README](../../README.MD) · [Operations index](README.md)
+Back to the [README](../../README.md) · [Operations index](README.md)

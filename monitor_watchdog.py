@@ -1,19 +1,12 @@
-"""Independent root cron watchdog. Sends only through the fixed alert unit."""
-import subprocess
-import production as p
+# ---------------------------------------------------------------
+#                          nuLigaHelper
+# ---------------------------------------------------------------
+# Transition shim: already installed systemd units and cron entries
+# still call this path. New units run "python -m nuligahelper.ops.watchdog".
+# Remove after every host runs the updated units (docs/betrieb/deployment.md).
+# ---------------------------------------------------------------
 
+import runpy
 
-def main():
-    try:
-        healthy = p.success_age('monitor', '/var/lib/nuligahelper') <= 1800
-    except (OSError, ValueError):
-        healthy = False
-    if not healthy:
-        result = subprocess.run(['systemctl', 'start', 'nuligahelper-alert@monitor.service'],
-                                capture_output=True, timeout=45, check=False)
-        return 0 if result.returncode == 0 else 2
-    return 0
-
-
-if __name__ == '__main__':
-    raise SystemExit(main())
+if __name__ == "__main__":
+    runpy.run_module("nuligahelper.ops.watchdog", run_name="__main__", alter_sys=True)

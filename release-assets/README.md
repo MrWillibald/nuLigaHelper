@@ -1,7 +1,7 @@
 # Reviewed production release assets
 
 The first production cutover has been accepted. For routine updates, use the
-repository's [existing-installation deployment guide](../DEPLOYMENT.md).
+repository's [existing-installation deployment guide](../docs/betrieb/deployment.md).
 
 This directory contains generic, non-secret files required by a clean checkout.
 The installed systemd services use `/opt/nuligahelper/current` for all code,
@@ -48,13 +48,13 @@ sudo /usr/local/sbin/nuligahelper-deploy activate --sha <full-sha>
 `activate` deliberately returns exit 2 and leaves writers/ingress stopped if
 the existing database needs a recognized schema upgrade. The operator must
 review the candidate migration, run that release's existing guarded
-`manage_db.py migrate-schema --confirm-stopped` against the approved database,
+`python -m nuligahelper.cli migrate-schema --confirm-stopped` against the approved database,
 verify its postflight, then use `continue --deployment-id <deployment-id>`.
 For example, while all writers remain stopped:
 
 ```bash
 sudo -u nuligahelper /opt/nuligahelper/releases/<full-sha>/venv/bin/python -B \
-  /opt/nuligahelper/releases/<full-sha>/manage_db.py \
+  /opt/nuligahelper/releases/<full-sha>/nuligahelper.cli \
   --db /var/lib/nuligahelper/nuliga_helper.db migrate-schema --confirm-stopped
 sudo /usr/local/sbin/nuligahelper-deploy continue --deployment-id <deployment-id>
 ```
@@ -105,9 +105,9 @@ records are **not** release assets. Keep them outside Git and outside every
 release directory. The `.example` files contain placeholders only; never
 install them without supplying the private, approved site values.
 
-Notification wording ships in the reviewed `messages.py` catalog. Before
+Notification wording ships in the reviewed `nuligahelper/jobs/messages.py` catalog. Before
 activating that transition, run the candidate release's
-`./venv/bin/python -m message_config --config /path/to/private/config.json`.
+`./venv/bin/python -m nuligahelper.jobs.message_config --config /path/to/private/config.json`.
 Reconcile customized legacy wording privately into the catalog, move referee
 recipients to `club.notifications.referee_targets`, then remove `club.texts`.
 The preflight sends nothing, opens no database/providers and prints only keys

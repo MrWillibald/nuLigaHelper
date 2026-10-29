@@ -22,4 +22,4 @@ jobs:
           python -m venv venv
           venv/bin/python -m pip install -r requirements-test.txt
       - name: Run offline suite
-        run: test/run_tests.sh
+        run: tests/run_tests.sh

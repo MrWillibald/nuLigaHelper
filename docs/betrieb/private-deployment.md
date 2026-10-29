@@ -1,7 +1,7 @@
 # Private deployment
 
 For repeat updates to an existing installation, follow the tracked
-[deployment guide](../../DEPLOYMENT.md). It uses a pinned commit on protected `master`
+[deployment guide](deployment.md). It uses a pinned commit on protected `master`
 and the installed release command. The first production cutover has been
 accepted.
 
@@ -34,6 +34,11 @@ variables. Production `config.json` contains club, recipient and operational set
 not email, Twilio or Dropbox provider sections. Host setup and public launch
 require separate operator review.
 
+The local development overrides `NULIGAHELPER_TODAY` and `NULIGAHELPER_DRY_RUN` must
+not appear in `/etc/nuligahelper/web.env` or any unit environment: `nuligahelper.ops.runtime_check`,
+web startup, the daily job and the operations preflight/launch check refuse to run
+and name the variable.
+
 Authentication does not make the Flask development server suitable for public use.
 Generic Gunicorn and systemd templates are tracked in `release-assets/`;
 hostnames, credentials, environment files, and installed host configuration
@@ -41,4 +46,4 @@ remain private and outside the release source.
 
 
 ---
-Back to the [README](../../README.MD) · [Operations index](README.md)
+Back to the [README](../../README.md) · [Operations index](README.md)
