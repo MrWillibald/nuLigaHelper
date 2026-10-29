@@ -49,7 +49,14 @@ Web interface:
 
 | File | Purpose |
 |---|---|
-| `webapp.py` | Flask app factory: production boundary, auth/registration, tier checks, pages and JSON APIs |
+| `webapp/__init__.py` | `create_app()`: configuration, per-app state, module registration order; `app` for Gunicorn (`webapp:app`) |
+| `webapp/context.py` | `AppState`/`state()`, `get_session()`, viewer tier, shared error responses, `Registry` for routes and hooks |
+| `webapp/security.py` | Production proxy boundary, trusted hosts, body limit, security headers, viewer loading, auth guard, CSRF, health and legal pages |
+| `webapp/auth.py`, `webapp/challenges.py` | Login/registration pages and approval; contact validation, abuse limits, signed challenges, account messages |
+| `webapp/schedule.py`, `webapp/views.py` | Schedule page, visibility, candidate APIs, due-lock preflight; view-model builders (`build_schedule()`, `block_view()`, duty state) |
+| `webapp/assignments.py` | Duty claims/releases/replacements/takeovers, `/dienst`, cake settings, responsible team |
+| `webapp/persons.py`, `webapp/statistics.py` | Helper/team management; statistics (`build_statistics()`) and audit |
+| `webapp/formatting.py` | Display constants and helpers (`SLOT_LABELS`, `ak_color`, `parse_date`, …) |
 | `auth_abuse.py` | Persistent, privacy-safe authentication abuse controls |
 | `templates/`, `static/` | Jinja templates and CSS/JS; visual language copied from www.handball-raubling.de |
 
@@ -80,8 +87,14 @@ SQLite file. Two independent entry points share `db.py`:
   `SyncEvents` (`new_games`, `shifts`, `referee_alerts`, `removed_games`) → `Notifier`
   turns those events plus date-window checks into mails/SMS → a validated snapshot is
   published to Dropbox. All timing goes through `common.effective_today()`.
-- **`webapp.py`** – `create_app()` factory with one session per request
-  (`get_session()` / teardown) and a default-deny route guard. Pages: schedule (`/`),
+- **`webapp/`** – `create_app()` factory with one session per request
+  (`webapp.context.get_session()` / teardown) and a default-deny route guard. Each
+  topic module declares its routes and hooks on a module-level `Registry` and is
+  registered by `create_app()` in a fixed order; endpoint names stay the plain function
+  names (no Blueprint prefix), so `url_for("schedule")` works everywhere. Per-app
+  resources (engine, serializer, abuse service) live in `app.extensions["nuligahelper"]`
+  (`state()`), never in module globals or closures. Call `common.effective_today()` and
+  `db.*` through their modules so test patches apply. Pages: schedule (`/`),
   statistics (`/statistik`), persons (`/personen`), duty form (`/dienst`), audit
   (`/audit`), login/registration and legal pages. Mutations go through small JSON APIs
   called from `static/app.js`: `/api/assignment/{claim,release,request-replacement,
@@ -91,7 +104,7 @@ SQLite file. Two independent entry points share `db.py`:
   `build_schedule()` pre-computes per-game view dicts (including greyed-out options and
   their reasons) so templates stay simple.
 
-Business rules belong in `db.py`; `webapp.py` and `manage_db.py` are thin callers and
+Business rules belong in `db.py`; `webapp/` and `manage_db.py` are thin callers and
 the tests target `db.py` directly. `notifier.py` reads assignments from the DB and
 renders German messages from `messages.py`; `Notifier._dispatch()` centralizes the
 channel choice and its return counts are asserted by `test/test_notifier.py`.
@@ -307,7 +320,7 @@ test/run_tests.sh                          # whole suite, must stay green
   retirement is available before the actual cutoff; afterward ordinary release is
   locked. They cannot accept claims, replacement requests or takeovers and never
   affect required progress. Any aggregation over roles must iterate
-  roles once (e.g. `ROLE_SLOT_COUNT.items()`), not `SLOT_LABELS` in `webapp.py`
+  roles once (e.g. `ROLE_SLOT_COUNT.items()`), not `SLOT_LABELS` in `webapp/formatting.py`
   (which repeats Verkauf for the two UI dropdowns).
 - **Team MV**: each team can have exactly one Mannschaftsverantwortlicher
   (`Team.mv_person`), who must be an active member of that team; assign via web UI

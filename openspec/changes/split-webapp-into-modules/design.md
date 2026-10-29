@@ -32,6 +32,24 @@ Current `before_request` order: public readiness → trusted host → content le
 
 `webapp/__init__.py` imports `common`, `db`, `notifier` and re-exports `_ordered_person_options` so existing tests and fixtures keep working. These re-exports are removed in `restructure-project-layout`, where tests are updated anyway.
 
+## Implementation notes (2026-10-29)
+
+- Routes and hooks are declared on a module-level `webapp.context.Registry` and replayed
+  by `register_routes(app)`; the function is not called `register` because the
+  `/registrieren` view already owns that endpoint name.
+- Per-app resources are an immutable `AppState` in `app.extensions["nuligahelper"]`,
+  read through `state()`; nothing closes over `app`.
+- `auth.py` stayed above the size target, so contact validation, abuse limits, signed
+  challenges and account messages moved to `webapp/challenges.py`.
+- `build_statistics(session, season_year, today, hide_from)` is request-independent and
+  lives in `webapp/statistics.py` next to its only caller. `build_schedule()`,
+  `block_view()` and the duty-state helpers stay module functions in `webapp/views.py`
+  that read the viewer from `flask.g`; making them fully viewer-explicit would change
+  every helper signature and is not needed for readability.
+- The topic split landed in one commit after the package skeleton commit: the closures
+  shared state, so intermediate states would have needed throw-away glue. The suite,
+  pyflakes and a before/after page comparison ran on the result.
+
 ## Risks / Trade-offs
 
 - **Hidden closure coupling** (a helper silently using another route's local) → move one topic per commit, run the full suite after each move.

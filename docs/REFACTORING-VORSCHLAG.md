@@ -147,6 +147,10 @@ Jede Phase ist ein eigener PR, verhaltensneutral, Testsuite grün. Phasen 1–2 
   und Backup-Abschnitte nach `docs/betrieb/` verschieben (Inhalt unverändert).
 
 ### Phase 1 – `webapp.py` in Themen-Module zerlegen
+> **Umgesetzt** mit `split-webapp-into-modules`: Paket `webapp/` mit `context`, `security`,
+> `auth`, `challenges`, `schedule`, `views`, `assignments`, `persons`, `statistics` und
+> `formatting`; `create_app()` hat noch rund 70 Zeilen, kein Modul mehr als 500.
+
 - `create_app()` behält nur: Konfiguration, Session-Handling, Registrierung der
   Themen-Module. Gemeinsame Closures (`get_session`, `tier_for`, `current_mv_team_ids`,
   `api_error`, …) werden Modulfunktionen, die über `flask.g` / `current_app` arbeiten.
@@ -277,15 +281,15 @@ Entscheidungen vom 29.10.2026:
 
 Changes in empfohlener Reihenfolge (je ein PR):
 
-| # | Change | Inhalt | Spec-Deltas |
-|---|---|---|---|
-| 1 | `refresh-developer-documentation` | Phase 0, 4.9 | keine (nur Doku) |
-| 2 | `remove-legacy-game-identity-migration` | 4.4 | `game-identity` (REMOVED), `schema-migrations` (MODIFIED) |
-| 3 | `move-debug-switches-to-environment` | 4.1 | `production-operations` (ADDED) |
-| 4 | `tidy-maintenance-helpers` | 4.2, 4.5, 4.6, 5.4 | keine (Refactoring) |
-| 5 | `split-webapp-into-modules` | Phase 1 | keine (Refactoring) |
-| 6 | `split-domain-module` | Phase 2 | keine (Refactoring) |
-| 7 | `restructure-project-layout` | Phase 3 + Doku-Teil aus Phase 4 | keine (Refactoring) |
+| # | Change | Inhalt | Spec-Deltas | Stand |
+|---|---|---|---|---|
+| 1 | `refresh-developer-documentation` | Phase 0, 4.9 | keine (nur Doku) | umgesetzt |
+| 2 | `remove-legacy-game-identity-migration` | 4.4 | `game-identity` (REMOVED), `schema-migrations` (MODIFIED) | umgesetzt |
+| 3 | `move-debug-switches-to-environment` | 4.1 | `production-operations` (ADDED) | umgesetzt |
+| 4 | `tidy-maintenance-helpers` | 4.2, 4.5, 4.6, 5.4 | keine (Refactoring) | umgesetzt |
+| 5 | `split-webapp-into-modules` | Phase 1 | keine (Refactoring) | umgesetzt |
+| 6 | `split-domain-module` | Phase 2 | keine (Refactoring) | offen |
+| 7 | `restructure-project-layout` | Phase 3 + Doku-Teil aus Phase 4 | keine (Refactoring) | offen |
 
 1–4 sind klein und inhaltlich unabhängig (sie berühren teils dieselben Doku-Zeilen); 7 setzt 2, 5 und 6 voraus und braucht ein
 geplantes Wartungsfenster für die systemd-Units. Später und optional: `app.js`
