@@ -35,16 +35,12 @@ from sqlalchemy.orm import (
 # Stable assignment keys; use role_label() for current human-readable names.
 # ---------------------------------------------------------------------------
 
-ROLE_MV = "MV"
 ROLE_TIMEKEEPER = "Zeitnehmer"
 ROLE_SECRETARY = "Sekretär"
 ROLE_SALE = "Verkauf"
 ROLE_SECURITY = "Ordnungsdienst"
 ROLE_CASH = "Kasse"
 ROLE_CLEANING = "Wischer"
-# Import compatibility for the renamed support duty. Legacy stored role text is
-# migrated explicitly; new cleaning duties always use their distinct role.
-ROLE_SUPPORT = ROLE_CASH
 
 # Slot count per role; keys define the display order for open-task lists
 ROLE_SLOT_COUNT = {

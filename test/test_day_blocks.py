@@ -151,7 +151,7 @@ def test_retained_cash_duty_is_preserved_but_not_required_on_youth():
         session.flush()
         session.add(db.Assignment(game=game, role=db.ROLE_CASH, slot=0, person=optional))
         session.flush()
-        assert game.assignment_by_role(db.ROLE_SUPPORT).person is optional
+        assert game.assignment_by_role(db.ROLE_CASH).person is optional
 
 
 def test_database_constraints_reject_duplicate_block_occupants():

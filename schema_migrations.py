@@ -110,10 +110,6 @@ def head_revisions() -> tuple[str, ...]:
     return tuple(ScriptDirectory.from_config(alembic_config()).get_heads())
 
 
-def _readonly_uri(path: Path) -> str:
-    return f"{path.resolve().as_uri()}?mode=ro"
-
-
 def _table_names(connection: sqlite3.Connection) -> set[str]:
     return {
         row[0]
@@ -170,7 +166,7 @@ def inspect_schema(database_path: str | Path) -> SchemaState:
     if not path.exists() or path.stat().st_size == 0:
         return SchemaState("empty")
     try:
-        with sqlite3.connect(_readonly_uri(path), uri=True) as connection:
+        with sqlite3.connect(backup.readonly_uri(path), uri=True) as connection:
             quick = connection.execute("PRAGMA quick_check").fetchall()
             if quick != [("ok",)]:
                 return SchemaState("corrupt", details=(f"quick_check={quick!r}",))
@@ -248,7 +244,7 @@ def _create_backup(path: Path) -> Path:
 
 def _retained_data(path: Path, columns: dict | None = None, *, appended_audits=()) -> tuple[dict, dict]:
     """Fingerprint preserved values without exposing contacts or birth dates."""
-    with sqlite3.connect(_readonly_uri(path), uri=True) as connection:
+    with sqlite3.connect(backup.readonly_uri(path), uri=True) as connection:
         tables = _table_names(connection) - {"alembic_version"}
         versioned = connection.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='alembic_version'"

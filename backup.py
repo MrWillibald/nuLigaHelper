@@ -244,7 +244,8 @@ def dropbox_backup_paths(
     )
 
 
-def _readonly_uri(path: Path, *, immutable: bool = False) -> str:
+def readonly_uri(path: Path, *, immutable: bool = False) -> str:
+    """Return a read-only SQLite URI for ``path``."""
     query = "mode=ro&immutable=1" if immutable else "mode=ro"
     return f"{path.resolve().as_uri()}?{query}"
 
@@ -265,7 +266,7 @@ def validate_snapshot(
 
         with closing(
             connect(
-                _readonly_uri(path, immutable=True),
+                readonly_uri(path, immutable=True),
                 uri=True,
                 timeout=SQLITE_BUSY_TIMEOUT_SECONDS,
             )
@@ -389,7 +390,7 @@ def snapshot_database(
 
         with closing(
             connect(
-                _readonly_uri(source_path),
+                readonly_uri(source_path),
                 uri=True,
                 timeout=busy_timeout,
             )

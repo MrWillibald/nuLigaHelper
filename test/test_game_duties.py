@@ -75,7 +75,7 @@ def _cli(path, *args):
 def test_explicit_classifier_controls_offered_and_required_duties_for_all_reviewed_classes():
     assert db.ROLE_SLOT_COUNT[db.ROLE_SECURITY] == 1
     assert db.ROLE_SLOT_COUNT[db.ROLE_CLEANING] == 1
-    assert db.ROLE_CLEANING != db.ROLE_CASH and db.ROLE_SUPPORT == db.ROLE_CASH
+    assert db.ROLE_CLEANING != db.ROLE_CASH, "Wischer must stay a duty distinct from Kasse"
     groups = {
         "adult": ("M", "F", "BL M", "BOL F"),
         "youth": tuple(f"BL {sex}{age}" for sex in "mw" for age in "ABCDE") + ("SPF", "SPF Mini", "spf mini"),

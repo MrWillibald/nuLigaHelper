@@ -133,7 +133,9 @@ def test_unversioned_baseline_upgrade_keeps_unknown_dates_and_legacy_membership_
             assert person.birth_date is None
             assert person.account_status == db.ACCOUNT_REGISTERED
             assert {team.id for team in person.teams} == {1, 2}
-            assert session.get(db.Assignment, 1).role == db.ROLE_SUPPORT
+            assert session.get(db.Assignment, 1).role == db.ROLE_CASH, (
+                "the historical Unterstützung duty must have migrated to Kasse"
+            )
         with sqlite3.connect(path) as connection:
             columns = {row[1]: row for row in connection.execute("PRAGMA table_info(persons)")}
             assert columns["birth_date"][2:5] == ("DATE", 0, None)

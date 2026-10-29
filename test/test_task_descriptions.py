@@ -110,7 +110,9 @@ def test_catalog_covers_actual_roles_and_phases_without_obsolete_proposal_roles(
         "task additions and renames must update the description catalog alongside supported roles"
     )
     assert all(isinstance(text, str) and text.strip() for text in db.TASK_DESCRIPTIONS.values())
-    assert "Unterstützung" not in db.TASK_DESCRIPTIONS and db.ROLE_MV not in db.TASK_DESCRIPTIONS
+    assert "Unterstützung" not in db.TASK_DESCRIPTIONS and "MV" not in db.TASK_DESCRIPTIONS, (
+        "MV is a team appointment, not a described duty"
+    )
     assert "Reinigung" not in db.TASK_DESCRIPTIONS
     assert "Als Wischer" in db.TASK_DESCRIPTIONS[db.ROLE_CLEANING]
     assert "des Wischers" in db.TASK_DESCRIPTIONS[db.ROLE_CLEANING]

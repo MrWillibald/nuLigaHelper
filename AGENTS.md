@@ -108,7 +108,7 @@ refactorings.
 ## Environment & commands
 
 ```bash
-python3 -m venv venv && ./venv/bin/pip install -r requirements.txt
+python3 -m venv venv && ./venv/bin/pip install -r requirements.txt   # pinned prod set + test tools
 ./venv/bin/python test/test_webapp.py     # single test file (also: pytest)
 ./venv/bin/python -m pytest test/test_db.py -v -k sync   # single test / pattern
 test/run_tests.sh                          # whole suite, must stay green

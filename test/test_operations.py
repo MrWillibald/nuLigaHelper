@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import tempfile
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import helpers as h
@@ -130,29 +131,44 @@ def test_legal_rejects_unsafe_links_and_placeholders():
         else: raise AssertionError('invalid legal content accepted: ' + modify)
 
 
+def _filesystem(free_percent):
+    """Synthetic statvfs result, so monitor checks never depend on the test host."""
+    return SimpleNamespace(f_blocks=1000, f_bavail=10 * free_percent,
+                           f_files=1000, f_favail=10 * free_percent)
+
+
 def test_monitor_detects_staleness_missing_timers_clock_disk_and_tls():
     cfg = settings()
     def healthy_command(*args):
         if args[0] == 'timedatectl': return 'yes'
         return 'LoadState=loaded\nActiveState=active\nResult=success\nUnitFileState=enabled'
+    healthy_disk = lambda path: _filesystem(50)
     with tempfile.TemporaryDirectory() as directory:
         cfg['state_dir'] = directory
         for phase in ('application','backup','cleanup'): p.write_success(phase,directory)
         with patch.object(db, 'database_ready', return_value=True):
             result = operations.monitor(cfg,runner=healthy_command,cert=lambda host:30,
-                                       statvfs=lambda path:os.statvfs(directory))
+                                       statvfs=healthy_disk)
             assert not any(result.values()), result
             result = operations.monitor(cfg,runner=lambda *args:'no',cert=lambda host:1,
-                                       statvfs=lambda path:os.statvfs(directory))
+                                       statvfs=healthy_disk)
             assert result['clock'] == result['certificate'] == result['nuligahelper-daily.timer'] == 2
+            low_state = lambda path: _filesystem(5 if path == directory else 15)
+            result = operations.monitor(cfg,runner=healthy_command,cert=lambda host:30,
+                                       statvfs=low_state)
+            assert result['state_disk'] == result['state_inodes'] == 2, (
+                'free space below the critical threshold must be critical'
+            )
+            assert result['app_disk'] == result['journal_inodes'] == 1, (
+                'free space between the thresholds must warn'
+            )
             p.write_success('backup',directory,datetime.now(timezone.utc)-timedelta(days=6))
             result = operations.monitor(cfg,runner=healthy_command,cert=lambda host:10,
-                                       statvfs=lambda path:os.statvfs(directory))
+                                       statvfs=healthy_disk)
             assert result['backup'] == 2 and result['certificate'] == 1
     assert operations.threshold(9,20,10)==2
     assert operations.threshold(15,20,10)==1
     assert operations.threshold(21,20,10)==0
-
 
 if __name__ == '__main__':
     h.run_all(globals())

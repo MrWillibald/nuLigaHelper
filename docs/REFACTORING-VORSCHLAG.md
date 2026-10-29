@@ -205,11 +205,11 @@ Jede Phase ist ein eigener PR, verhaltensneutral, Testsuite grün. Phasen 1–2 
 | # | Thema | Vorschlag | Aufwand |
 |---|---|---|---|
 | 4.1 | **Debug-Schalter im Code** (`DEBUG_FLAG`, `CHANGE_DAY`, `DEBUG_TODAY` in `common.py`, müssen vor jedem Commit zurückgesetzt werden) | **Umgesetzt** (`move-debug-switches-to-environment`): `NULIGAHELPER_TODAY` und `NULIGAHELPER_DRY_RUN`, in Produktion abgewiesen | – |
-| 4.2 | **Doppelte SQLite-Hilfsfunktionen**: `_backup_path`/`_create_backup` in `schema_migrations.py` **und** `game_identity_migration.py`; `_readonly_uri` in `backup.py` **und** `schema_migrations.py` | Die Backup-Duplikate entfallen mit 4.4; `_readonly_uri` wird eine öffentliche Funktion in `backup.py` | klein |
+| 4.2 | **Doppelte SQLite-Hilfsfunktionen**: `_backup_path`/`_create_backup` in `schema_migrations.py` **und** `game_identity_migration.py`; `_readonly_uri` in `backup.py` **und** `schema_migrations.py` | **Umgesetzt** (`tidy-maintenance-helpers`): `backup.readonly_uri()` ersetzt beide Kopien; die Backup-Duplikate entfielen mit 4.4 | – |
 | 4.3 | **Ruhende Zeitungsartikel-Funktion**: `Notifier.send_article`, auskommentierter Aufruf in `main.py` (mit altem `strGameDateSa`-Stil), 5 `dormant`-Texte in `messages.py` | **Entschieden: bleibt vorerst deaktiviert erhalten**, wird nicht angefasst | – |
 | 4.4 | **Einmal-Migration `game_identity_migration.py`** (Legacy `games.source_key`) | **Umgesetzt** (`remove-legacy-game-identity-migration`): entfernt, Altschema wird weiterhin erkannt und abgewiesen | – |
-| 4.5 | **Unbenutzte/irreführende Konstanten**: `ROLE_MV` (MV ist keine Dienstrolle mehr), `ROLE_SUPPORT = ROLE_CASH` (Alias aus der Kasse/Reinigung-Umbenennung) | Nur noch in Tests/Migrationen genutzt → dort lokal definieren, aus der öffentlichen API nehmen | klein |
-| 4.6 | **Drei Requirements-Dateien mit unterschiedlichen Versionen**: `requirements.txt` ungepinnt, Produktion/CI gepinnt | Entwickler installieren `requirements-test.txt` (enthält die Produktions-Pins) → lokal = CI = Produktion. `requirements.txt` wird `-r requirements-test.txt` oder entfällt | klein |
+| 4.5 | **Unbenutzte/irreführende Konstanten**: `ROLE_MV` (MV ist keine Dienstrolle mehr), `ROLE_SUPPORT = ROLE_CASH` (Alias aus der Kasse/Reinigung-Umbenennung) | **Umgesetzt** (`tidy-maintenance-helpers`): beide Konstanten entfernt | – |
+| 4.6 | **Drei Requirements-Dateien mit unterschiedlichen Versionen**: `requirements.txt` ungepinnt, Produktion/CI gepinnt | **Umgesetzt** (`tidy-maintenance-helpers`): `requirements.txt` = `-r requirements-test.txt` | – |
 | 4.7 | **Zwei Test-Runner** (eigener Mini-Runner in `helpers.py` + pytest) | Mittelfristig nur pytest (CI ruft dann `pytest`), Mini-Runner entfernen. Spart Code, liefert bessere Fehlermeldungen | mittel |
 | 4.8 | **Benennung**: `production.py` wird als `p` bzw. `production_data` importiert, `common.py` sagt nichts über den Inhalt | `ops/settings.py`, `config.py` (siehe Zielstruktur) | in Phase 3 |
 | 4.9 | **Veralteter Kopfkommentar** in `manage_db.py` („until the web interface is available“) | Aktualisieren | trivial |
@@ -243,7 +243,7 @@ Vorschlag: Benutzer-Doku Deutsch, Entwickler-/Betriebsdoku Englisch – aber je 
 Testdateien (Phase 3) ist das ein Risiko → beim Verschieben jeweils einzeln laufen
 lassen; langfristig eigene Fixtures pro Test.
 
-### 5.4 Umgebungsabhängiger Test
+### 5.4 Umgebungsabhängiger Test (behoben in `tidy-maintenance-helpers`)
 `test_operations.py::test_monitor_detects_staleness_missing_timers_clock_disk_and_tls`
 schlug im Basislauf fehl, weil er echtes `os.statvfs()` des Temp-Ordners nutzt und
 die Plattenbelegung der Testmaschine mitbewertet (`app_disk: 1`). Der Test sollte ein

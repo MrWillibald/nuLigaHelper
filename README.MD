@@ -48,6 +48,10 @@ outside this repository.
 python3 -m venv venv && ./venv/bin/pip install -r requirements.txt
 ```
 
+`requirements.txt` installs the reviewed pins from `requirements-production.txt` plus the
+test tools, so local runs use the same library versions as CI and production
+(CPython 3.13).
+
 Copy `config_template.json` to `config.json` and adjust the club and recipient settings.
 Notification wording lives in `messages.py`. E-mail, Twilio and Dropbox settings come from
 environment variables mapped in `common.PROVIDER_ENV`; production refuses provider sections
