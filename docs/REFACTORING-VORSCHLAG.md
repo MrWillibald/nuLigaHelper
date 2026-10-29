@@ -249,6 +249,25 @@ schlug im Basislauf fehl, weil er echtes `os.statvfs()` des Temp-Ordners nutzt u
 die Plattenbelegung der Testmaschine mitbewertet (`app_disk: 1`). Der Test sollte ein
 festes `statvfs`-Ergebnis vorgeben.
 
+### 5.5 Überflüssige bzw. doppelte Markdown-Inhalte (Prüfung 29.10.2026)
+Keine der 11 Markdown-Dateien außerhalb von `openspec/` ist verwaist; alle werden verlinkt.
+Doppelt gepflegt sind aber:
+- `CLAUDE.md` wiederholt Befehle und Regeln aus `AGENTS.md` (und ist dabei veraltet) →
+  auf kurze Orientierung plus `@AGENTS.md` reduzieren.
+- `README.MD` enthält ~360 Zeilen englische Verhaltensbeschreibung (Weboberfläche,
+  Sichtbarkeit, Aufgaben, Dienstpositionen, verbindliche Dienste, Altersgrenzen,
+  Kuchen), die schon in den deutschen Handbüchern und in `openspec/specs/` stehen →
+  durch kurze Funktionsliste mit Links ersetzen.
+- `test/README.md` listet in seiner Tabelle nur 24 von 58 Testdateien → Tabelle
+  durch Beschreibung der Testgruppen ersetzen.
+- `docs/REFACTORING-VORSCHLAG.md` (diese Datei) überschneidet sich mit den
+  OpenSpec-Changes → nach Abschluss von `restructure-project-layout` löschen.
+
+Bewusst behalten: `DEPLOYMENT.md` (Routine-Update) und `release-assets/README.md`
+(Ersteinrichtung, von `test_deployment_assets.py` geprüft) haben verschiedene Zwecke;
+`DATA-INVENTORY.md` ist das Datenschutz-Inventar; `openspec/changes/archive/` ist die
+Änderungshistorie. Umsetzung im Change `refresh-developer-documentation`.
+
 ## 6. Entscheidungen und Umsetzung über OpenSpec
 
 Entscheidungen vom 29.10.2026:

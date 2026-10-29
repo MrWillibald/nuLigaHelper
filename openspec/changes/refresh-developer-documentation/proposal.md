@@ -12,6 +12,9 @@ This is phase 0 of `docs/REFACTORING-VORSCHLAG.md` and the prerequisite for the 
 - Complete the `AGENTS.md` module map with every top-level module and its single responsibility; replace the "local network only" statement with a pointer to the production deployment.
 - Fix the `run_webapp.sh` hint to reference `DEPLOYMENT.md` / `release-assets/README.md`.
 - Update the outdated header comment of `manage_db.py` ("until the web interface is available").
+- Remove duplication between `CLAUDE.md` and `AGENTS.md`: `CLAUDE.md` currently repeats commands and invariants from the canonical `AGENTS.md` (and is the copy that went stale). Reduce it to a short orientation that imports the rulebook with `@AGENTS.md`, keeping only Claude-specific notes.
+- Remove the per-file table from `test/README.md`; it lists 24 of 58 test files and cannot stay current. Keep run instructions and describe test groups instead.
+- Replace the English behavior chapters in `README.MD` (web interface ~120 lines, home-game-day visibility, task descriptions, game duty positions, binding duties, age eligibility, cake delivery; ~360 lines in total) with a short feature list. Their content already exists in German in the user manuals for users and in `openspec/specs/` as the authoritative behavior contract; operator-relevant details move to `docs/betrieb/`.
 - Shorten `README.MD` to overview, features, quick start, testing and links. Move the English operator sections (SQLite production profile, snapshot restore, schema initialization/migration, notification-wording migration, private deployment) unchanged into `docs/betrieb/` files and link them. Keep one language per file.
 
 ## Capabilities
@@ -26,6 +29,7 @@ None. Documentation-only change; behavior and specifications stay unchanged.
 
 ## Impact
 
-- `CLAUDE.md`, `AGENTS.md`, `README.MD`, `run_webapp.sh` (comment/echo text only), `manage_db.py` (header comment only), new `docs/betrieb/*.md`, `docs/README.md` index.
-- Links in `docs/`, `release-assets/README.md` and `DEPLOYMENT.md` that target moved README sections are updated.
+- `CLAUDE.md`, `AGENTS.md`, `README.MD`, `test/README.md`, `run_webapp.sh` (comment/echo text only), `manage_db.py` (header comment only), new `docs/betrieb/*.md`, `docs/README.md` index.
+- Links in `docs/`, `release-assets/README.md`, `DEPLOYMENT.md` and `DATA-INVENTORY.md` that target moved README sections are updated.
+- No Markdown file is orphaned today; `openspec/changes/archive/` (37 archived changes) is kept as the OpenSpec change history.
 - No code path, CLI behavior, schema or deployment asset changes.
