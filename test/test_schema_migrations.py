@@ -61,6 +61,31 @@ def test_schema_inspection_recognizes_legacy_game_identity():
         assert schema_migrations.inspect_schema(path).kind == "legacy_game_identity"
 
 
+def test_legacy_game_identity_startup_refuses_unchanged_with_release_hint():
+    with tempfile.TemporaryDirectory() as raw_directory:
+        path = Path(raw_directory) / "legacy-game.db"
+        with sqlite3.connect(path) as connection:
+            connection.execute(
+                "CREATE TABLE games (id INTEGER PRIMARY KEY, source_key TEXT NOT NULL)"
+            )
+        before = path.read_bytes()
+        engine = db.make_engine(str(path))
+        try:
+            db.verify_db(engine)
+        except db.DatabaseMigrationRequiredError as exc:
+            assert "früheren Release" in str(exc), (
+                "startup must direct the operator to an earlier release"
+            )
+            assert "migrate-game-identity" not in str(exc), (
+                "startup must not name the removed command"
+            )
+        else:
+            raise AssertionError("legacy game identity must fail closed at startup")
+        finally:
+            engine.dispose()
+        assert path.read_bytes() == before, "refused startup must not modify the database"
+
+
 def test_schema_inspection_recognizes_known_and_unknown_revisions():
     with tempfile.TemporaryDirectory() as raw_directory:
         path = Path(raw_directory) / "versioned.db"
@@ -201,10 +226,17 @@ def test_migrate_schema_head_is_noop_and_legacy_or_unknown_are_refused():
             connection.execute(
                 "CREATE TABLE games (id INTEGER PRIMARY KEY, source_key TEXT NOT NULL)"
             )
+        before = legacy.read_bytes()
         error = _system_exit(
             lambda: _run_cli(legacy, "migrate-schema", "--confirm-stopped")
         )
-        assert "migrate-game-identity" in str(error)
+        assert "earlier release" in str(error), (
+            "legacy identity must point to an earlier release for the conversion"
+        )
+        assert "migrate-game-identity" not in str(error), (
+            "the refusal must not name a command this release no longer provides"
+        )
+        assert legacy.read_bytes() == before, "a refused legacy database stays unchanged"
 
         unknown = directory / "unknown.db"
         with sqlite3.connect(unknown) as connection:

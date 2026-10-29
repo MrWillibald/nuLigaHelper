@@ -32,7 +32,6 @@ Domain and data:
 | `contact_validation.py` | Validation and canonicalization of e-mail and phone contacts |
 | `task_labels.py` | Display labels for stored role identifiers (kept separate from `db` to avoid an import cycle) |
 | `schema_migrations.py`, `migrations/`, `alembic.ini` | Read-only schema inspection and guarded Alembic upgrades |
-| `game_identity_migration.py` | One-time migration from legacy `games.source_key` identity |
 
 Daily job and notifications:
 
@@ -343,8 +342,8 @@ test/run_tests.sh                          # whole suite, must stay green
   accepts only an absent/empty target; web and daily startup require the current
   head. Operators stop all database users and run `manage_db.py migrate-schema
   --confirm-stopped`, which fingerprints, snapshots, upgrades and verifies. A
-  legacy `games.source_key` database must first run `migrate-game-identity
-  --confirm-stopped`. Unknown/near-miss schemas fail closed; rollback restores the
+  legacy `games.source_key` database is refused unchanged; its one-time converter
+  was removed after all databases were migrated. Unknown/near-miss schemas fail closed; rollback restores the
   printed snapshot rather than downgrading membership in place.
   The birth-date revision joins the single existing head, preserves unknown
   legacy dates and all person relationships, assignments and audit snapshots,

@@ -28,7 +28,6 @@ import backup
 import common
 import contact_validation as contacts
 import db
-import game_identity_migration
 import schema_migrations
 
 
@@ -84,31 +83,6 @@ def cmd_migrate_schema(args):
     else:
         print(f"Migrated database to schema head {result.revision}: {result.database_path}")
         print(f"Backup: {result.backup_path}")
-
-
-def cmd_migrate_game_identity(args):
-    if not args.confirm_stopped:
-        raise SystemExit(
-            "Refusing migration without --confirm-stopped. Stop all web and daily "
-            "database users first."
-        )
-    path = db.resolve_db_path(get_db_path(args))
-    try:
-        result = game_identity_migration.migrate(path)
-    except game_identity_migration.MigrationError as exc:
-        raise SystemExit(f"Game identity migration failed: {exc}") from exc
-    plan = result.plan
-    print(f"Migrated database: {result.database_path}")
-    print(f"Backup: {result.backup_path}")
-    print(
-        f"Games: {plan.legacy_game_count} -> {plan.resulting_game_count}; "
-        f"Spielfeste: {plan.spielfest_groups}; "
-        f"collapsed rows: {plan.redundant_spielfest_rows}"
-    )
-    print(
-        f"Preserved assignments: {plan.assignment_count}; "
-        f"audit rows: {plan.audit_count}"
-    )
 
 
 def _restore_error_message(error: backup.RestoreError) -> str:
@@ -451,17 +425,6 @@ def build_parser():
         help="Confirm that all web and daily database users are stopped",
     )
     p.set_defaults(func=cmd_migrate_schema)
-
-    p = sub.add_parser(
-        "migrate-game-identity",
-        help="Back up and migrate the stopped legacy game-identity database",
-    )
-    p.add_argument(
-        "--confirm-stopped",
-        action="store_true",
-        help="Confirm that all web and daily database users are stopped",
-    )
-    p.set_defaults(func=cmd_migrate_game_identity)
 
     p = sub.add_parser(
         "restore-snapshot",

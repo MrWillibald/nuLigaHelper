@@ -171,7 +171,7 @@ class SQLiteInitializationError(RuntimeError):
 
 
 class DatabaseMigrationRequiredError(SQLiteInitializationError):
-    """Raised when a legacy game-identity schema requires explicit migration."""
+    """Raised when a legacy game-identity schema must be converted by an earlier release."""
 
 
 class AssignmentTemporarilyUnavailableError(RuntimeError):
@@ -403,9 +403,9 @@ def verify_db(engine) -> None:
     state = schema_migrations.inspect_schema(database_path)
     if state.kind == "legacy_game_identity":
         raise DatabaseMigrationRequiredError(
-            "Die Datenbank verwendet die alte Spielidentität. Stoppe Webdienst "
-            "und Tagesjob und führe 'manage_db.py migrate-game-identity "
-            "--confirm-stopped' aus."
+            "Die Datenbank verwendet die alte Spielidentität. Diese Version "
+            "enthält deren Umstellung nicht mehr; führe sie zuerst mit einem "
+            "früheren Release durch."
         )
     if state.kind == "invalid":
         details = "; ".join(state.details)

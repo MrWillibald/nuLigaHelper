@@ -7,7 +7,7 @@ Operator procedures for an installed nuLigaHelper. Behavior rules are specified 
 | Document | Content |
 | --- | --- |
 | [sqlite-and-backups.md](sqlite-and-backups.md) | SQLite connection profile, WAL, daily lock, Dropbox snapshots and retention, restoring a downloaded snapshot |
-| [schema-migration.md](schema-migration.md) | Explicit initialization, guarded `migrate-schema --confirm-stopped` upgrades, legacy game identity, recovery |
+| [schema-migration.md](schema-migration.md) | Explicit initialization, guarded `migrate-schema --confirm-stopped` upgrades, recovery; legacy game identity is refused |
 | [cli.md](cli.md) | `manage_db.py` commands for persons, memberships, games, assignments and contact preflight |
 | [notification-wording.md](notification-wording.md) | `messages.py` catalog, legacy `club.texts` preflight and referee recipients |
 | [private-deployment.md](private-deployment.md) | Production topology, legal pages, environment variables |

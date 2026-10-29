@@ -503,8 +503,9 @@ def migrate_to_head(database_path: str | Path, engine) -> MigrationResult:
         return MigrationResult(path, None, state, head)
     if state.kind == "legacy_game_identity":
         raise SchemaMigrationError(
-            "Legacy game identity detected. Run 'manage_db.py migrate-game-identity "
-            "--confirm-stopped' before migrate-schema."
+            "Legacy game identity detected. This release no longer converts the old "
+            "games.source_key identity; complete that conversion with an earlier "
+            "release before running migrate-schema."
         )
     if state.kind not in {"baseline", "versioned"}:
         details = "; ".join(state.details)
