@@ -68,7 +68,6 @@ nuLigaHelper/
 │   │   ├── age_eligibility.py   (unverändert verschoben)
 │   │   ├── contacts.py          ← contact_validation.py
 │   │   ├── schema_upgrade.py    ← schema_migrations.py
-│   │   ├── legacy_identity.py   ← game_identity_migration.py (einmalig, siehe 4.4)
 │   │   └── migrations/          ← migrations/ (Alembic: env.py, versions/)
 │   │
 │   ├── web/                     ◀ Weboberfläche  (heute: webapp.py)
@@ -97,7 +96,7 @@ nuLigaHelper/
 │   └── ops/                     ◀ Produktionsbetrieb
 │       ├── backup.py            Snapshot, Dropbox, Restore
 │       ├── settings.py          ← production.py (Validierung der Betriebs-Konfig)
-│       ├── logging.py           ← production_logging.py
+│       ├── journal_logging.py   ← production_logging.py
 │       ├── monitoring.py        ← operations.py
 │       ├── watchdog.py          ← monitor_watchdog.py
 │       ├── runtime_check.py
@@ -147,14 +146,15 @@ Jede Phase ist ein eigener PR, verhaltensneutral, Testsuite grün. Phasen 1–2 
 - `README.MD` → `README.md`: kurzer Überblick + Schnellstart; Betriebs-, Migrations-
   und Backup-Abschnitte nach `docs/betrieb/` verschieben (Inhalt unverändert).
 
-### Phase 1 – `webapp.py` in Blueprints zerlegen
+### Phase 1 – `webapp.py` in Themen-Module zerlegen
 - `create_app()` behält nur: Konfiguration, Session-Handling, Registrierung der
-  Blueprints. Gemeinsame Closures (`get_session`, `tier_for`, `current_mv_team_ids`,
+  Themen-Module. Gemeinsame Closures (`get_session`, `tier_for`, `current_mv_team_ids`,
   `api_error`, …) werden Modulfunktionen, die über `flask.g` / `current_app` arbeiten.
-- Routen wandern in Blueprints (`auth`, `schedule`, `assignments`, `persons`,
-  `statistics`). **Endpunkt-Namen bleiben gleich** (`url_for("schedule")` etc.), indem
-  die Routen per `app.add_url_rule` bzw. Blueprint ohne Namensprefix registriert
-  werden – sonst müssten alle Templates angepasst werden.
+- Routen wandern in Module (`auth`, `schedule`, `assignments`, `persons`,
+  `statistics`), die je eine Funktion `register(app)` haben. Bewusst **keine Flask-
+  Blueprints**: Blueprints setzen immer ein Präfix vor die Endpunkt-Namen
+  (`schedule.schedule`), dann müssten alle ~40 `url_for()`-Aufrufe in Templates und
+  Tests angepasst werden. So bleiben die Endpunkt-Namen gleich.
 - `build_schedule()` (~190 Zeilen) und die Statistik-Berechnung (~125 Zeilen) werden
   reine Funktionen `(session, viewer, …) -> dict` → direkt testbar ohne HTTP.
 - Technisch wird `webapp.py` zum Paket `webapp/` (gleicher Importname, `create_app`
@@ -185,9 +185,10 @@ Jede Phase ist ein eigener PR, verhaltensneutral, Testsuite grün. Phasen 1–2 
     `gunicorn … nuligahelper.web:app` umstellen; Watchdog-Cron ebenso.
   - Für **ein Release** bleiben im Wurzelordner dünne Weiterleitungen (`main.py`,
     `webapp.py`, `operations.py`, `privacy.py`, `runtime_check.py`,
-    `monitor_watchdog.py`, `manage_db.py`), damit bereits installierte Units weiter
-    funktionieren, bis die neuen Units mit `DEPLOYMENT.md` installiert sind.
-    Danach entfernen.
+    `monitor_watchdog.py`, `manage_db.py`, `schema_migrations.py`), damit bereits
+    installierte Units und das installierte Deploy-Skript (es importiert
+    `schema_migrations` im neuen Release) weiter funktionieren, bis die neuen Units
+    mit `DEPLOYMENT.md` installiert sind. Danach entfernen.
   - `test_deployment_assets.py` / `test_release_prepare.py` prüfen diese Pfade und
     werden mit angepasst.
 
@@ -204,9 +205,9 @@ Jede Phase ist ein eigener PR, verhaltensneutral, Testsuite grün. Phasen 1–2 
 | # | Thema | Vorschlag | Aufwand |
 |---|---|---|---|
 | 4.1 | **Debug-Schalter im Code** (`DEBUG_FLAG`, `CHANGE_DAY`, `DEBUG_TODAY` in `common.py`, müssen vor jedem Commit zurückgesetzt werden) | Ersetzen durch Umgebungsvariablen, z. B. `NULIGAHELPER_DRY_RUN=1` und `NULIGAHELPER_TODAY=2025-11-21`. Kein „vergessen zurückzusetzen“ mehr; in Produktion per `production.py` verbieten. | klein |
-| 4.2 | **Doppelte SQLite-Hilfsfunktionen**: `_backup_path`/`_create_backup` in `schema_migrations.py` **und** `game_identity_migration.py`; `_readonly_uri` in `backup.py` **und** `schema_migrations.py` | Ein gemeinsames Modul (z. B. `ops/sqlite_files.py`) | klein |
-| 4.3 | **Ruhende Zeitungsartikel-Funktion**: `Notifier.send_article`, auskommentierter Aufruf in `main.py` (mit altem `strGameDateSa`-Stil), 5 `dormant`-Texte in `messages.py` | Entscheiden: entfernen (Git-Historie bewahrt sie) oder hinter Konfig-Schalter sauber reaktivieren | klein |
-| 4.4 | **Einmal-Migration `game_identity_migration.py`** (Legacy `games.source_key`) | Sobald alle Installationen migriert sind: entfernen oder klar als `legacy_` kennzeichnen | klein, **Bestätigung nötig** |
+| 4.2 | **Doppelte SQLite-Hilfsfunktionen**: `_backup_path`/`_create_backup` in `schema_migrations.py` **und** `game_identity_migration.py`; `_readonly_uri` in `backup.py` **und** `schema_migrations.py` | Die Backup-Duplikate entfallen mit 4.4; `_readonly_uri` wird eine öffentliche Funktion in `backup.py` | klein |
+| 4.3 | **Ruhende Zeitungsartikel-Funktion**: `Notifier.send_article`, auskommentierter Aufruf in `main.py` (mit altem `strGameDateSa`-Stil), 5 `dormant`-Texte in `messages.py` | **Entschieden: bleibt vorerst deaktiviert erhalten**, wird nicht angefasst | – |
+| 4.4 | **Einmal-Migration `game_identity_migration.py`** (Legacy `games.source_key`) | **Entschieden: entfernen** (alle Datenbanken sind migriert); Altschema wird weiterhin erkannt und abgewiesen | klein |
 | 4.5 | **Unbenutzte/irreführende Konstanten**: `ROLE_MV` (MV ist keine Dienstrolle mehr), `ROLE_SUPPORT = ROLE_CASH` (Alias aus der Kasse/Reinigung-Umbenennung) | Nur noch in Tests/Migrationen genutzt → dort lokal definieren, aus der öffentlichen API nehmen | klein |
 | 4.6 | **Drei Requirements-Dateien mit unterschiedlichen Versionen**: `requirements.txt` ungepinnt, Produktion/CI gepinnt | Entwickler installieren `requirements-test.txt` (enthält die Produktions-Pins) → lokal = CI = Produktion. `requirements.txt` wird `-r requirements-test.txt` oder entfällt | klein |
 | 4.7 | **Zwei Test-Runner** (eigener Mini-Runner in `helpers.py` + pytest) | Mittelfristig nur pytest (CI ruft dann `pytest`), Mini-Runner entfernen. Spart Code, liefert bessere Fehlermeldungen | mittel |
@@ -248,16 +249,25 @@ schlug im Basislauf fehl, weil er echtes `os.statvfs()` des Temp-Ordners nutzt u
 die Plattenbelegung der Testmaschine mitbewertet (`app_disk: 1`). Der Test sollte ein
 festes `statvfs`-Ergebnis vorgeben.
 
-## 6. Empfohlene Reihenfolge
+## 6. Entscheidungen und Umsetzung über OpenSpec
 
-1. **Phase 0 + 4.1, 4.2, 4.5, 4.9 + 5.4** – kleine PRs, kein Risiko, sofort Nutzen.
-2. **Phase 1 (webapp)** – größter Lesbarkeitsgewinn.
-3. **Phase 2 (db)** – zweitgrößter Gewinn, wegen Monkeypatching sorgfältig.
-4. **Phase 3 (Paket + Tests)** – sichtbar „aufgeräumter“ Repo, braucht ein geplantes
-   Deploy-Fenster.
-5. **Phase 4 + 4.3, 4.4, 4.6, 4.7** – nach Bedarf.
+Entscheidungen vom 29.10.2026:
+- `game_identity_migration.py` darf weg – alle Datenbanken sind migriert.
+- Die Zeitungsartikel-Funktion bleibt vorerst deaktiviert erhalten.
+- Die Umsetzung läuft über OpenSpec-Changes in `openspec/changes/`.
 
-Offene Fragen an dich:
-- Darf `game_identity_migration.py` weg (sind alle Datenbanken migriert)?
-- Zeitungsartikel-Funktion entfernen oder behalten?
-- Soll die Umsetzung über `openspec`-Changes laufen (wie bisherige Features)?
+Changes in empfohlener Reihenfolge (je ein PR):
+
+| # | Change | Inhalt | Spec-Deltas |
+|---|---|---|---|
+| 1 | `refresh-developer-documentation` | Phase 0, 4.9 | keine (nur Doku) |
+| 2 | `remove-legacy-game-identity-migration` | 4.4 | `game-identity` (REMOVED), `schema-migrations` (MODIFIED) |
+| 3 | `move-debug-switches-to-environment` | 4.1 | `production-operations` (ADDED) |
+| 4 | `tidy-maintenance-helpers` | 4.2, 4.5, 4.6, 5.4 | keine (Refactoring) |
+| 5 | `split-webapp-into-modules` | Phase 1 | keine (Refactoring) |
+| 6 | `split-domain-module` | Phase 2 | keine (Refactoring) |
+| 7 | `restructure-project-layout` | Phase 3 + Doku-Teil aus Phase 4 | keine (Refactoring) |
+
+1–4 sind klein und inhaltlich unabhängig (sie berühren teils dieselben Doku-Zeilen); 7 setzt 2, 5 und 6 voraus und braucht ein
+geplantes Wartungsfenster für die systemd-Units. Später und optional: `app.js`
+aufteilen (Phase 4), nur noch pytest als Test-Runner (4.7).
