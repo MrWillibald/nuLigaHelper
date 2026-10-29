@@ -83,6 +83,13 @@ def test_metadata_contains_every_table():
 
 
 
+def test_relative_database_paths_resolve_against_the_project_root():
+    assert db.resolve_db_path("nuliga_helper.db") == str(Path(h.PROJECT_DIR) / "nuliga_helper.db"), (
+        "the default database stays in the project directory, not inside the package"
+    )
+    assert db.resolve_db_path("/srv/data/x.db") == "/srv/data/x.db"
+
+
 def test_patched_duty_clock_reaches_lock_decisions():
     engine = h.make_engine()
     berlin = ZoneInfo("Europe/Berlin")

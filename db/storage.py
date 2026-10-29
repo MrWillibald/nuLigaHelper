@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 
 from sqlalchemy import create_engine, event
@@ -23,6 +24,9 @@ from db.models import SUPPORT_TEAM_NAME, Base, ScheduleVisibilitySetting, Team
 from db.people import get_support_team
 
 
+# Repository root; relative database paths resolve here, as before the split.
+PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 DEFAULT_DB_PATH = "nuliga_helper.db"
 SQLITE_TIMEOUT_SECONDS = 5.0
 SQLITE_BUSY_TIMEOUT_MS = 5000
@@ -32,11 +36,9 @@ GAME_IDENTITY_SCHEMA_VERSION = 2
 
 def resolve_db_path(db_path: str) -> str:
     """Resolve a relative DB path against the project directory."""
-    import os
-
     if os.path.isabs(db_path):
         return db_path
-    return os.path.join(os.path.dirname(os.path.abspath(__file__)), db_path)
+    return os.path.join(PROJECT_DIR, db_path)
 
 
 def _sqlite_pragma_value(dbapi_connection, pragma: str):
