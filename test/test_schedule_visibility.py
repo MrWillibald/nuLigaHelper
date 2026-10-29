@@ -14,9 +14,9 @@ from lxml import html
 from sqlalchemy import select
 
 import helpers as h
-import db
-import notifier
-import webapp
+from nuligahelper import db
+from nuligahelper.jobs import notifier
+from nuligahelper import web as webapp
 
 TODAY = date(2026, 10, 24)
 BOUNDARY = date(2026, 12, 1)
@@ -81,7 +81,7 @@ def snapshot(engine, include_setting=False):
 
 
 def set_boundary(engine, ids, value='2026-12-01', expected=''):
-    with h.Session(engine) as session, patch('common.effective_today', return_value=TODAY):
+    with h.Session(engine) as session, patch('nuligahelper.common.effective_today', return_value=TODAY):
         result = db.update_schedule_visibility(session, actor_id=ids['admin'], hide_from=value,
                                               expected_hide_from=expected)
         session.commit()
@@ -89,14 +89,14 @@ def set_boundary(engine, ids, value='2026-12-01', expected=''):
 
 
 def page(browser, path='/', today=TODAY):
-    with patch('common.effective_today', return_value=today):
+    with patch('nuligahelper.common.effective_today', return_value=today):
         response = browser.get(path)
     assert response.status_code == 200, (path, response.status_code)
     return html.fromstring(response.data)
 
 
 def save(browser, value='2026-12-01', expected='', **extra):
-    with patch('common.effective_today', return_value=TODAY):
+    with patch('nuligahelper.common.effective_today', return_value=TODAY):
         return browser.post(SETTING_URL, data=h.csrf_data(
             {'hide_from': value, 'expected_hide_from': expected, **extra}), follow_redirects=True)
 
@@ -113,7 +113,7 @@ def test_date_policy_uses_calendar_dates_and_keeps_unknown_dates():
         for invalid in ('', None, 'invalid', '29.02.2027'):
             assert db.schedule_date_visible(invalid, boundary)
         assert db.schedule_date_visible(hidden, None)
-    with patch('common.effective_today', return_value=date(2027, 8, 1)):
+    with patch('nuligahelper.common.effective_today', return_value=date(2027, 8, 1)):
         assert not db.schedule_date_visible('01.08.2027', BOUNDARY), 'fixed boundary never rolls to a new season'
 
 
@@ -122,7 +122,7 @@ def test_setting_is_durable_validated_and_allows_clear_and_expired_noop():
     before = snapshot(engine)
     assert set_boundary(engine, ids)
     for invalid in ('2026-10-24', '2026-10-23', '2026-02-30', 'bad', '20261201'):
-        with h.Session(engine) as session, patch('common.effective_today', return_value=TODAY):
+        with h.Session(engine) as session, patch('nuligahelper.common.effective_today', return_value=TODAY):
             try:
                 db.update_schedule_visibility(session, actor_id=ids['admin'], hide_from=invalid,
                                               expected_hide_from='2026-12-01')
@@ -131,7 +131,7 @@ def test_setting_is_durable_validated_and_allows_clear_and_expired_noop():
             else:
                 raise AssertionError('changed dates require a canonical valid future date')
             assert db.schedule_visibility_boundary(session) == BOUNDARY
-    with h.Session(engine) as session, patch('common.effective_today', return_value=date(2027, 8, 1)):
+    with h.Session(engine) as session, patch('nuligahelper.common.effective_today', return_value=date(2027, 8, 1)):
         assert not db.update_schedule_visibility(session, actor_id=ids['admin'], hide_from='2026-12-01', expected_hide_from='2026-12-01')
         session.commit()
         assert db.update_schedule_visibility(session, actor_id=ids['admin'], hide_from='', expected_hide_from='2026-12-01')
@@ -206,7 +206,7 @@ def test_concurrent_writers_and_stale_wal_snapshot_cannot_overwrite_new_boundary
     barrier = Barrier(2)
 
     def write(value):
-        with h.Session(engine) as session, patch('common.effective_today', return_value=TODAY):
+        with h.Session(engine) as session, patch('nuligahelper.common.effective_today', return_value=TODAY):
             session.connection().exec_driver_sql('BEGIN')
             assert db.schedule_visibility_boundary(session) is None
             barrier.wait(timeout=5)
@@ -395,7 +395,7 @@ def test_hidden_direct_candidates_claims_takeovers_and_html_confirmation_keep_ex
     refused = young.post('/api/assignment/claim', json={'game_id': ids['9103'], 'role': db.ROLE_SECURITY, 'slot': 0,
                        'person_id': ids['young'], 'expected_person_id': None}, headers=h.csrf_headers())
     assert refused.status_code == 400, 'hidden claims still enforce age'
-    with patch('db.clock.duty_now', return_value=datetime(2026, 11, 30, 9, tzinfo=ZoneInfo('Europe/Berlin'))):
+    with patch('nuligahelper.db.clock.duty_now', return_value=datetime(2026, 11, 30, 9, tzinfo=ZoneInfo('Europe/Berlin'))):
         locked = member.post('/api/assignment/request-replacement', json={'game_id': game_id, 'role': db.ROLE_SECURITY,
                       'slot': 0, 'expected_person_id': ids['member']}, headers=h.csrf_headers())
     assert locked.status_code == 400 and 'gesperrt' in locked.json['error'], 'hidden duties retain their cutoff'
@@ -448,7 +448,7 @@ def test_setting_and_preview_do_not_lock_hidden_duties_but_notifier_and_due_lock
     app, engine, ids = site()
     before = snapshot(engine)
     due = datetime(2026, 11, 30, 9, tzinfo=ZoneInfo('Europe/Berlin'))
-    with patch('db.clock.duty_now', return_value=due), \
+    with patch('nuligahelper.db.clock.duty_now', return_value=due), \
          patch.object(notifier.Notifier, 'send_Mail', side_effect=AssertionError('unexpected mail')), \
          patch.object(notifier.Notifier, 'send_SMS', side_effect=AssertionError('unexpected SMS')):
         admin = client(app, ids['admin'])
@@ -463,7 +463,7 @@ def test_setting_and_preview_do_not_lock_hidden_duties_but_notifier_and_due_lock
         assert sender.notify_pre('01.12.2026') == 1, 'hidden game duties still notify'
         assert sender.notify_cakes_early('01.12.2026') == 1, 'hidden cake duties still notify'
         assert len(recorder.mails) == 2
-        with patch('db.clock.duty_now', return_value=due):
+        with patch('nuligahelper.db.clock.duty_now', return_value=due):
             db.lock_due_duties(session)
             session.commit()
         duty = session.query(db.Assignment).filter_by(game_id=ids['9102']).one()

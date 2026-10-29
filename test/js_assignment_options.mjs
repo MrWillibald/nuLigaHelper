@@ -1,5 +1,5 @@
 globalThis.document = { querySelectorAll: () => [] };
-await import("../static/app.js");
+await import("../nuligahelper/web/static/app.js");
 
 class FakeOption {
   constructor(value, group, name, id, label, className = "", title = "") {

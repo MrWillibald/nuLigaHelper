@@ -13,10 +13,10 @@ from sqlalchemy import inspect, select
 from sqlalchemy.exc import OperationalError
 
 import helpers as h
-import auth_abuse
-import db
-import notifier
-import webapp
+from nuligahelper import auth_abuse
+from nuligahelper import db
+from nuligahelper.jobs import notifier
+from nuligahelper import web as webapp
 
 
 def _database():

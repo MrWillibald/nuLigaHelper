@@ -3,7 +3,7 @@
 import os
 
 import helpers as h
-import scraper
+from nuligahelper.jobs import scraper
 
 
 def _fixture(name):

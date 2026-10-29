@@ -3,7 +3,7 @@
 from types import SimpleNamespace
 
 import helpers  # adds the project root for standalone execution
-import contact_validation as contacts
+from nuligahelper.db import contacts
 
 
 def _error(function, *args, **kwargs):

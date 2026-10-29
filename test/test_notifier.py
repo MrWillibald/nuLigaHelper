@@ -24,10 +24,10 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import event, select
 
 import helpers as h
-import db
-import notifier
-import messages
-import scraper
+from nuligahelper import db
+from nuligahelper.jobs import notifier
+from nuligahelper.jobs import messages
+from nuligahelper.jobs import scraper
 
 GAME_DATE = "05.09.2026"
 

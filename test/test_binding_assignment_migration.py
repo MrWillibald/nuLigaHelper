@@ -5,8 +5,8 @@ import sqlite3
 import tempfile
 
 import helpers as h
-import db
-import schema_migrations
+from nuligahelper import db
+from nuligahelper.db import schema_upgrade
 from alembic.script import ScriptDirectory
 from schema_fixtures import create_versioned_database
 
@@ -14,12 +14,12 @@ PREVIOUS = "0006_game_duty_staffing"
 
 
 def test_binding_revision_is_single_head_and_fresh_schema_has_no_model_drift():
-    assert schema_migrations.head_revisions() == (schema_migrations.HEAD_REVISION,)
-    scripts = ScriptDirectory.from_config(schema_migrations.alembic_config())
+    assert schema_upgrade.head_revisions() == (schema_upgrade.HEAD_REVISION,)
+    scripts = ScriptDirectory.from_config(schema_upgrade.alembic_config())
     assert scripts.get_revision("0007_binding_duty_assignments").down_revision == PREVIOUS
     engine = h.make_engine()
-    schema_migrations.verify_head_schema(engine)
-    assert schema_migrations.metadata_drift(engine, db.Base.metadata) == []
+    schema_upgrade.verify_head_schema(engine)
+    assert schema_upgrade.metadata_drift(engine, db.Base.metadata) == []
     engine.dispose()
 
 
@@ -36,10 +36,10 @@ def test_populated_upgrade_preserves_assignments_teams_and_audits_without_fake_l
             con.execute("INSERT INTO day_blocks (id,season_year,date,phase,cake_quantity,delivery_time) VALUES (300,2026,'01.11.2026','cake_delivery',4,'10:30')")
             con.execute("INSERT INTO block_assignments VALUES (400,300,11,3)")
             con.execute("INSERT INTO assignment_audit (id,changed_at,actor_tier,action,affected_person_id,game_id,role,slot,actor_name,affected_person_name,game_snapshot) VALUES (500,'2026-01-01','system','claim',11,100,'Verkauf',1,'System','Synthetic','untouched snapshot')")
-        columns, before = schema_migrations._retained_data(path)
-        result = schema_migrations.migrate_to_head(path, engine)
+        columns, before = schema_upgrade._retained_data(path)
+        result = schema_upgrade.migrate_to_head(path, engine)
         assert result.previous_state.revision == PREVIOUS and result.backup_path
-        assert schema_migrations._retained_data(path, columns)[1] == before
+        assert schema_upgrade._retained_data(path, columns)[1] == before
         with sqlite3.connect(path) as con:
             assert con.execute("SELECT id,slot,replacement_token,locked_at FROM assignments").fetchall() == [(200,1,None,None)]
             assert con.execute("SELECT id,slot,replacement_token,locked_at FROM block_assignments").fetchall() == [(400,3,None,None)]
@@ -58,8 +58,8 @@ def test_predecessor_drift_is_refused_before_snapshot_or_schema_write():
             con.execute("ALTER TABLE assignments ADD COLUMN replacement_token TEXT")
         before = path.read_bytes()
         try:
-            schema_migrations.migrate_to_head(path, engine)
-        except schema_migrations.SchemaMigrationError as exc:
+            schema_upgrade.migrate_to_head(path, engine)
+        except schema_upgrade.SchemaMigrationError as exc:
             assert "source schema does not match" in str(exc)
         else:
             raise AssertionError("a recognized revision cannot authorize a partially added lifecycle schema")

@@ -10,9 +10,9 @@ from unittest.mock import patch
 from lxml import html
 
 import helpers as h
-import db
-import manage_db
-import webapp
+from nuligahelper import db
+from nuligahelper import cli as manage_db
+from nuligahelper import web as webapp
 
 
 def _site():
@@ -240,7 +240,7 @@ def test_reports_use_offered_positions_and_count_retained_duties_without_vacanci
     assert "5 von 7 Pflichtdiensten besetzt" in page and "5 von 5 Pflichtdiensten besetzt" in page
 
 
-@patch("common.effective_today", return_value=date(2026, 9, 1))
+@patch("nuligahelper.common.effective_today", return_value=date(2026, 9, 1))
 def test_initial_bars_and_statistics_for_adult_youth_spf_and_retained_duties(_today):
     app, engine, _path, ids = _site()
     with h.Session(engine) as session:
@@ -321,7 +321,7 @@ def test_cli_supports_one_wischer_and_refuses_removed_category_duties():
 
 for _name, _test in list(globals().items()):
     if _name.startswith("test_") and callable(_test):
-        globals()[_name] = patch("common.effective_today", new=lambda: date(2026, 9, 1))(_test)
+        globals()[_name] = patch("nuligahelper.common.effective_today", new=lambda: date(2026, 9, 1))(_test)
 
 if __name__ == "__main__":
     h.run_all(dict(globals()))

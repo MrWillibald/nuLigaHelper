@@ -4,8 +4,8 @@ import os
 from unittest.mock import patch
 
 import helpers as h
-import db
-import notifier
+from nuligahelper import db
+from nuligahelper.jobs import notifier
 from test_notifier import GAME_DATE, _setup
 
 
@@ -29,7 +29,7 @@ def _cake_scenario():
 
 def test_weekly_cake_reminders_identify_one_cake_saved_time_and_contact_preference():
     session, cake, sender, recorded = _cake_scenario()
-    with patch("notifier.logging.warning") as warning:
+    with patch("nuligahelper.jobs.notifier.logging.warning") as warning:
         assert sender.notify_cakes_early(GAME_DATE) == 2, "contactless and empty positions send nothing"
     assert len(recorded.mails) == len(recorded.smss) == 1
     assert "cake@example.test" in recorded.mails[0][0]
@@ -71,7 +71,7 @@ def test_dry_run_cake_reminders_use_the_existing_provider_suppression():
     session, cake, sender, recorded = _cake_scenario()
     sender.send_Mail = notifier.Notifier.send_Mail.__get__(sender)
     sender.send_SMS = notifier.Notifier.send_SMS.__get__(sender)
-    with patch.dict(os.environ, {"NULIGAHELPER_DRY_RUN": "1"}), patch("notifier.smtplib.SMTP_SSL") as smtp, patch("notifier.Client") as twilio:
+    with patch.dict(os.environ, {"NULIGAHELPER_DRY_RUN": "1"}), patch("nuligahelper.jobs.notifier.smtplib.SMTP_SSL") as smtp, patch("nuligahelper.jobs.notifier.Client") as twilio:
         assert sender.notify_cakes_early(GAME_DATE) == 2
         smtp.assert_not_called()
         twilio.assert_not_called()

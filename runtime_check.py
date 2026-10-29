@@ -1,49 +1,12 @@
-"""systemd ExecStartPre: fail by setting name without disclosing configuration."""
-import os
-import sys
-import common
-import production as p
+# ---------------------------------------------------------------
+#                          nuLigaHelper
+# ---------------------------------------------------------------
+# Transition shim: already installed systemd units and cron entries
+# still call this path. New units run "python -m nuligahelper.ops.runtime_check".
+# Remove after every host runs the updated units (DEPLOYMENT.md).
+# ---------------------------------------------------------------
 
+import runpy
 
-def check():
-    for name in common.OVERRIDE_ENV:
-        if os.environ.get(name) not in (None, ''):
-            return name
-    for name in ('NULIGAHELPER_SECRET', 'NULIGAHELPER_CONFIG', 'NULIGAHELPER_DB',
-                 'NULIGAHELPER_STATE_DIR', 'NULIGAHELPER_OPERATIONS'):
-        if not os.environ.get(name):
-            return name
-    try:
-        p.text(os.environ['NULIGAHELPER_SECRET'], 'NULIGAHELPER_SECRET')
-    except p.ConfigurationError:
-        return 'NULIGAHELPER_SECRET'
-    try:
-        data = p.validate_operations(p.read_json(os.environ['NULIGAHELPER_OPERATIONS']))
-    except Exception:
-        return 'NULIGAHELPER_OPERATIONS'
-    for name, key in [('NULIGAHELPER_CONFIG','config_file'), ('NULIGAHELPER_DB','database'),
-                      ('NULIGAHELPER_STATE_DIR','state_dir'), ('NULIGAHELPER_TRUSTED_HOSTS','hostname')]:
-        if os.environ.get(name) != data[key]:
-            return name
-    if os.environ.get('TZ') != 'UTC':
-        return 'TZ'
-    try:
-        cfg = common.load_config()
-        for section, names in {'email': ('smtpserver', 'mail_ID', 'mail_password'),
-                               'twilio': ('twilio_sid', 'twilio_token', 'twilio_service_ID'),
-                               'dropbox': ('dropbox_token', 'dropbox_folder')}.items():
-            for name in names:
-                p.text(cfg['club'][section][name], 'NULIGAHELPER_CONFIG')
-    except ValueError as error:
-        name = str(error)
-        return name if name in {item for fields in common.PROVIDER_ENV.values() for item in fields.values()} else 'NULIGAHELPER_CONFIG'
-    except Exception:
-        return 'NULIGAHELPER_CONFIG'
-    return None
-
-
-if __name__ == '__main__':
-    error = check()
-    if error:
-        print(error, file=sys.stderr)
-        raise SystemExit(1)
+if __name__ == "__main__":
+    runpy.run_module("nuligahelper.ops.runtime_check", run_name="__main__", alter_sys=True)

@@ -7,8 +7,8 @@ from datetime import date
 from unittest.mock import patch
 
 import helpers as h
-import db
-import webapp
+from nuligahelper import db
+from nuligahelper import web as webapp
 from lxml import html
 
 

@@ -13,9 +13,9 @@ from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 import helpers as h
-import db
+from nuligahelper import db
 
-DB_DIR = Path(h.PROJECT_DIR) / "db"
+DB_DIR = Path(h.PROJECT_DIR) / "nuligahelper" / "db"
 # Import order of the submodules; a module may only import from earlier ones.
 LAYERS = ["roles", "errors", "models", "people", "storage", "games", "day_blocks", "visibility",
           "clock", "audit", "staffing", "slots", "locks", "duties", "block_duties", "sync"]
@@ -99,17 +99,17 @@ def test_patched_duty_clock_reaches_lock_decisions():
         game = session.query(db.Game).order_by(db.Game.id).first()
         cutoff = db.duty_cutoff_at(game)
         before = cutoff.replace(hour=8, minute=59)
-        with patch("db.clock.duty_now", return_value=before):
+        with patch("nuligahelper.db.clock.duty_now", return_value=before):
             assert db.duty_now() == before, "the facade clock must delegate to db.clock"
             assert not db.duty_is_locked(session, game), "before 09:00 the duty is open"
-        with patch("db.clock.duty_now", return_value=cutoff.astimezone(berlin)):
+        with patch("nuligahelper.db.clock.duty_now", return_value=cutoff.astimezone(berlin)):
             assert db.duty_is_locked(session, game), "at 09:00 the day before the duty locks"
 
 
 def test_modules_read_patchable_values_through_their_module():
     for path in sorted(DB_DIR.glob("*.py")):
         source = path.read_text()
-        assert "from db.clock import duty_now" not in source and "import duty_now" not in source, (
+        assert "from nuligahelper.db.clock import duty_now" not in source and "import duty_now" not in source, (
             f"{path.name} must call clock.duty_now() so db.clock.duty_now patches apply"
         )
         if path.stem != "storage":
@@ -120,7 +120,7 @@ def test_modules_read_patchable_values_through_their_module():
         if path.name == Path(__file__).name:
             continue
         source = path.read_text()
-        assert 'patch("db.duty_now"' not in source and "patch('db.duty_now'" not in source, (
+        assert 'patch("nuligahelper.db.duty_now"' not in source and "patch('nuligahelper.db.duty_now'" not in source, (
             f"{path.name}: patch db.clock.duty_now; the facade delegates to it"
         )
 
@@ -134,17 +134,20 @@ def test_submodules_import_only_lower_layers():
         for node in ast.walk(tree):
             if id(node) in typing_only:
                 continue  # annotation-only imports never run
-            if isinstance(node, ast.ImportFrom) and node.module and node.module.startswith("db."):
-                target = node.module.split(".")[1]
-            elif isinstance(node, ast.ImportFrom) and node.module == "db":
-                target = None
+            if isinstance(node, ast.ImportFrom) and node.module and node.module.startswith(
+                    "nuligahelper.db."):
+                target = node.module.split(".")[2]
+            elif isinstance(node, ast.ImportFrom) and node.module == "nuligahelper.db":
                 for alias in node.names:
-                    assert LAYERS.index(alias.name) < LAYERS.index(name), (
-                        f"db.{name} imports higher layer {alias.name}"
-                    )
+                    if alias.name in LAYERS:
+                        assert LAYERS.index(alias.name) < LAYERS.index(name), (
+                            f"db.{name} imports higher layer {alias.name}"
+                        )
                 continue
             else:
                 continue
+            if target not in LAYERS:
+                continue  # helper modules outside the facade (age_eligibility, task_labels, …)
             assert LAYERS.index(target) < LAYERS.index(name), (
                 f"db.{name} imports db.{target}; keep the layer order acyclic"
             )

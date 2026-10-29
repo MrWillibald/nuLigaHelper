@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import helpers as h
-import common
+from nuligahelper import common
 
 
 def _values():

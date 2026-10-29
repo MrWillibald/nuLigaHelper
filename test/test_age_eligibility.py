@@ -7,9 +7,9 @@ import threading
 from unittest.mock import patch
 
 import helpers as h
-import age_eligibility as age
-import common
-import db
+from nuligahelper.db import age_eligibility as age
+from nuligahelper import common
+from nuligahelper import db
 
 
 def _refused(call, code=None):
@@ -117,7 +117,7 @@ def test_timing_minimums_are_evaluated_on_game_date_without_admin_or_system_over
         session.commit()
         for tier in ("member", "mv", "admin", "system"):
             acting = None if tier == "system" else admin if tier == "admin" else younger
-            with patch("common.effective_today", return_value=date(2026,9,1)):
+            with patch("nuligahelper.common.effective_today", return_value=date(2026,9,1)):
                 _refused(lambda: db.claim_slot(session, game, db.ROLE_TIMEKEEPER,
                                               0, None, younger, actor=acting, actor_tier=tier), "underage")
         assert session.query(db.Assignment).count() == 0

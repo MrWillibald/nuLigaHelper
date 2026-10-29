@@ -10,11 +10,11 @@ from pathlib import Path
 
 import helpers as h  # pyright: ignore[reportImplicitRelativeImport]
 
-import backup
-import db
-import main
-import manage_db
-import webapp
+from nuligahelper.ops import backup
+from nuligahelper import db
+from nuligahelper.jobs import daily as main
+from nuligahelper import cli as manage_db
+from nuligahelper import web as webapp
 
 
 def _run(path, *arguments):

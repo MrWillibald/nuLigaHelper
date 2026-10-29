@@ -16,12 +16,12 @@ from pathlib import Path
 from unittest.mock import patch
 
 import helpers as h
-import common
-import main
-import notifier
-import operations
-import runtime_check
-import webapp
+from nuligahelper import common
+from nuligahelper.jobs import daily as main
+from nuligahelper.jobs import notifier
+from nuligahelper.ops import monitoring as operations
+from nuligahelper.ops import runtime_check
+from nuligahelper import web as webapp
 
 PRODUCTION = {
     "NULIGAHELPER_ENV": "production",
@@ -76,7 +76,7 @@ def test_invalid_override_values_stop_with_the_variable_name():
 def test_dry_run_suppresses_providers_without_pinning_the_date():
     sender = _sender()
     with patch.dict(os.environ, {"NULIGAHELPER_DRY_RUN": "1"}), \
-            patch("notifier.smtplib.SMTP_SSL") as smtp, patch("notifier.Client") as twilio:
+            patch("nuligahelper.jobs.notifier.smtplib.SMTP_SSL") as smtp, patch("nuligahelper.jobs.notifier.Client") as twilio:
         assert common.effective_today() == datetime.date.today(), (
             "dry run alone must not change the effective date"
         )
@@ -89,7 +89,7 @@ def test_dry_run_suppresses_providers_without_pinning_the_date():
 def test_date_override_alone_still_hands_messages_to_providers():
     sender = _sender()
     with patch.dict(os.environ, {"NULIGAHELPER_TODAY": "2025-11-21"}), \
-            patch("notifier.smtplib.SMTP_SSL") as smtp, patch("notifier.Client") as twilio:
+            patch("nuligahelper.jobs.notifier.smtplib.SMTP_SSL") as smtp, patch("nuligahelper.jobs.notifier.Client") as twilio:
         sender.send_Mail(EmailMessage(), "user", "password")
         sender.send_SMS("+491700000000", "Synthetischer Text")
         smtp.assert_called_once_with("smtp.example.invalid")
@@ -102,7 +102,7 @@ def test_production_refuses_overrides_in_every_entry_point():
             path = Path(directory) / "never-created.db"
             values = {**PRODUCTION, "NULIGAHELPER_DB": str(path), variable: value}
             with patch.dict(os.environ, values), \
-                    patch("db.make_engine", side_effect=AssertionError("database opened")):
+                    patch("nuligahelper.db.make_engine", side_effect=AssertionError("database opened")):
                 _refused(webapp.create_app, variable)
                 _refused(main.main, variable)
                 accessor = common.effective_today if variable == "NULIGAHELPER_TODAY" else common.dry_run
@@ -128,7 +128,7 @@ def test_production_preflight_names_the_override():
 def test_production_without_overrides_uses_berlin_date_and_sends():
     sender = _sender()
     with patch.dict(os.environ, {"NULIGAHELPER_ENV": "production"}), \
-            patch("notifier.smtplib.SMTP_SSL") as smtp:
+            patch("nuligahelper.jobs.notifier.smtplib.SMTP_SSL") as smtp:
         common.refuse_overrides_in_production()
         assert common.dry_run() is False
         from zoneinfo import ZoneInfo

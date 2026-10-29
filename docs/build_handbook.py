@@ -39,7 +39,7 @@ pdfmetrics.registerFontFamily('Web', normal='Web', bold='WebBold',
 
 # Keep the printed handbooks aligned with the actual app, without loading any
 # configuration, database, network resource, or application runtime.
-css = (ROOT / 'static/style.css').read_text(encoding='utf-8')
+css = (ROOT / 'nuligahelper/web/static/style.css').read_text(encoding='utf-8')
 tokens = dict(re.findall(r'--([\w-]+):\s*(#[0-9a-fA-F]{6})', css))
 def color(name):
     return colors.HexColor(tokens[name])

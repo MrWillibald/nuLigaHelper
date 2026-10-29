@@ -9,9 +9,9 @@ from unittest.mock import patch
 from lxml import html
 
 import helpers as h
-import db
-import main
-import webapp
+from nuligahelper import db
+from nuligahelper.jobs import daily as main
+from nuligahelper import web as webapp
 
 
 def fixture():
@@ -55,7 +55,7 @@ def audit_count(engine):
         return session.query(db.AssignmentAudit).count()
 
 
-@patch("common.effective_today", return_value=date(2026, 10, 30))
+@patch("nuligahelper.common.effective_today", return_value=date(2026, 10, 30))
 def test_game_request_and_atomic_takeover_keep_responsibility_and_privacy(_today):
     directory, engine, app, ids = fixture()
     try:
@@ -84,7 +84,7 @@ def test_game_request_and_atomic_takeover_keep_responsibility_and_privacy(_today
         directory.cleanup()
 
 
-@patch("common.effective_today", return_value=date(2026, 10, 30))
+@patch("nuligahelper.common.effective_today", return_value=date(2026, 10, 30))
 def test_every_block_uses_request_takeover_and_no_ordinary_release(_today):
     directory, engine, app, ids = fixture()
     try:
@@ -107,7 +107,7 @@ def test_every_block_uses_request_takeover_and_no_ordinary_release(_today):
         directory.cleanup()
 
 
-@patch("common.effective_today", return_value=date(2026, 10, 30))
+@patch("nuligahelper.common.effective_today", return_value=date(2026, 10, 30))
 def test_html_confirmation_cancel_and_concurrent_winner_never_need_compensating_release(_today):
     directory, engine, app, ids = fixture()
     try:
@@ -143,7 +143,7 @@ def test_html_confirmation_cancel_and_concurrent_winner_never_need_compensating_
         directory.cleanup()
 
 
-@patch("common.effective_today", return_value=date(2026, 10, 30))
+@patch("nuligahelper.common.effective_today", return_value=date(2026, 10, 30))
 def test_actual_batch_locks_contactless_helpers_and_late_claims_even_when_delivery_fails(_today):
     directory, engine, app, ids = fixture()
     try:
@@ -158,7 +158,7 @@ def test_actual_batch_locks_contactless_helpers_and_late_claims_even_when_delive
             def __init__(self, *args): pass
             def notify_game_day(self, *_): raise RuntimeError("synthetic transport failure")
             def __getattr__(self, _): return lambda *args: 0
-        with patch("db.clock.duty_now", return_value=datetime(2026, 10, 31, 9, tzinfo=ZoneInfo("Europe/Berlin"))):
+        with patch("nuligahelper.db.clock.duty_now", return_value=datetime(2026, 10, 31, 9, tzinfo=ZoneInfo("Europe/Berlin"))):
             with patch.object(main, "Notifier", FakeNotifier):
                 try:
                     main._send_notifications({}, engine, h.SEASON, date(2026, 10, 31), db.SyncEvents())
@@ -185,7 +185,7 @@ def test_actual_batch_locks_contactless_helpers_and_late_claims_even_when_delive
         directory.cleanup()
 
 
-@patch("common.effective_today", return_value=date(2026, 10, 31))
+@patch("nuligahelper.common.effective_today", return_value=date(2026, 10, 31))
 def test_fixed_nine_oclock_cutoff_needs_no_job_and_cancel_never_materializes_mutations(_today):
     directory, engine, app, ids = fixture()
     berlin = ZoneInfo("Europe/Berlin")
@@ -193,12 +193,12 @@ def test_fixed_nine_oclock_cutoff_needs_no_job_and_cancel_never_materializes_mut
         original = client_for(app, ids, "Original")
         replacement = client_for(app, ids, "Replacement")
         target = dict(game_id=ids["game"], role=db.ROLE_SALE, slot=0)
-        with patch("db.clock.duty_now", return_value=datetime(2026, 10, 31, 8, 59, tzinfo=berlin)):
+        with patch("nuligahelper.db.clock.duty_now", return_value=datetime(2026, 10, 31, 8, 59, tzinfo=berlin)):
             assert write(original, "/api/assignment/claim", **target, expected_person_id=None).json["ok"]
             wanted = write(original, "/api/assignment/request-replacement", **target, expected_person_id=ids["Original"])
             token = wanted.json["assignment"]["replacement_token"]
             before = audit_count(engine)
-        with patch("db.clock.duty_now", return_value=datetime(2026, 10, 31, 9, 0, tzinfo=berlin)):
+        with patch("nuligahelper.db.clock.duty_now", return_value=datetime(2026, 10, 31, 9, 0, tzinfo=berlin)):
             cancelled = original.post("/dienst", data=h.csrf_data({**target, "decision": "cancel"}))
             assert cancelled.status_code == 302 and audit_count(engine) == before, "Cancel must not even materialize due locks"
             page = html.fromstring(original.get("/").get_data(as_text=True))
@@ -222,7 +222,7 @@ def test_fixed_nine_oclock_cutoff_needs_no_job_and_cancel_never_materializes_mut
         directory.cleanup()
 
 
-@patch("common.effective_today", return_value=date(2026, 10, 30))
+@patch("nuligahelper.common.effective_today", return_value=date(2026, 10, 30))
 def test_admin_cannot_cancel_current_commitments_by_deactivation_or_deletion(_today):
     directory, engine, app, ids = fixture()
     try:
@@ -245,7 +245,7 @@ def test_admin_cannot_cancel_current_commitments_by_deactivation_or_deletion(_to
         directory.cleanup()
 
 
-@patch("common.effective_today", return_value=date(2026, 10, 25))
+@patch("nuligahelper.common.effective_today", return_value=date(2026, 10, 25))
 def test_weekly_reminder_keeps_search_open_and_preflight_contention_is_reported_without_false_success(_today):
     directory, engine, app, ids = fixture()
     try:
@@ -257,14 +257,14 @@ def test_weekly_reminder_keeps_search_open_and_preflight_contention_is_reported_
         class FakeNotifier:
             def __init__(self, *args): pass
             def __getattr__(self, _): return lambda *args: 0
-        with patch.object(main, "Notifier", FakeNotifier), patch("db.clock.duty_now", return_value=datetime(2026,10,25,9,tzinfo=ZoneInfo("Europe/Berlin"))):
+        with patch.object(main, "Notifier", FakeNotifier), patch("nuligahelper.db.clock.duty_now", return_value=datetime(2026,10,25,9,tzinfo=ZoneInfo("Europe/Berlin"))):
             main._send_notifications({}, engine, h.SEASON, date(2026,10,25), db.SyncEvents())
         with h.Session(engine) as session:
             assignment = session.query(db.Assignment).filter_by(game_id=ids["game"]).one()
             assert assignment.replacement_token == token and assignment.locked_at is None
             assert session.query(db.DutyCutoff).count() == 0
         before = audit_count(engine)
-        with patch("db.lock_due_duties", side_effect=db.AssignmentTemporarilyUnavailableError()):
+        with patch("nuligahelper.db.lock_due_duties", side_effect=db.AssignmentTemporarilyUnavailableError()):
             response = write(original, "/api/assignment/request-replacement", **target, expected_person_id=ids["Original"])
             assert response.status_code == 503 and response.json["code"] == "temporarily_unavailable"
             html_response = original.post("/dienst", data=h.csrf_data({**target,"action":"request-replacement", "expected_person_id":ids["Original"]}))

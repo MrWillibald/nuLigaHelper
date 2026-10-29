@@ -5,7 +5,7 @@ import sqlite3
 import tempfile
 
 import helpers as h
-import db
+from nuligahelper import db
 from sqlalchemy.exc import IntegrityError
 
 

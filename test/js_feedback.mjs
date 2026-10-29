@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import vm from 'node:vm';
 import assert from 'node:assert/strict';
-const source = fs.readFileSync('static/feedback.js', 'utf8');
+const source = fs.readFileSync('nuligahelper/web/static/feedback.js', 'utf8');
 class Element {
   constructor() { this.children = []; this.dataset = {}; this.style = {}; this.listeners = {}; this.attrs = {}; this.classList = { add() {} }; }
   appendChild(child) { child.parent = this; this.children.push(child); return child; }

@@ -5,10 +5,10 @@ import io
 from pathlib import Path
 
 import helpers as h
-import backup
-import db
-import manage_db
-import schema_migrations
+from nuligahelper.ops import backup
+from nuligahelper import db
+from nuligahelper import cli as manage_db
+from nuligahelper.db import schema_upgrade
 from schema_fixtures import create_legacy_database
 
 
@@ -18,10 +18,10 @@ def test_schema_inspection_is_read_only_and_recognizes_baseline():
         create_legacy_database(path)
         before = path.read_bytes()
 
-        state = schema_migrations.inspect_schema(path)
+        state = schema_upgrade.inspect_schema(path)
 
         assert state.kind == "baseline"
-        assert state.revision == schema_migrations.BASELINE_REVISION
+        assert state.revision == schema_upgrade.BASELINE_REVISION
         assert path.read_bytes() == before
         with sqlite3.connect(path) as connection:
             assert "alembic_version" not in {
@@ -35,20 +35,20 @@ def test_schema_inspection_distinguishes_empty_near_miss_and_corrupt():
     with tempfile.TemporaryDirectory() as raw_directory:
         directory = Path(raw_directory)
         missing = directory / "missing.db"
-        assert schema_migrations.inspect_schema(missing).kind == "empty"
+        assert schema_upgrade.inspect_schema(missing).kind == "empty"
         assert not missing.exists()
 
         near_miss = directory / "near-miss.db"
         create_legacy_database(near_miss)
         with sqlite3.connect(near_miss) as connection:
             connection.execute("ALTER TABLE persons ADD COLUMN surprise TEXT")
-        state = schema_migrations.inspect_schema(near_miss)
+        state = schema_upgrade.inspect_schema(near_miss)
         assert state.kind == "unknown_unversioned"
         assert any("persons columns" in detail for detail in state.details)
 
         corrupt = directory / "corrupt.db"
         corrupt.write_bytes(b"not a sqlite database")
-        assert schema_migrations.inspect_schema(corrupt).kind == "corrupt"
+        assert schema_upgrade.inspect_schema(corrupt).kind == "corrupt"
 
 
 def test_schema_inspection_recognizes_legacy_game_identity():
@@ -58,7 +58,7 @@ def test_schema_inspection_recognizes_legacy_game_identity():
             connection.execute(
                 "CREATE TABLE games (id INTEGER PRIMARY KEY, source_key TEXT NOT NULL)"
             )
-        assert schema_migrations.inspect_schema(path).kind == "legacy_game_identity"
+        assert schema_upgrade.inspect_schema(path).kind == "legacy_game_identity"
 
 
 def test_legacy_game_identity_startup_refuses_unchanged_with_release_hint():
@@ -93,22 +93,22 @@ def test_schema_inspection_recognizes_known_and_unknown_revisions():
             connection.execute("CREATE TABLE alembic_version (version_num VARCHAR(64))")
             connection.execute(
                 "INSERT INTO alembic_version VALUES (?)",
-                (schema_migrations.BASELINE_REVISION,),
+                (schema_upgrade.BASELINE_REVISION,),
             )
-        state = schema_migrations.inspect_schema(path)
-        assert state.kind == "versioned" and state.revision == schema_migrations.BASELINE_REVISION
+        state = schema_upgrade.inspect_schema(path)
+        assert state.kind == "versioned" and state.revision == schema_upgrade.BASELINE_REVISION
 
         with sqlite3.connect(path) as connection:
             connection.execute("UPDATE alembic_version SET version_num='future_revision'")
-        state = schema_migrations.inspect_schema(path)
+        state = schema_upgrade.inspect_schema(path)
         assert state.kind == "unknown_revision"
         assert state.revision == "future_revision"
 
 
 def test_alembic_configuration_has_one_head_and_no_database_url():
-    config = schema_migrations.alembic_config()
+    config = schema_upgrade.alembic_config()
     assert not config.get_main_option("sqlalchemy.url")
-    assert schema_migrations.head_revisions() == (schema_migrations.HEAD_REVISION,)
+    assert schema_upgrade.head_revisions() == (schema_upgrade.HEAD_REVISION,)
 
 
 def test_explicit_initialization_creates_stamps_seeds_and_then_refuses_reuse():
@@ -116,7 +116,7 @@ def test_explicit_initialization_creates_stamps_seeds_and_then_refuses_reuse():
         path = Path(raw_directory) / "fresh.db"
         engine = db.make_engine(str(path))
         db.initialize_db(engine)
-        assert schema_migrations.inspect_schema(path).kind == "head"
+        assert schema_upgrade.inspect_schema(path).kind == "head"
         with db.Session(engine) as session:
             support = db.get_support_team(session)
             assert support is not None and support.name == db.SUPPORT_TEAM_NAME
@@ -206,8 +206,8 @@ def test_migrate_schema_requires_confirmation_then_adopts_exact_baseline():
         backup_line = next(line for line in output.splitlines() if line.startswith("Backup: "))
         backup_path = Path(backup_line.removeprefix("Backup: "))
         assert backup_path.exists()
-        assert schema_migrations.inspect_schema(backup_path).kind == "baseline"
-        assert schema_migrations.inspect_schema(path).kind == "head"
+        assert schema_upgrade.inspect_schema(backup_path).kind == "baseline"
+        assert schema_upgrade.inspect_schema(path).kind == "head"
 
 
 def test_migrate_schema_head_is_noop_and_legacy_or_unknown_are_refused():
@@ -272,14 +272,14 @@ def test_migrate_schema_reports_backup_and_upgrade_failures():
 
         upgrade_failure = directory / "upgrade-failure.db"
         create_legacy_database(upgrade_failure)
-        original_run = schema_migrations._run_alembic
+        original_run = schema_upgrade._run_alembic
 
         def failing_upgrade(connection, operation, revision):
             if operation.__name__ == "upgrade":
                 raise RuntimeError("synthetic upgrade failure")
             return original_run(connection, operation, revision)
 
-        schema_migrations._run_alembic = failing_upgrade
+        schema_upgrade._run_alembic = failing_upgrade
         try:
             error = _system_exit(
                 lambda: _run_cli(
@@ -287,7 +287,7 @@ def test_migrate_schema_reports_backup_and_upgrade_failures():
                 )
             )
         finally:
-            schema_migrations._run_alembic = original_run
+            schema_upgrade._run_alembic = original_run
         message = str(error)
         assert "synthetic upgrade failure" in message
         assert "Retained backup:" in message
@@ -443,7 +443,7 @@ def test_day_block_revision_fails_closed_on_role_collision_and_retains_snapshot(
         assert "Retained backup:" in message
         retained = Path(message.split("Retained backup: ", 1)[1].split(". ", 1)[0])
         assert retained.exists()
-        assert schema_migrations.inspect_schema(retained).kind == "baseline"
+        assert schema_upgrade.inspect_schema(retained).kind == "baseline"
 
 
 def test_fresh_head_has_no_metadata_drift_and_detects_synthetic_mismatch():
@@ -451,12 +451,12 @@ def test_fresh_head_has_no_metadata_drift_and_detects_synthetic_mismatch():
         path = Path(raw_directory) / "drift.db"
         engine = db.make_engine(str(path))
         db.initialize_db(engine)
-        assert schema_migrations.metadata_drift(engine, db.Base.metadata) == []
+        assert schema_upgrade.metadata_drift(engine, db.Base.metadata) == []
         with engine.begin() as connection:
             connection.exec_driver_sql(
                 "CREATE TABLE synthetic_drift (id INTEGER PRIMARY KEY)"
             )
-        drift = schema_migrations.metadata_drift(engine, db.Base.metadata)
+        drift = schema_upgrade.metadata_drift(engine, db.Base.metadata)
         assert any(item[0] == "remove_table" for item in drift)
 
 

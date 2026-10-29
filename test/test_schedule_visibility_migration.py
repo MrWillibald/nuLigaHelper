@@ -11,8 +11,8 @@ from alembic import command
 from alembic.script import ScriptDirectory
 
 import helpers as h
-import db
-import schema_migrations as sm
+from nuligahelper import db
+from nuligahelper.db import schema_upgrade as sm
 from schema_fixtures import create_versioned_database
 
 PREVIOUS = sm.WISCHER_REVISION

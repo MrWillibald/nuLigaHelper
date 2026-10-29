@@ -9,8 +9,8 @@ from urllib.parse import urlencode
 from lxml import html
 
 import helpers as h
-import db
-import webapp
+from nuligahelper import db
+from nuligahelper import web as webapp
 from disclosure_markup import assert_early_disclosure_markup
 
 

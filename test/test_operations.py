@@ -9,10 +9,10 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import helpers as h
-import db
-import operations
-import production as p
-import webapp
+from nuligahelper import db
+from nuligahelper.ops import monitoring as operations
+from nuligahelper.ops import settings as p
+from nuligahelper import web as webapp
 
 
 def settings():
@@ -59,7 +59,7 @@ def test_success_markers_are_atomic_restricted_and_reject_future_or_missing():
         assert path.stat().st_mode & 0o777 == 0o600
         assert p.success_age('backup', directory, now) == 86400
         before = path.read_bytes()
-        with patch('production.os.replace', side_effect=OSError('synthetic')):
+        with patch('nuligahelper.ops.settings.os.replace', side_effect=OSError('synthetic')):
             try:
                 p.write_success('backup', directory, now)
             except OSError:

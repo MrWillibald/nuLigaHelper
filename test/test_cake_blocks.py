@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 
 import helpers as h
-import db
+from nuligahelper import db
 
 
 def _setup(session):

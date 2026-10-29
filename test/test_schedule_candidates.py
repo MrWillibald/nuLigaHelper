@@ -9,8 +9,8 @@ from lxml import html
 from sqlalchemy import event
 
 import helpers as h
-import db
-import webapp
+from nuligahelper import db
+from nuligahelper import web as webapp
 
 
 def _site():
@@ -67,7 +67,7 @@ def _signed_in(app, person_id):
     return client
 
 
-@patch("common.effective_today", return_value=date(2026, 9, 1))
+@patch("nuligahelper.common.effective_today", return_value=date(2026, 9, 1))
 def test_initial_schedule_size_does_not_grow_with_unassigned_roster(_today):
     app, engine, ids = _site()
     admin = _signed_in(app, ids["admin"])
@@ -88,7 +88,7 @@ def test_initial_schedule_size_does_not_grow_with_unassigned_roster(_today):
     assert "Member · BL mD, Supporter" in after, "the assigned occupant must stay visible"
 
 
-@patch("common.effective_today", return_value=date(2026, 9, 1))
+@patch("nuligahelper.common.effective_today", return_value=date(2026, 9, 1))
 def test_candidate_reads_enforce_current_tier_and_do_not_expose_contacts(_today):
     app, engine, ids = _site()
     url = f'/api/games/{ids["future"]}/candidates'
@@ -128,7 +128,7 @@ def test_candidate_reads_enforce_current_tier_and_do_not_expose_contacts(_today)
     assert past_game_slots and all(not slot["candidate_ids"] for slot in past_game_slots.values()), "past game state must carry no assignment candidates"
 
 
-@patch("common.effective_today", return_value=date(2026, 9, 1))
+@patch("nuligahelper.common.effective_today", return_value=date(2026, 9, 1))
 def test_candidate_query_count_is_bounded_when_roster_grows(_today):
     app, engine, ids = _site()
     admin = _signed_in(app, ids["admin"])

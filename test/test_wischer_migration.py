@@ -16,9 +16,9 @@ from alembic.script import ScriptDirectory
 from lxml import html
 
 import helpers as h
-import db
-import notifier
-import schema_migrations as sm
+from nuligahelper import db
+from nuligahelper.jobs import notifier
+from nuligahelper.db import schema_upgrade as sm
 from schema_fixtures import create_versioned_database
 
 PREVIOUS = "0007_binding_duty_assignments"
@@ -68,7 +68,7 @@ def _rows(path, table):
 
 
 def _app(path):
-    import webapp
+    from nuligahelper import web as webapp
     with patch.dict(os.environ, {"NULIGAHELPER_DB": str(path)}):
         return webapp.create_app()
 
@@ -270,7 +270,7 @@ def test_remaining_wischer_claims_serialize_and_deleted_helpers_receive_no_remin
         engine.dispose()
 
 
-@patch("common.effective_today", return_value=date(2026, 9, 1))
+@patch("nuligahelper.common.effective_today", return_value=date(2026, 9, 1))
 def test_migrated_stale_clients_cannot_recreate_duties_and_admin_history_is_readable(_today):
     with tempfile.TemporaryDirectory() as directory:
         path = Path(directory) / "clients.db"
@@ -326,7 +326,7 @@ def test_migrated_stale_clients_cannot_recreate_duties_and_admin_history_is_read
             session.commit()
             assert game.assignment_by_role("Wischer").person_id == 5
             for hour in (9, 10):
-                with patch("db.clock.duty_now", return_value=datetime(2026,10,31,hour,tzinfo=ZoneInfo("Europe/Berlin"))):
+                with patch("nuligahelper.db.clock.duty_now", return_value=datetime(2026,10,31,hour,tzinfo=ZoneInfo("Europe/Berlin"))):
                     try:
                         db.request_replacement(session, game, "Wischer", 0, 5)
                     except db.DutyLockedError:

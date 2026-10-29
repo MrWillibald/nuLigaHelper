@@ -8,8 +8,8 @@ from unittest.mock import patch
 from lxml import html
 
 import helpers as h
-import db
-import webapp
+from nuligahelper import db
+from nuligahelper import web as webapp
 
 
 previous_db = os.environ["NULIGAHELPER_DB"]
@@ -86,7 +86,7 @@ def _post(client, token, action, block_id, slot, expected, person_id=None):
     )
 
 
-@patch("common.effective_today", return_value=date(2026, 9, 1))
+@patch("nuligahelper.common.effective_today", return_value=date(2026, 9, 1))
 def test_guest_sees_names_and_cards_without_ids_contacts_roster_or_controls(_today):
     page = app.test_client().get("/").get_data(as_text=True)
     preparation = page.index("task-block-preparation")
@@ -103,7 +103,7 @@ def test_guest_sees_names_and_cards_without_ids_contacts_roster_or_controls(_tod
     assert "Verantwortlich" not in page[preparation:first_game]
 
 
-@patch("common.effective_today", return_value=date(2026, 9, 1))
+@patch("nuligahelper.common.effective_today", return_value=date(2026, 9, 1))
 def test_block_name_filter_shows_only_matching_block_with_full_boundary_time(_today):
     page = app.test_client().get(
         "/?date=05.09.2026&person=Block%20Match"
@@ -114,7 +114,7 @@ def test_block_name_filter_shows_only_matching_block_with_full_boundary_time(_to
     assert "05.09.2026" in page
 
 
-@patch("common.effective_today", return_value=date(2026, 9, 1))
+@patch("nuligahelper.common.effective_today", return_value=date(2026, 9, 1))
 def test_00_block_progress_counts_three_slots_and_starts_collapsed(_today):
     page = html.fromstring(app.test_client().get("/").get_data(as_text=True))
     preparation = page.xpath('//details[contains(@class, "task-block-preparation")]')[0]
@@ -129,7 +129,7 @@ def test_00_block_progress_counts_three_slots_and_starts_collapsed(_today):
     assert not preparation.xpath('.//*[@data-vacancies or @class="coverage-gauge"]')
 
 
-@patch("common.effective_today", return_value=date(2026, 9, 1))
+@patch("nuligahelper.common.effective_today", return_value=date(2026, 9, 1))
 def test_01_selected_past_date_with_only_matching_block_is_open(_today):
     page = app.test_client().get(
         "/?date=01.01.2020&person=Block%20Match"
@@ -139,7 +139,7 @@ def test_01_selected_past_date_with_only_matching_block_is_open(_today):
     assert "task-block-preparation" in page and "task-block-cleanup" not in page
 
 
-@patch("common.effective_today", return_value=date(2026, 9, 1))
+@patch("nuligahelper.common.effective_today", return_value=date(2026, 9, 1))
 def test_member_and_mv_are_self_only_and_conflicts_report_current_occupant(_today):
     member, member_token = _client("member")
     assert _post(
@@ -154,7 +154,7 @@ def test_member_and_mv_are_self_only_and_conflicts_report_current_occupant(_toda
     ).status_code == 403
 
 
-@patch("common.effective_today", return_value=date(2026, 9, 1))
+@patch("nuligahelper.common.effective_today", return_value=date(2026, 9, 1))
 def test_admin_can_manage_active_people_and_past_blocks_but_not_inactive(_today):
     admin, token = _client("admin")
     inactive = _post(
@@ -171,7 +171,7 @@ def test_admin_can_manage_active_people_and_past_blocks_but_not_inactive(_today)
     ).status_code == 200
 
 
-@patch("common.effective_today", return_value=date(2026, 9, 1))
+@patch("nuligahelper.common.effective_today", return_value=date(2026, 9, 1))
 def test_non_admin_cannot_change_past_block_and_csrf_is_required(_today):
     member, token = _client("member")
     assert _post(
@@ -184,7 +184,7 @@ def test_non_admin_cannot_change_past_block_and_csrf_is_required(_today):
     assert response.status_code == 403
 
 
-@patch("common.effective_today", return_value=date(2026, 9, 1))
+@patch("nuligahelper.common.effective_today", return_value=date(2026, 9, 1))
 def test_statistics_count_occupied_block_slots_and_report_open_block_slots(_today):
     admin, _token = _client("admin")
     page = admin.get("/statistik").get_data(as_text=True)
@@ -196,7 +196,7 @@ def test_statistics_count_occupied_block_slots_and_report_open_block_slots(_toda
 
 
 def test_block_colors_follow_preparation_and_cleanup_direction():
-    css = Path(h.PROJECT_DIR, "static", "style.css").read_text(encoding="utf-8")
+    css = Path(h.PROJECT_DIR, "nuligahelper", "web", "static", "style.css").read_text(encoding="utf-8")
     block_css = css[css.index(".task-block-card"):css.index("@keyframes savedflash")]
     assert ".task-block-card{--block-accent:var(--navy)}" in block_css
     assert ".task-block-preparation{--block-accent:#a0e656}" in block_css
@@ -207,7 +207,7 @@ def test_block_colors_follow_preparation_and_cleanup_direction():
     assert ".task-block-no-time{background:" not in block_css
 
 
-@patch("common.effective_today", return_value=date(2026, 9, 1))
+@patch("nuligahelper.common.effective_today", return_value=date(2026, 9, 1))
 def test_audit_view_lists_block_target_filter_and_snapshot(_today):
     admin, _token = _client("admin")
     page = admin.get("/audit").get_data(as_text=True)

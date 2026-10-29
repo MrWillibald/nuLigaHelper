@@ -11,8 +11,8 @@ from alembic.operations import Operations
 from alembic.script import ScriptDirectory
 
 import helpers as h
-import db
-import schema_migrations
+from nuligahelper import db
+from nuligahelper.db import schema_upgrade
 from schema_fixtures import (
     PRE_GAME_DUTY_REVISION, create_game_duty_source, create_legacy_database,
     create_versioned_database,
@@ -26,12 +26,12 @@ def _rows(path, table):
 
 
 def test_game_duty_revision_joins_existing_single_head_without_model_drift():
-    assert schema_migrations.head_revisions() == (schema_migrations.HEAD_REVISION,)
-    scripts = ScriptDirectory.from_config(schema_migrations.alembic_config())
+    assert schema_upgrade.head_revisions() == (schema_upgrade.HEAD_REVISION,)
+    scripts = ScriptDirectory.from_config(schema_upgrade.alembic_config())
     assert scripts.get_revision("0006_game_duty_staffing").down_revision == PRE_GAME_DUTY_REVISION
     engine = h.make_engine()
-    assert schema_migrations.metadata_drift(engine, db.Base.metadata) == []
-    schema_migrations.verify_head_schema(engine)
+    assert schema_upgrade.metadata_drift(engine, db.Base.metadata) == []
+    schema_upgrade.verify_head_schema(engine)
     engine.dispose()
 
 
@@ -39,13 +39,13 @@ def test_populated_duty_upgrade_preserves_identities_cakes_people_and_all_record
     with tempfile.TemporaryDirectory() as directory:
         path = Path(directory) / "populated.db"
         engine = create_game_duty_source(path)
-        columns, before = schema_migrations._retained_data(path)
+        columns, before = schema_upgrade._retained_data(path)
         audits = _rows(path, "assignment_audit")
-        result = schema_migrations.migrate_to_head(path, engine)
+        result = schema_upgrade.migrate_to_head(path, engine)
         assert result.previous_state.revision == PRE_GAME_DUTY_REVISION
         assert result.backup_path is not None
-        assert schema_migrations.inspect_schema(result.backup_path).revision == PRE_GAME_DUTY_REVISION
-        assert schema_migrations._retained_data(path, columns)[1] == before
+        assert schema_upgrade.inspect_schema(result.backup_path).revision == PRE_GAME_DUTY_REVISION
+        assert schema_upgrade._retained_data(path, columns)[1] == before
         assert _rows(path, "assignments") == [
             (401, 100, 11, "Kasse", 0), (402, 100, 12, "Ordnungsdienst", 0),
             (403, 100, 13, "Verkauf", 1),
@@ -54,7 +54,7 @@ def test_populated_duty_upgrade_preserves_identities_cakes_people_and_all_record
         with sqlite3.connect(path) as connection:
             assert connection.execute("SELECT COUNT(*) FROM assignments WHERE role='Reinigung'").fetchone() == (0,)
             assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
-        assert schema_migrations.metadata_drift(engine, db.Base.metadata) == []
+        assert schema_upgrade.metadata_drift(engine, db.Base.metadata) == []
         db.verify_db(engine)
         engine.dispose()
 
@@ -80,7 +80,7 @@ def test_original_cleaning_assignments_traverse_both_renames_without_filling_new
                     "VALUES (501, '2026-01-01', 'system', 'claim', 11, 100, 'Reinigung', 0, "
                     "'System', 'Original cleaner', 'original unchanged snapshot')"
                 )
-            schema_migrations.migrate_to_head(path, engine)
+            schema_upgrade.migrate_to_head(path, engine)
             assert _rows(path, "assignments") == [(401, 100, 11, "Kasse", 0)]
             with sqlite3.connect(path) as connection:
                 assert connection.execute("SELECT role, game_snapshot FROM assignment_audit").fetchall() == [
@@ -108,8 +108,8 @@ def test_duty_collisions_and_unexpected_new_roles_refuse_without_changing_source
                                    (game_id, role, slot))
             before = path.read_bytes()
             try:
-                schema_migrations.migrate_to_head(path, engine)
-            except schema_migrations.SchemaMigrationError as exc:
+                schema_upgrade.migrate_to_head(path, engine)
+            except schema_upgrade.SchemaMigrationError as exc:
                 message = str(exc)
                 assert reason in message
                 assert "Retained backup:" in message
@@ -119,7 +119,7 @@ def test_duty_collisions_and_unexpected_new_roles_refuse_without_changing_source
             assert path.read_bytes() == before, "preflight refusal must precede every duty revision write"
             snapshots = list(path.parent.glob("*.pre-schema-*.db"))
             assert len(snapshots) == 1
-            assert schema_migrations.inspect_schema(snapshots[0]).revision == PRE_GAME_DUTY_REVISION
+            assert schema_upgrade.inspect_schema(snapshots[0]).revision == PRE_GAME_DUTY_REVISION
             assert _rows(snapshots[0], "assignments") == _rows(path, "assignments")
             engine.dispose()
 
@@ -143,8 +143,8 @@ def test_predecessor_near_miss_storage_refuses_before_backup_or_schema_writes():
                     connection.exec_driver_sql("PRAGMA foreign_keys=ON")
             before = path.read_bytes()
             try:
-                schema_migrations.migrate_to_head(path, engine)
-            except schema_migrations.SchemaMigrationError as exc:
+                schema_upgrade.migrate_to_head(path, engine)
+            except schema_upgrade.SchemaMigrationError as exc:
                 assert "game-duty source schema does not match its reviewed revision" in str(exc)
             else:
                 raise AssertionError("a recognized predecessor label cannot authorize schema drift")
@@ -154,7 +154,7 @@ def test_predecessor_near_miss_storage_refuses_before_backup_or_schema_writes():
 
 
 def test_every_reviewed_predecessor_requires_explicit_upgrade_at_runtime_without_writes():
-    for revision in sorted(schema_migrations.PRE_GAME_DUTY_REVISIONS):
+    for revision in sorted(schema_upgrade.PRE_GAME_DUTY_REVISIONS):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "previous.db"
             engine = create_versioned_database(path, revision)
@@ -174,13 +174,13 @@ def test_head_fingerprints_preserve_new_cleaning_as_a_distinct_current_role():
     with tempfile.TemporaryDirectory() as directory:
         path = Path(directory) / "new-cleaning.db"
         engine = create_game_duty_source(path)
-        schema_migrations.migrate_to_head(path, engine)
+        schema_upgrade.migrate_to_head(path, engine)
         with sqlite3.connect(path) as connection:
             connection.execute("INSERT INTO assignments (id,game_id,person_id,role,slot) VALUES (404, 101, 15, 'Wischer', 0)")
-        columns, before = schema_migrations._retained_data(path)
+        columns, before = schema_upgrade._retained_data(path)
         with sqlite3.connect(path) as connection:
             connection.execute("UPDATE assignments SET role='Kasse' WHERE id=404")
-        _, after = schema_migrations._retained_data(path, columns)
+        _, after = schema_upgrade._retained_data(path, columns)
         assert before["assignments"] != after["assignments"], "Wischer must never share a compatibility fingerprint with Kasse"
         engine.dispose()
 
@@ -193,19 +193,19 @@ def test_failed_identity_or_audit_postflight_retains_private_safe_snapshot_for_o
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "recoverable.db"
             engine = create_game_duty_source(path)
-            columns, before = schema_migrations._retained_data(path)
-            original = schema_migrations._run_alembic
+            columns, before = schema_upgrade._retained_data(path)
+            original = schema_upgrade._run_alembic
 
             def corrupt_after_upgrade(connection, operation, revision):
                 original(connection, operation, revision)
                 if operation is command.upgrade:
                     connection.exec_driver_sql(modification)
 
-            schema_migrations._run_alembic = corrupt_after_upgrade
+            schema_upgrade._run_alembic = corrupt_after_upgrade
             try:
                 try:
-                    schema_migrations.migrate_to_head(path, engine)
-                except schema_migrations.SchemaMigrationError as exc:
+                    schema_upgrade.migrate_to_head(path, engine)
+                except schema_upgrade.SchemaMigrationError as exc:
                     message = str(exc)
                     assert f"Retained-data postflight failed for tables: {table}" in message
                     assert "Retained backup:" in message
@@ -213,16 +213,16 @@ def test_failed_identity_or_audit_postflight_retains_private_safe_snapshot_for_o
                 else:
                     raise AssertionError("unexpected identity or audit changes must fail postflight")
             finally:
-                schema_migrations._run_alembic = original
+                schema_upgrade._run_alembic = original
                 engine.dispose()
             snapshots = list(path.parent.glob("*.pre-schema-*.db"))
             assert len(snapshots) == 1
-            assert schema_migrations.inspect_schema(snapshots[0]).revision == PRE_GAME_DUTY_REVISION
-            assert schema_migrations._retained_data(snapshots[0], columns)[1] == before
+            assert schema_upgrade.inspect_schema(snapshots[0]).revision == PRE_GAME_DUTY_REVISION
+            assert schema_upgrade._retained_data(snapshots[0], columns)[1] == before
             shutil.copyfile(snapshots[0], path)
-            assert schema_migrations._retained_data(path, columns)[1] == before
+            assert schema_upgrade._retained_data(path, columns)[1] == before
             engine = db.make_engine(str(path))
-            schema_migrations.migrate_to_head(path, engine)
+            schema_upgrade.migrate_to_head(path, engine)
             db.verify_db(engine)
             engine.dispose()
 

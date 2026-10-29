@@ -11,13 +11,13 @@ import tempfile
 from unittest.mock import Mock, patch
 
 import helpers as h
-import backup
-import main
-import messages
-import notifier
-import operations
-import production as p
-from production_logging import JournalFormatter
+from nuligahelper.ops import backup
+from nuligahelper.jobs import daily as main
+from nuligahelper.jobs import messages
+from nuligahelper.jobs import notifier
+from nuligahelper.ops import monitoring as operations
+from nuligahelper.ops import settings as p
+from nuligahelper.ops.journal_logging import JournalFormatter
 from test_main import _fake_job
 from test_operations import settings, legal
 from test_privacy import policy
@@ -67,9 +67,9 @@ def test_alert_has_only_operator_recipient_and_fixed_diagnostics():
     source = messages.CATALOG['operations.alert']
     template = replace(source, subject='Synthetic operator source', email='SOURCE\n' + source.email)
     occurred_at = datetime(2026, 9, 17, 15, 41, 2, tzinfo=timezone.utc)
-    with patch('common.load_config',return_value={'club':{'email':{'smtpserver':'smtp.test','mail_ID':'synthetic','mail_password':'secret-canary'}}}), \
+    with patch('nuligahelper.common.load_config',return_value={'club':{'email':{'smtpserver':'smtp.test','mail_ID':'synthetic','mail_password':'secret-canary'}}}), \
             patch.dict(messages.CATALOG, {'operations.alert': template}), \
-            patch('operations.datetime') as clock, \
+            patch('nuligahelper.ops.monitoring.datetime') as clock, \
             patch.object(notifier.Notifier, 'send_account_message', side_effect=AssertionError('no member dispatch')):
         clock.now.return_value = occurred_at
         operations.send_alert(settings(),['test', 'database', 'backup'],smtp=SMTP)
@@ -93,7 +93,7 @@ def test_alert_has_only_operator_recipient_and_fixed_diagnostics():
 def test_operator_rendering_failure_never_connects_or_discloses_context():
     invalid = replace(messages.CATALOG['operations.alert'], subject='private-canary\nInvalid header')
     smtp = Mock(side_effect=AssertionError('no SMTP connection'))
-    with patch('common.load_config',return_value={'club':{'email':{'smtpserver':'smtp.test','mail_ID':'synthetic','mail_password':'secret-canary'}}}), \
+    with patch('nuligahelper.common.load_config',return_value={'club':{'email':{'smtpserver':'smtp.test','mail_ID':'synthetic','mail_password':'secret-canary'}}}), \
             patch.dict(messages.CATALOG, {'operations.alert': invalid}):
         try:
             operations.send_alert(settings(), ['database'], smtp=smtp)

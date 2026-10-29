@@ -10,8 +10,8 @@ from alembic.migration import MigrationContext
 from alembic.operations import Operations
 
 import helpers as h
-import db
-import schema_migrations
+from nuligahelper import db
+from nuligahelper.db import schema_upgrade
 from schema_fixtures import create_versioned_database
 
 
@@ -77,13 +77,13 @@ def test_cake_revision_seeds_unique_unconfigured_valid_dates_and_preserves_every
     with tempfile.TemporaryDirectory() as directory:
         path = Path(directory) / "old-cake-source.db"
         engine = _older_database(path)
-        columns, before = schema_migrations._retained_data(path)
-        result = schema_migrations.migrate_to_head(path, engine)
+        columns, before = schema_upgrade._retained_data(path)
+        result = schema_upgrade.migrate_to_head(path, engine)
         assert result.previous_state.revision == "0004_person_birth_dates"
-        assert result.revision == schema_migrations.HEAD_REVISION
+        assert result.revision == schema_upgrade.HEAD_REVISION
         assert result.backup_path is not None
-        assert schema_migrations.inspect_schema(result.backup_path).revision == "0004_person_birth_dates"
-        _, after = schema_migrations._retained_data(path, columns)
+        assert schema_upgrade.inspect_schema(result.backup_path).revision == "0004_person_birth_dates"
+        _, after = schema_upgrade._retained_data(path, columns)
         assert after == before, "migration must preserve all previous identities, contacts, dates and history"
         with sqlite3.connect(path) as connection:
             assert connection.execute(
@@ -94,7 +94,7 @@ def test_cake_revision_seeds_unique_unconfigured_valid_dates_and_preserves_every
                             (2026, "08.11.2026", None, None)]
             assert connection.execute("SELECT COUNT(*) FROM block_assignments").fetchone() == (2,)
             assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
-        assert schema_migrations.metadata_drift(engine, db.Base.metadata) == []
+        assert schema_upgrade.metadata_drift(engine, db.Base.metadata) == []
         db.verify_db(engine)
         engine.dispose()
 
@@ -103,7 +103,7 @@ def test_migrated_constraints_allow_four_cakes_but_refuse_negative_or_duplicate_
     with tempfile.TemporaryDirectory() as directory:
         path = Path(directory) / "capacity.db"
         engine = _older_database(path)
-        schema_migrations.migrate_to_head(path, engine)
+        schema_upgrade.migrate_to_head(path, engine)
         with sqlite3.connect(path) as connection:
             cake_id = connection.execute(
                 "SELECT id FROM day_blocks WHERE season_year=2026 AND date='01.11.2026' "
@@ -144,8 +144,8 @@ def test_cake_source_near_misses_fail_before_backup_or_any_schema_write():
                 _drop_check(engine, "block_assignments", "ck_block_assignment_slot")
             before = path.read_bytes()
             try:
-                schema_migrations.migrate_to_head(path, engine)
-            except schema_migrations.SchemaMigrationError as exc:
+                schema_upgrade.migrate_to_head(path, engine)
+            except schema_upgrade.SchemaMigrationError as exc:
                 assert "cake-block source schema does not match" in str(exc)
             else:
                 raise AssertionError("a recognized version label cannot authorize a near-miss source")
@@ -162,7 +162,7 @@ def test_current_head_with_removed_cake_check_is_refused_without_repair():
         _drop_check(engine, "day_blocks", "ck_day_block_cake_quantity")
         before = path.read_bytes()
         for operation, error_type in (
-            (lambda: schema_migrations.migrate_to_head(path, engine), schema_migrations.SchemaMigrationError),
+            (lambda: schema_upgrade.migrate_to_head(path, engine), schema_upgrade.SchemaMigrationError),
             (lambda: db.verify_db(engine), db.SQLiteInitializationError),
         ):
             try:
@@ -180,19 +180,19 @@ def test_cake_retained_data_failure_has_private_safe_snapshot_and_offline_recove
     with tempfile.TemporaryDirectory() as directory:
         path = Path(directory) / "recoverable.db"
         engine = _older_database(path)
-        columns, before = schema_migrations._retained_data(path)
-        original = schema_migrations._run_alembic
+        columns, before = schema_upgrade._retained_data(path)
+        original = schema_upgrade._run_alembic
 
         def corrupt_after_upgrade(connection, operation, revision):
             original(connection, operation, revision)
             if operation is command.upgrade:
                 connection.exec_driver_sql("UPDATE day_blocks SET date='02.11.2026' WHERE id=201")
 
-        schema_migrations._run_alembic = corrupt_after_upgrade
+        schema_upgrade._run_alembic = corrupt_after_upgrade
         try:
             try:
-                schema_migrations.migrate_to_head(path, engine)
-            except schema_migrations.SchemaMigrationError as exc:
+                schema_upgrade.migrate_to_head(path, engine)
+            except schema_upgrade.SchemaMigrationError as exc:
                 message = str(exc)
                 assert "Retained-data postflight failed for tables: day_blocks" in message
                 assert "Retained backup:" in message
@@ -200,17 +200,17 @@ def test_cake_retained_data_failure_has_private_safe_snapshot_and_offline_recove
             else:
                 raise AssertionError("changing an old block must fail postflight even when new cakes are seeded")
         finally:
-            schema_migrations._run_alembic = original
+            schema_upgrade._run_alembic = original
             engine.dispose()
         snapshots = list(path.parent.glob("*.pre-schema-*.db"))
         assert len(snapshots) == 1
-        assert schema_migrations.inspect_schema(snapshots[0]).revision == "0004_person_birth_dates"
-        assert schema_migrations._retained_data(snapshots[0], columns)[1] == before
+        assert schema_upgrade.inspect_schema(snapshots[0]).revision == "0004_person_birth_dates"
+        assert schema_upgrade._retained_data(snapshots[0], columns)[1] == before
         shutil.copyfile(snapshots[0], path)
-        assert schema_migrations.inspect_schema(path).revision == "0004_person_birth_dates"
-        assert schema_migrations._retained_data(path, columns)[1] == before
+        assert schema_upgrade.inspect_schema(path).revision == "0004_person_birth_dates"
+        assert schema_upgrade._retained_data(path, columns)[1] == before
         engine = db.make_engine(str(path))
-        schema_migrations.migrate_to_head(path, engine)
+        schema_upgrade.migrate_to_head(path, engine)
         db.verify_db(engine)
         engine.dispose()
 

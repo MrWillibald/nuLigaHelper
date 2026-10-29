@@ -129,7 +129,7 @@ function flushTimers() {
 }
 let requests = 0;
 globalThis.fetch = async () => { requests++; throw new Error("task help must not contact assignment APIs"); };
-await import("../static/app.js");
+await import("../nuligahelper/web/static/app.js");
 const { initializeTaskHelp, createTaskHelp, taskHelpPlacement, refreshTaskHelp } = globalThis.nuLigaTaskHelpTools;
 const card = new Element("details");
 card.open = true;

@@ -19,7 +19,7 @@ globalThis.nuLigaFeedback = { show: (value) => feedback.push(value),
   } };
 let response = { status: 200, json: async () => ({ ok: true }) };
 globalThis.fetch = async (url, options) => { calls.push({ url, body: JSON.parse(options.body) }); return response; };
-await import('../static/app.js');
+await import('../nuligahelper/web/static/app.js');
 for (const [select, endpoint, field, text] of [[team, '/api/games/1/team', 'team_id', 'Verantwortliche Mannschaft'],
   [mv, '/api/teams/2/mv', 'person_id', 'Mannschaftsverantwortlicher']]) {
   select.listeners.focus(); select.value = '9'; await select.listeners.change();

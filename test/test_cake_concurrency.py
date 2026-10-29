@@ -4,7 +4,7 @@ import threading
 from unittest.mock import patch
 
 import helpers as h
-import db
+from nuligahelper import db
 
 
 def _database(quantity=4):
@@ -189,7 +189,7 @@ def test_configuration_writer_timeout_keeps_settings_and_assignment_history():
             with h.Session(contender_engine) as contender:
                 contender.connection().exec_driver_sql("PRAGMA busy_timeout=50")
                 cake = contender.get(db.DayBlock, block_id)
-                with patch("db.storage.SQLITE_TIMEOUT_SECONDS", 0.15):
+                with patch("nuligahelper.db.storage.SQLITE_TIMEOUT_SECONDS", 0.15):
                     try:
                         db.configure_cake_block(contender, cake, "11:00", 2, "10:00", 4)
                     except db.AssignmentTemporarilyUnavailableError:

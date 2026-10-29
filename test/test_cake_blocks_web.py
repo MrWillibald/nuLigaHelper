@@ -10,8 +10,8 @@ from unittest.mock import patch
 from lxml import html
 
 import helpers as h
-import db
-import webapp
+from nuligahelper import db
+from nuligahelper import web as webapp
 
 
 def _site():
@@ -80,7 +80,7 @@ def _assignment(client, block_id, person_id, slot=0, action="claim"):
     }, headers=h.csrf_headers())
 
 
-@patch("common.effective_today", return_value=date(2026, 9, 1))
+@patch("nuligahelper.common.effective_today", return_value=date(2026, 9, 1))
 def test_setup_zero_and_four_cakes_are_distinct_saved_collapsed_states(_today):
     app, _engine, ids = _site()
     admin = _client(app, ids)
@@ -122,7 +122,7 @@ def test_setup_zero_and_four_cakes_are_distinct_saved_collapsed_states(_today):
     assert card.xpath('.//div[@class="coverage"]')[0].get("hidden") is not None
 
 
-@patch("common.effective_today", return_value=date(2026, 9, 1))
+@patch("nuligahelper.common.effective_today", return_value=date(2026, 9, 1))
 def test_settings_require_admin_csrf_valid_clock_and_strict_whole_quantity(_today):
     app, engine, ids = _site()
     assert _settings(app.test_client(), ids["cake"]).status_code == 401
@@ -146,7 +146,7 @@ def test_settings_require_admin_csrf_valid_clock_and_strict_whole_quantity(_toda
         assert not block.assignments
 
 
-@patch("common.effective_today", return_value=date(2026, 9, 1))
+@patch("nuligahelper.common.effective_today", return_value=date(2026, 9, 1))
 def test_stale_settings_and_occupied_reduction_keep_saved_positions_and_history(_today):
     app, engine, ids = _site()
     admin = _client(app, ids)
@@ -176,7 +176,7 @@ def test_stale_settings_and_occupied_reduction_keep_saved_positions_and_history(
     assert "Kuchenlieferung 4" in history and "Cake Only" in history
 
 
-@patch("common.effective_today", return_value=date(2026, 9, 1))
+@patch("nuligahelper.common.effective_today", return_value=date(2026, 9, 1))
 def test_cake_candidates_and_claims_use_current_capacity_active_people_and_self_scope(_today):
     app, _engine, ids = _site()
     admin = _client(app, ids)
@@ -212,7 +212,7 @@ def test_cake_candidates_and_claims_use_current_capacity_active_people_and_self_
     assert len(past_slots) == 4 and all(not slot["candidate_ids"] for slot in past_slots.values()), "past block metadata must not authorize any candidate"
 
 
-@patch("common.effective_today", return_value=date(2026, 9, 1))
+@patch("nuligahelper.common.effective_today", return_value=date(2026, 9, 1))
 def test_guest_names_only_and_cake_person_team_date_filters(_today):
     app, _engine, ids = _site()
     admin = _client(app, ids)
@@ -233,7 +233,7 @@ def test_guest_names_only_and_cake_person_team_date_filters(_today):
     assert "task-block-preparation" in guest.get("/").get_data(as_text=True)
 
 
-@patch("common.effective_today", return_value=date(2026, 9, 1))
+@patch("nuligahelper.common.effective_today", return_value=date(2026, 9, 1))
 def test_statistics_report_setup_separately_from_configured_missing_cakes_and_zero(_today):
     app, _engine, ids = _site()
     admin = _client(app, ids)

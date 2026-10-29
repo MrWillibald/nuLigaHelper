@@ -7,8 +7,8 @@ from datetime import datetime, timedelta
 from lxml import html
 
 import helpers as h
-import db
-import webapp
+from nuligahelper import db
+from nuligahelper import web as webapp
 
 _previous_db = os.environ["NULIGAHELPER_DB"]
 _db_path = os.path.join(h._TEST_DIR, f"web-{next(tempfile._get_candidate_names())}.db")
@@ -338,7 +338,7 @@ def test_08_csrf_is_required_for_json_and_forms():
     assert client.post(
         "/personen/add", data={"birth_date": "1990-01-01", "name": "Forged", "team_id": SUPPORT_ID}
     ).status_code == 403
-    with open(h.PROJECT_DIR + "/static/app.js", encoding="utf-8") as source:
+    with open(h.PROJECT_DIR + "/nuligahelper/web/static/app.js", encoding="utf-8") as source:
         javascript = source.read()
     assert "response.status === 401" in javascript
     assert "response.status === 409" in javascript
@@ -353,7 +353,7 @@ def test_09_delete_refuses_assigned_commitments_and_allows_empty_mistaken_record
     page = client.get("/personen").get_data(as_text=True)
     assert "Deaktivieren" in page
     assert "stattdessen deaktivieren" in open(
-        h.PROJECT_DIR + "/static/app.js", encoding="utf-8"
+        h.PROJECT_DIR + "/nuligahelper/web/static/app.js", encoding="utf-8"
     ).read()
     with h.Session(ENGINE) as session:
         before_audits = session.query(db.AssignmentAudit).count()

@@ -7,9 +7,9 @@ import tempfile
 from flask import jsonify, redirect, request, session
 
 import helpers as h
-import common
-import db
-import webapp
+from nuligahelper import common
+from nuligahelper import db
+from nuligahelper import web as webapp
 
 HOST = "nuliga.example.invalid"
 

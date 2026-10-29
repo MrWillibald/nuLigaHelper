@@ -3,7 +3,7 @@ import { progressFixture } from "./js_progress_fixture.mjs";
 import { assignmentFixture } from "./js_assignment_fixture.mjs";
 
 const page = assignmentFixture();
-await import("../static/app.js");
+await import("../nuligahelper/web/static/app.js");
 const tools = globalThis.nuLigaAssignmentTools;
 const requests = [];
 const settings = [{ kind: "game", role: "Verkauf" }, { kind: "Vorbereitung" }, { kind: "Kuchenlieferung" }, { kind: "Aufräumen" }];

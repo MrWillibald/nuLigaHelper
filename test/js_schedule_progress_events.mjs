@@ -36,7 +36,7 @@ installConfirmation(document, { autoConfirm: true });
 globalThis.fetch = async () => ({ status: 409, json: async () => ({ ok: false, error: "Stale" }) });
 globalThis.setTimeout = () => 0;
 globalThis.clearTimeout = () => {};
-await import("../static/app.js");
+await import("../nuligahelper/web/static/app.js");
 globalThis.nuLigaProgressTools.updateGameStaffing(card, { required_filled: 3, required_total: 5,
   vacancies: { Verkauf: 1, Ordnungsdienst: 1 }, deficiencies: [] });
 const beforeRefusal = summary.snapshot();

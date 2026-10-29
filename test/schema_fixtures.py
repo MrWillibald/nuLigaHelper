@@ -94,8 +94,8 @@ def create_legacy_database(path: str | Path) -> None:
 def create_versioned_database(path: str | Path, revision: str):
     """Build an actual historical revision, independent of the current ORM."""
     from alembic import command
-    import db
-    import schema_migrations
+    from nuligahelper import db
+    from nuligahelper.db import schema_upgrade
 
     # Match the historical ORM rather than the separately accepted manual
     # baseline (whose server defaults are intentionally retained).
@@ -112,9 +112,9 @@ def create_versioned_database(path: str | Path, revision: str):
     with engine.connect() as connection:
         connection.commit()
         connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
-        schema_migrations._run_alembic(connection, command.stamp, schema_migrations.BASELINE_REVISION)
+        schema_upgrade._run_alembic(connection, command.stamp, schema_upgrade.BASELINE_REVISION)
         connection.commit()
-        schema_migrations._run_alembic(connection, command.upgrade, revision)
+        schema_upgrade._run_alembic(connection, command.upgrade, revision)
         connection.commit()
         connection.exec_driver_sql("PRAGMA foreign_keys=ON")
     return engine

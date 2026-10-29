@@ -6,8 +6,8 @@ import sqlite3
 import tempfile
 
 import helpers as h
-import db
-import schema_migrations
+from nuligahelper import db
+from nuligahelper.db import schema_upgrade
 from schema_fixtures import LEGACY_SCHEMA, create_legacy_database, create_versioned_database
 
 
@@ -72,9 +72,9 @@ def _values(path):
 
 
 def test_birth_date_revision_extends_single_head_and_fresh_database_has_no_drift():
-    assert schema_migrations.head_revisions() == (schema_migrations.HEAD_REVISION,)
+    assert schema_upgrade.head_revisions() == (schema_upgrade.HEAD_REVISION,)
     engine = h.make_engine()
-    assert schema_migrations.metadata_drift(engine, db.Base.metadata) == []
+    assert schema_upgrade.metadata_drift(engine, db.Base.metadata) == []
     with h.Session(engine) as session:
         person = db.Person(name="Date-only", birth_date=date(1980, 1, 1))
         session.add(person)
@@ -88,12 +88,12 @@ def test_guarded_old_head_migration_preserves_all_statuses_contacts_memberships_
         path = Path(directory) / "old-head.db"
         engine = _older_head(path)
         before = _values(path)
-        result = schema_migrations.migrate_to_head(path, engine)
+        result = schema_upgrade.migrate_to_head(path, engine)
         assert result.previous_state.revision == "0003_game_day_task_blocks"
         assert result.backup_path is not None and result.backup_path.exists()
         assert _values(path) == before, "the additive migration must preserve all prior values"
-        assert schema_migrations.inspect_schema(result.backup_path).kind == "versioned"
-        assert schema_migrations.metadata_drift(engine, db.Base.metadata) == []
+        assert schema_upgrade.inspect_schema(result.backup_path).kind == "versioned"
+        assert schema_upgrade.metadata_drift(engine, db.Base.metadata) == []
         with h.Session(engine) as session:
             people = db.get_all_persons(session)
             assert all(person.birth_date is None for person in session.query(db.Person))
@@ -126,8 +126,8 @@ def test_unversioned_baseline_upgrade_keeps_unknown_dates_and_legacy_membership_
                 "VALUES (1, 1, 1, 'Reinigung', 0)"
             )
         engine = db.make_engine(str(path))
-        result = schema_migrations.migrate_to_head(path, engine)
-        assert result.revision == schema_migrations.HEAD_REVISION
+        result = schema_upgrade.migrate_to_head(path, engine)
+        assert result.revision == schema_upgrade.HEAD_REVISION
         with h.Session(engine) as session:
             person = session.get(db.Person, 1)
             assert person.birth_date is None
@@ -155,10 +155,10 @@ def test_faithful_baseline_upgrade_has_no_model_drift_through_the_entire_revisio
                                 "UNIQUE (action, dimension, subject_digest, channel, window_started_at)")
         with sqlite3.connect(path) as connection:
             connection.executescript(schema)
-        assert schema_migrations.inspect_schema(path).kind == "baseline"
+        assert schema_upgrade.inspect_schema(path).kind == "baseline"
         engine = db.make_engine(str(path))
-        schema_migrations.migrate_to_head(path, engine)
-        assert schema_migrations.metadata_drift(engine, db.Base.metadata) == []
+        schema_upgrade.migrate_to_head(path, engine)
+        assert schema_upgrade.metadata_drift(engine, db.Base.metadata) == []
         engine.dispose()
 
 
@@ -169,11 +169,11 @@ def test_baseline_unreviewed_default_drift_fails_postflight_with_retained_backup
         # must still reject an unexpected historical default, never skip drift.
         with sqlite3.connect(path) as connection:
             connection.executescript(LEGACY_SCHEMA.replace("DEFAULT 'active'", "DEFAULT 'inactive'"))
-        assert schema_migrations.inspect_schema(path).kind == "baseline"
+        assert schema_upgrade.inspect_schema(path).kind == "baseline"
         engine = db.make_engine(str(path))
         try:
-            schema_migrations.migrate_to_head(path, engine)
-        except schema_migrations.SchemaMigrationError as exc:
+            schema_upgrade.migrate_to_head(path, engine)
+        except schema_upgrade.SchemaMigrationError as exc:
             assert "unreviewed model metadata drift" in str(exc)
             assert "Retained backup:" in str(exc)
             assert len(list(path.parent.glob("unexpected-default.db.pre-schema-*.db"))) == 1
@@ -189,12 +189,12 @@ def test_birth_date_source_near_miss_fails_closed_before_upgrade():
         with sqlite3.connect(path) as connection:
             connection.execute("ALTER TABLE persons ADD COLUMN unrelated TEXT")
         try:
-            schema_migrations.migrate_to_head(path, engine)
-        except schema_migrations.SchemaMigrationError as exc:
+            schema_upgrade.migrate_to_head(path, engine)
+        except schema_upgrade.SchemaMigrationError as exc:
             assert "does not match" in str(exc)
         else:
             raise AssertionError("a version label must not authorize an unrecognized source schema")
-        assert schema_migrations.inspect_schema(path).revision == "0003_game_day_task_blocks"
+        assert schema_upgrade.inspect_schema(path).revision == "0003_game_day_task_blocks"
         engine.dispose()
 
 
@@ -204,11 +204,11 @@ def test_manually_stamped_head_without_birth_date_is_refused_at_startup_and_noop
         engine = _older_head(path)
         with sqlite3.connect(path) as connection:
             connection.execute("UPDATE alembic_version SET version_num=?",
-                               (schema_migrations.HEAD_REVISION,))
-        assert schema_migrations.inspect_schema(path).kind == "head"
+                               (schema_upgrade.HEAD_REVISION,))
+        assert schema_upgrade.inspect_schema(path).kind == "head"
         before = path.read_bytes()
         for call, error_type in (
-            (lambda: schema_migrations.migrate_to_head(path, engine), schema_migrations.SchemaMigrationError),
+            (lambda: schema_upgrade.migrate_to_head(path, engine), schema_upgrade.SchemaMigrationError),
             (lambda: db.verify_db(engine), db.SQLiteInitializationError),
         ):
             try:
@@ -233,7 +233,7 @@ def test_current_head_with_extra_column_is_refused_without_schema_mutation():
         engine = db.make_engine(str(path))
         before = path.read_bytes()
         for call, error_type in (
-            (lambda: schema_migrations.migrate_to_head(path, engine), schema_migrations.SchemaMigrationError),
+            (lambda: schema_upgrade.migrate_to_head(path, engine), schema_upgrade.SchemaMigrationError),
             (lambda: db.verify_db(engine), db.SQLiteInitializationError),
         ):
             try:
@@ -254,7 +254,7 @@ def test_genuine_current_head_migration_is_verified_readonly_and_creates_no_snap
         engine.dispose()
         before = path.read_bytes()
         engine = db.make_engine(str(path))
-        result = schema_migrations.migrate_to_head(path, engine)
+        result = schema_upgrade.migrate_to_head(path, engine)
         assert result.backup_path is None
         assert result.previous_state.kind == "head"
         assert path.read_bytes() == before
@@ -267,7 +267,7 @@ def test_retained_data_postflight_failure_reports_valid_backup_without_private_v
     with tempfile.TemporaryDirectory() as directory:
         path = Path(directory) / "postflight.db"
         engine = _older_head(path)
-        original = schema_migrations._retained_data
+        original = schema_upgrade._retained_data
 
         def mismatch(source, columns=None, **kwargs):
             selected, fingerprints = original(source, columns, **kwargs)
@@ -275,22 +275,22 @@ def test_retained_data_postflight_failure_reports_valid_backup_without_private_v
                 fingerprints["persons"] = "synthetic-changed-data"
             return selected, fingerprints
 
-        schema_migrations._retained_data = mismatch
+        schema_upgrade._retained_data = mismatch
         try:
             try:
-                schema_migrations.migrate_to_head(path, engine)
-            except schema_migrations.SchemaMigrationError as exc:
+                schema_upgrade.migrate_to_head(path, engine)
+            except schema_upgrade.SchemaMigrationError as exc:
                 message = str(exc)
                 assert "Retained-data postflight failed" in message
                 assert "Retained backup:" in message
                 assert "admin@example.test" not in message and "1980-01-01" not in message
                 snapshots = list(path.parent.glob("postflight.db.pre-schema-*.db"))
                 assert len(snapshots) == 1
-                assert schema_migrations.inspect_schema(snapshots[0]).revision == "0003_game_day_task_blocks"
+                assert schema_upgrade.inspect_schema(snapshots[0]).revision == "0003_game_day_task_blocks"
             else:
                 raise AssertionError("retained-data mismatch must never report a successful upgrade")
         finally:
-            schema_migrations._retained_data = original
+            schema_upgrade._retained_data = original
             engine.dispose()
 
 

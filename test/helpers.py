@@ -31,7 +31,7 @@ os.environ["NULIGAHELPER_SECRET"] = "test-only-secret-not-for-production"
 
 # Runtime entry points deliberately refuse to create a missing schema. The test
 # harness performs the explicit one-time initialization before importing webapp.
-import db as _db
+from nuligahelper import db as _db
 _db.initialize_db(_db.make_engine(os.environ["NULIGAHELPER_DB"]))
 
 # All legacy fixture duties use a stable pre-season clock. Tests exercising the
@@ -44,7 +44,7 @@ ADULT_BIRTH_DATE = date(1990, 1, 1)
 
 def make_engine():
     """Return a fresh in-file SQLite engine with all tables created."""
-    import db
+    from nuligahelper import db
 
     path = os.path.join(_TEST_DIR, f"{next(tempfile._get_candidate_names())}.db")
     engine = db.make_engine(path)
@@ -60,7 +60,7 @@ def Session(engine):
 
 def app_db_engine():
     """Engine for the database the webapp uses (NULIGAHELPER_DB target)."""
-    import db
+    from nuligahelper import db
 
     return db.make_engine(os.environ["NULIGAHELPER_DB"])
 
@@ -139,7 +139,7 @@ def sample_games() -> list[dict]:
 
 def sync_sample_games(session) -> list[dict]:
     """Insert the sample games via the regular sync and return them."""
-    import db
+    from nuligahelper import db
 
     games = sample_games()
     db.sync_games(session, games, SEASON)

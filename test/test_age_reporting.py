@@ -11,9 +11,9 @@ from lxml import html
 from sqlalchemy import select
 
 import helpers as h
-import db
-import notifier
-import webapp
+from nuligahelper import db
+from nuligahelper.jobs import notifier
+from nuligahelper import web as webapp
 
 
 def _site():
@@ -78,7 +78,7 @@ def test_browser_rejected_takeover_preserves_saved_responsibility():
     assert result.returncode == 0, result.stderr
 
 
-@patch("common.effective_today", return_value=date(2026, 9, 1))
+@patch("nuligahelper.common.effective_today", return_value=date(2026, 9, 1))
 def test_sale_candidates_follow_saved_collective_state_and_keep_private_dates(_today):
     app, engine, ids = _site()
     admin = _client(app, ids["admin"])
@@ -123,7 +123,7 @@ def test_sale_candidates_follow_saved_collective_state_and_keep_private_dates(_t
         assert len(session.scalars(select(db.AssignmentAudit)).all()) == 3, "refusal wrote a successful audit"
 
 
-@patch("common.effective_today", return_value=date(2026, 9, 1))
+@patch("nuligahelper.common.effective_today", return_value=date(2026, 9, 1))
 def test_all_web_tiers_and_past_admin_corrections_enforce_timing_age(_today):
     app, engine, ids = _site()
     for actor in ("young", "mv", "admin"):
@@ -137,7 +137,7 @@ def test_all_web_tiers_and_past_admin_corrections_enforce_timing_age(_today):
     assert response.status_code == 400, "past-game admin rights became an age override"
 
 
-@patch("common.effective_today", return_value=date(2026, 9, 1))
+@patch("nuligahelper.common.effective_today", return_value=date(2026, 9, 1))
 def test_full_invalid_roster_reports_truthful_occupancy_without_private_data(_today):
     app, engine, ids = _site()
     with h.Session(engine) as session:
@@ -180,7 +180,7 @@ def test_full_invalid_roster_reports_truthful_occupancy_without_private_data(_to
             assert service.notify_game_day(game.date) == 0, "missing MV caused fallback routing"
 
 
-@patch("common.effective_today", return_value=date(2026, 9, 1))
+@patch("nuligahelper.common.effective_today", return_value=date(2026, 9, 1))
 def test_game_and_birth_corrections_reevaluate_without_rewriting_assignments(_today):
     app, engine, ids = _site()
     with h.Session(engine) as session:
@@ -228,7 +228,7 @@ def test_game_and_birth_corrections_reevaluate_without_rewriting_assignments(_to
         assert session.get(db.Assignment, assignment_id).person_id == ids["mv"], "takeover lost assignment identity"
 
 
-@patch("common.effective_today", return_value=date(2026, 9, 1))
+@patch("nuligahelper.common.effective_today", return_value=date(2026, 9, 1))
 def test_security_candidates_claims_and_takeovers_enforce_age_for_every_web_tier(_today):
     app, engine, ids = _site()
     admin = _client(app, ids["admin"])
@@ -256,7 +256,7 @@ def test_security_candidates_claims_and_takeovers_enforce_age_for_every_web_tier
         assert session.query(db.AssignmentAudit).count() == before
 
 
-@patch("common.effective_today", return_value=date(2026, 9, 1))
+@patch("nuligahelper.common.effective_today", return_value=date(2026, 9, 1))
 def test_revised_policy_html_confirmation_rechecks_saved_age_and_youth_category(_today):
     for role in (db.ROLE_TIMEKEEPER, db.ROLE_SECURITY, db.ROLE_SALE):
         app, engine, ids = _site()
@@ -307,7 +307,7 @@ def test_revised_policy_html_confirmation_rechecks_saved_age_and_youth_category(
         assert not any(d["role"] == role for d in candidates["staffing"]["deficiencies"])
 
 
-@patch("common.effective_today", return_value=date(2026, 9, 1))
+@patch("nuligahelper.common.effective_today", return_value=date(2026, 9, 1))
 def test_youth_sale_web_takeover_and_refresh_remove_only_adult_without_warning(_today):
     app, engine, ids = _site()
     with h.Session(engine) as session:
@@ -330,7 +330,7 @@ def test_youth_sale_web_takeover_and_refresh_remove_only_adult_without_warning(_
     assert refreshed["staffing"] == saved["staffing"]
 
 
-@patch("common.effective_today", return_value=date(2026, 9, 1))
+@patch("nuligahelper.common.effective_today", return_value=date(2026, 9, 1))
 def test_retained_security_deficiencies_and_relaxed_rules_agree_across_reporting(_today):
     from datetime import datetime
     from zoneinfo import ZoneInfo

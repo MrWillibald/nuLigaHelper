@@ -14,8 +14,8 @@ import uuid
 import pytest
 
 import helpers as h
-import db
-import scraper
+from nuligahelper import db
+from nuligahelper.jobs import scraper
 from datetime import datetime
 from sqlalchemy.exc import IntegrityError
 

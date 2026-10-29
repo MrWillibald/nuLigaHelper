@@ -175,7 +175,7 @@ globalThis.window = { location: { reload() {} }, innerWidth: 360, innerHeight: 6
   addEventListener() {} };
 globalThis.setTimeout = () => 0;
 globalThis.clearTimeout = () => {};
-await import("../static/app.js");
+await import("../nuligahelper/web/static/app.js");
 const person = { id: 7, name: "Cake Helper", team_label: "Supporter", sort_group: 0,
   sort_name: "cake helper", hint: "" };
 const cakeDescription = 'Zur angezeigten Zeit einen Kuchen bringen. <script>plain text</script> & Kuchen';

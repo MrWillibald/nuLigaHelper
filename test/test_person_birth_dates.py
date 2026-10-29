@@ -5,8 +5,8 @@ import io
 from datetime import date
 
 import helpers as h
-import db
-import manage_db
+from nuligahelper import db
+from nuligahelper import cli as manage_db
 from test_auth import (
     _capture_messages, _challenge, _code, _csrf, _new_app, _restore_messages,
 )

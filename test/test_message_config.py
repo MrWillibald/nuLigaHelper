@@ -12,8 +12,8 @@ import tempfile
 from unittest.mock import patch
 
 import helpers as h
-import common
-import message_config
+from nuligahelper import common
+from nuligahelper.jobs import message_config
 
 
 def test_preflight_classifies_known_defaults_customized_and_unused_without_values():
@@ -69,7 +69,7 @@ def test_legacy_load_is_readable_and_warnings_identify_keys_without_values():
         path = Path(directory) / "synthetic.json"
         path.write_text(json.dumps({"club": club}), encoding="utf-8")
         before = path.read_bytes()
-        with patch.dict(os.environ, {}, clear=True), patch("message_config.logging.warning") as warning:
+        with patch.dict(os.environ, {}, clear=True), patch("nuligahelper.jobs.message_config.logging.warning") as warning:
             loaded = common.load_config(str(path))
         assert loaded["club"] == club, "presence of legacy text alone must not reject startup"
         assert path.read_bytes() == before
@@ -86,7 +86,7 @@ def test_preflight_cli_needs_no_database_or_provider_settings_and_changes_nothin
         before = path.read_bytes()
         env = {"PATH": os.environ.get("PATH", ""), "NULIGAHELPER_DB": str(Path(directory) / "must-not-exist.db")}
         result = subprocess.run(
-            [sys.executable, "-m", "message_config", "--config", str(path)],
+            [sys.executable, "-m", "nuligahelper.jobs.message_config", "--config", str(path)],
             cwd=h.PROJECT_DIR, env=env, capture_output=True, text=True,
         )
         assert result.returncode == 0, result.stderr

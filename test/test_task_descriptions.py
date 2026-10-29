@@ -8,8 +8,8 @@ from unittest.mock import patch
 from lxml import html
 
 import helpers as h
-import db
-import webapp
+from nuligahelper import db
+from nuligahelper import web as webapp
 
 
 def _site():
@@ -120,7 +120,7 @@ def test_catalog_covers_actual_roles_and_phases_without_obsolete_proposal_roles(
     assert db.ROLE_CASH in expected and db.ROLE_CLEANING in expected and db.BLOCK_CAKE_DELIVERY in expected
 
 
-@patch("common.effective_today", return_value=date(2026, 9, 1))
+@patch("nuligahelper.common.effective_today", return_value=date(2026, 9, 1))
 def test_guest_member_and_admin_render_all_task_help_with_matching_shared_descriptions(_today):
     app, ids = _site()
     guest_descriptions = None
@@ -147,7 +147,7 @@ def test_guest_member_and_admin_render_all_task_help_with_matching_shared_descri
             assert len(tree.xpath('//select[@data-role or @data-block-assignment]')) == len(buttons)
 
 
-@patch("common.effective_today", return_value=date(2026, 9, 1))
+@patch("nuligahelper.common.effective_today", return_value=date(2026, 9, 1))
 def test_guest_help_adds_generic_text_without_contact_roster_or_internal_identifier_leaks(_today):
     app, _ids = _site()
     page = _client(app).get("/").get_data(as_text=True)
@@ -169,7 +169,7 @@ def test_guest_help_adds_generic_text_without_contact_roster_or_internal_identif
         )
 
 
-@patch("common.effective_today", return_value=date(2026, 9, 1))
+@patch("nuligahelper.common.effective_today", return_value=date(2026, 9, 1))
 def test_catalog_text_is_escaped_and_not_interpreted_as_markup(_today):
     app, ids = _site()
     canary = '<script data-help-injection="yes">unsafe()</script> & "quoted"'
@@ -183,7 +183,7 @@ def test_catalog_text_is_escaped_and_not_interpreted_as_markup(_today):
             assert "&lt;script" in page and "&amp;" in page, "plain-text descriptions must be HTML escaped"
 
 
-@patch("common.effective_today", return_value=date(2026, 9, 1))
+@patch("nuligahelper.common.effective_today", return_value=date(2026, 9, 1))
 def test_saved_cake_responses_supply_description_for_every_dynamic_position(_today):
     app, ids = _site()
     client = _client(app, ids["admin"])
@@ -202,7 +202,7 @@ def test_saved_cake_responses_supply_description_for_every_dynamic_position(_tod
         )
 
 
-@patch("common.effective_today", return_value=date(2026, 9, 1))
+@patch("nuligahelper.common.effective_today", return_value=date(2026, 9, 1))
 def test_task_guidance_and_no_javascript_schedule_explain_revised_age_policy(_today):
     app, ids = _site()
     for role in (db.ROLE_TIMEKEEPER, db.ROLE_SECRETARY):

@@ -33,7 +33,7 @@ globalThis.fetch = async (url) => {
   requested.push(url);
   throw new Error("offline");
 };
-await import("../static/app.js");
+await import("../nuligahelper/web/static/app.js");
 if (requested.length || !card.listeners.toggle) {
   throw new Error("collapsed card loaded candidates or did not register expansion");
 }

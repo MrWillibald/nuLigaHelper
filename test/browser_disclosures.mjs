@@ -23,7 +23,8 @@ import hashlib, json, logging, os, sys
 from datetime import date
 sys.path.insert(0, os.path.join(os.getcwd(), 'test'))
 import helpers as h
-import db, webapp
+from nuligahelper import db
+from nuligahelper import web as webapp
 from test_mobile_persons import _roster
 from flask import jsonify
 from sqlalchemy import select

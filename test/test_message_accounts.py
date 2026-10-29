@@ -6,9 +6,9 @@ import logging
 from unittest.mock import patch
 
 import helpers as h
-import auth_abuse
-import db
-import messages
+from nuligahelper import auth_abuse
+from nuligahelper import db
+from nuligahelper.jobs import messages
 from test_auth import (
     _capture_messages,
     _challenge,

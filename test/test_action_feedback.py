@@ -7,7 +7,7 @@ from pathlib import Path
 from lxml import html
 
 import helpers as h
-import db
+from nuligahelper import db
 from test_auth import (
     _capture_messages, _restore_messages, _csrf, _challenge, _code,
     _request_login, _confirm_login,
@@ -49,7 +49,7 @@ def test_shared_fallback_escapes_text_on_schedule_management_and_auth_pages():
         assert not entry.xpath('.//img'), "display names must never become markup"
         assert not _entries(client.get(path)), "server flash replayed after consumption"
         assert 'class="form-message' not in response.get_data(as_text=True)
-    style = Path(h.PROJECT_DIR, 'static/style.css').read_text()
+    style = Path(h.PROJECT_DIR, 'nuligahelper/web/static/style.css').read_text()
     assert '.feedback-enhanced{position:fixed' in style
     assert '.feedback{margin:' in style, "no-JS region must remain in document flow"
     assert '@media(prefers-reduced-motion:reduce)' in style
@@ -96,7 +96,7 @@ def test_management_results_fields_and_private_values_remain_separate():
     page = html.fromstring(invalid_self.get_data(as_text=True))
     assert page.xpath(f'//*[@id="person-{ids["member"]}-birth_date-error"]')
     assert '1999-06-07' not in invalid_self.get_data(as_text=True), "foreign birth date leaked through validation"
-    script = Path(h.PROJECT_DIR, 'static/app.js').read_text()
+    script = Path(h.PROJECT_DIR, 'nuligahelper/web/static/app.js').read_text()
     assert 'wirklich löschen?' in script and 'Bestehende Einteilungen verhindern das Löschen' in script
 
 

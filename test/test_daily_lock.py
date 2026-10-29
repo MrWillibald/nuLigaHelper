@@ -6,7 +6,7 @@ import sys
 import tempfile
 
 import helpers as h
-from daily_lock import (
+from nuligahelper.jobs.daily_lock import (
     DailyRunAlreadyActiveError,
     DailyRunLockPathError,
     daily_lock_path,
@@ -96,7 +96,7 @@ def test_process_exit_releases_lock_without_cleanup():
         database_path = Path(directory) / "daily.db"
         child_code = (
             "import os, sys; "
-            "from daily_lock import daily_run_lock; "
+            "from nuligahelper.jobs.daily_lock import daily_run_lock; "
             "guard = daily_run_lock(sys.argv[1]); "
             "guard.__enter__(); "
             "os._exit(0)"

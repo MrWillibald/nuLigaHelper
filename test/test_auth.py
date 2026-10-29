@@ -10,9 +10,9 @@ from datetime import datetime, timedelta
 from itsdangerous import URLSafeTimedSerializer
 
 import helpers as h
-import db
-import notifier
-import webapp
+from nuligahelper import db
+from nuligahelper.jobs import notifier
+from nuligahelper import web as webapp
 
 
 def _new_app():
@@ -980,7 +980,7 @@ def test_auth_markup_is_labelled_ordered_and_works_without_javascript():
 
 
 def test_auth_progressive_enhancement_and_responsive_css_contract():
-    with open(h.PROJECT_DIR + "/static/app.js", encoding="utf-8") as source:
+    with open(h.PROJECT_DIR + "/nuligahelper/web/static/app.js", encoding="utf-8") as source:
         javascript = source.read()
     assert "function updateRouteAvailability()" in javascript
     assert "emailInput.checkValidity()" in javascript
@@ -990,7 +990,7 @@ def test_auth_progressive_enhancement_and_responsive_css_contract():
     assert "countrySelect.addEventListener(\"change\", updateRouteAvailability)" in javascript
     assert "panel.hidden" not in javascript
 
-    with open(h.PROJECT_DIR + "/static/style.css", encoding="utf-8") as source:
+    with open(h.PROJECT_DIR + "/nuligahelper/web/static/style.css", encoding="utf-8") as source:
         css = source.read()
     assert ".auth-card{width:min(100%,620px)" in css
     assert ".auth-radio:has(input:disabled)" in css

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { runInThisContext } from "node:vm";
 
-const earlySource = readFileSync(new URL("../static/disclosures.js", import.meta.url), "utf8");
+const earlySource = readFileSync(new URL("../nuligahelper/web/static/disclosures.js", import.meta.url), "utf8");
 const enhancement = process.argv[3] || "available";
 
 class Element {
@@ -123,7 +123,7 @@ assert.equal(requests, 0, "early initialization requested assignment candidates"
 
 if (!enhanced) {
   const fallbackStates = details.map((node) => node.open);
-  await import("../static/app.js");
+  await import("../nuligahelper/web/static/app.js");
   assert.deepEqual(details.map((node) => node.open), fallbackStates, "main bundle reset native fallback");
   viewport.matches = !viewport.matches;
   viewport.dispatch("change");
@@ -151,7 +151,7 @@ details.slice(0, 7).forEach((node) => {
   assert.equal(node.listeners.get("change").length, 1);
   assert.equal(node.children[0].listeners.get("click").length, 1);
 });
-await import("../static/app.js");
+await import("../nuligahelper/web/static/app.js");
 const flush = () => { while (frames.length) frames.splice(0).forEach((callback) => callback()); };
 
 assert.deepEqual(details.map((node) => node.open), priorStates, "main bundle reset early interaction or failed-panel fallback");

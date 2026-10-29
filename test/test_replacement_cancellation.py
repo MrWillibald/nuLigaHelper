@@ -10,7 +10,7 @@ from lxml import html
 from sqlalchemy import event
 
 import helpers as h
-import db
+from nuligahelper import db
 from test_sticky_web import fixture, client_for, write, audit_count
 
 
@@ -18,8 +18,8 @@ from test_sticky_web import fixture, client_for, write, audit_count
 def scenario():
     directory, engine, app, ids = fixture()
     try:
-        with patch("common.effective_today", return_value=date(2026, 10, 30)), patch(
-            "db.clock.duty_now", return_value=datetime(2026, 10, 30, 8, tzinfo=ZoneInfo("Europe/Berlin"))
+        with patch("nuligahelper.common.effective_today", return_value=date(2026, 10, 30)), patch(
+            "nuligahelper.db.clock.duty_now", return_value=datetime(2026, 10, 30, 8, tzinfo=ZoneInfo("Europe/Berlin"))
         ):
             yield engine, app, ids
     finally:
@@ -228,7 +228,7 @@ def test_cancellation_waiting_for_writer_rechecks_the_fixed_cutoff():
                         return "refused"
             event.listen(engine, "before_cursor_execute", observe)
             try:
-                with patch("db.clock.duty_now", side_effect=lambda: clock[0]):
+                with patch("nuligahelper.db.clock.duty_now", side_effect=lambda: clock[0]):
                     with ThreadPoolExecutor(max_workers=1) as pool:
                         with h.Session(engine) as holder:
                             if "game_id" in target:
@@ -257,7 +257,7 @@ def test_fixed_cutoff_refuses_owner_and_admin_cancellation_for_every_container()
         for prefix, target in targets(ids):
             token = open_search(owner, owner, prefix, target, ids["Original"])
             prepared.append((prefix, target, token))
-        with patch("db.clock.duty_now", return_value=datetime(2026, 10, 31, 9, tzinfo=ZoneInfo("Europe/Berlin"))):
+        with patch("nuligahelper.db.clock.duty_now", return_value=datetime(2026, 10, 31, 9, tzinfo=ZoneInfo("Europe/Berlin"))):
             for prefix, target, token in prepared:
                 payload = dict(**target, expected_person_id=ids["Original"], expected_request_token=token)
                 assert write(owner, prefix + "cancel-replacement", **payload).status_code in (400, 409)

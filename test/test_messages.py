@@ -4,7 +4,7 @@ from dataclasses import FrozenInstanceError, replace
 from unittest.mock import patch
 
 import helpers as h
-import messages
+from nuligahelper.jobs import messages
 
 
 def _context(key):

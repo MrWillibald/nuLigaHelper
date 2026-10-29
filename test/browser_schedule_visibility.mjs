@@ -15,7 +15,7 @@ const fixture = String.raw`
 import json, logging, os, sys
 sys.path.insert(0, os.path.join(os.getcwd(), 'test'))
 from test_schedule_visibility import site, set_boundary, TODAY
-import common
+from nuligahelper import common
 from helpers import sign_in
 from werkzeug.serving import make_server
 app, engine, ids = site()

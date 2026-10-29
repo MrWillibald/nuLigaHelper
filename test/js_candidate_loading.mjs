@@ -3,7 +3,7 @@ globalThis.document = {
   createElement: () => new FakeOption(),
   createDocumentFragment: () => ({ children: [], appendChild(child) { this.children.push(child); } }),
 };
-await import("../static/app.js");
+await import("../nuligahelper/web/static/app.js");
 
 function check(condition, message) {
   if (!condition) throw new Error(message);

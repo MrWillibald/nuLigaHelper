@@ -12,11 +12,11 @@ from typing import Any
 from unittest.mock import patch
 
 import helpers as h
-import backup
-import daily_lock
-import db
-import main
-import notifier
+from nuligahelper.ops import backup
+from nuligahelper.jobs import daily_lock
+from nuligahelper import db
+from nuligahelper.jobs import daily as main
+from nuligahelper.jobs import notifier
 from test_notifier import TextRecorder
 
 
@@ -518,11 +518,11 @@ def test_overlap_is_shell_visible_and_nonzero():
         database_path = os.path.join(directory, "subprocess-overlap.db")
         child_code = "\n".join([
             "from unittest.mock import patch",
-            "import common",
+            "from nuligahelper import common",
             "import runpy",
             f"config = {repr(_config(database_path))}",
             "with patch.object(common, 'load_config', return_value=config):",
-            "    runpy.run_path('main.py', run_name='__main__')",
+            "    runpy.run_module('nuligahelper.jobs.daily', run_name='__main__')",
         ])
         environment = os.environ.copy()
         environment.pop("NULIGAHELPER_DB", None)
@@ -619,7 +619,7 @@ def test_weekly_vacancy_invitations_follow_effective_today_and_keep_existing_sen
         stack.enter_context(patch.object(main.common, "load_config", return_value=cfg))
         stack.enter_context(patch.object(main, "fetch_home_games", return_value=rows))
         stack.enter_context(patch.object(main, "_backup_database"))
-        stack.enter_context(patch.object(main.production, "write_success"))
+        stack.enter_context(patch.object(main.settings, "write_success"))
         stack.enter_context(patch.object(notifier.Notifier, "send_Mail", side_effect=rec.mail))
         stack.enter_context(patch.object(notifier.Notifier, "send_SMS", side_effect=rec.sms))
         for name in original_senders:

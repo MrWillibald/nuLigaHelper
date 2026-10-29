@@ -7,9 +7,9 @@ import tempfile
 from unittest.mock import patch
 
 import helpers as h
-import backup
-import db
-import schema_migrations
+from nuligahelper.ops import backup
+from nuligahelper import db
+from nuligahelper.db import schema_upgrade
 
 
 SOURCE = Path(h.PROJECT_DIR) / 'release-assets/recovery_check.py'
@@ -70,7 +70,7 @@ def test_schema_gate_accepts_head_pauses_old_and_refuses_unknown_or_missing():
         engine.dispose()
         ready = recovery.schema_gate(database)
         assert ready['gate'] == 'ready'
-        assert ready['revision'] == schema_migrations.head_revisions()[0]
+        assert ready['revision'] == schema_upgrade.head_revisions()[0]
         with sqlite3.connect(database) as connection:
             connection.execute("UPDATE alembic_version SET version_num='0002_multi_team_membership'")
         assert recovery.schema_gate(database)['gate'] == 'migration_required'
@@ -85,12 +85,12 @@ def test_schema_gate_refuses_newer_divergent_and_corrupt_databases():
         engine = db.make_engine(str(database))
         db.initialize_db(engine)
         engine.dispose()
-        with patch.object(schema_migrations, 'head_revisions',
+        with patch.object(schema_upgrade, 'head_revisions',
                           return_value=('0002_multi_team_membership',)):
             assert recovery.schema_gate(database)['gate'] == 'refused', \
                 'a database ahead of the candidate must never be migrated backwards'
-        with patch.object(schema_migrations, 'inspect_schema', return_value=
-                          schema_migrations.SchemaState('divergent')):
+        with patch.object(schema_upgrade, 'inspect_schema', return_value=
+                          schema_upgrade.SchemaState('divergent')):
             assert recovery.schema_gate(database)['gate'] == 'refused'
         corrupt = Path(directory) / 'corrupt.db'
         corrupt.write_bytes(b'not sqlite')

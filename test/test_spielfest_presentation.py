@@ -5,8 +5,8 @@ import tempfile
 
 import helpers as h
 
-import db
-import webapp
+from nuligahelper import db
+from nuligahelper import web as webapp
 
 
 def test_spielfest_is_one_labelled_plan_entry_without_fake_matchup():

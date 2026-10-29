@@ -9,10 +9,10 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import helpers as h
-import operations
-import production as p
-import runtime_check
-import monitor_watchdog
+from nuligahelper.ops import monitoring as operations
+from nuligahelper.ops import settings as p
+from nuligahelper.ops import runtime_check
+from nuligahelper.ops import watchdog as monitor_watchdog
 from test_operations import settings
 
 
@@ -24,7 +24,7 @@ def test_runtime_preflight_reports_only_missing_or_invalid_setting():
     with patch.dict(os.environ,env,clear=True):
         assert runtime_check.check() == 'NULIGAHELPER_SECRET'
         os.environ['NULIGAHELPER_SECRET']='synthetic-secret-for-test'
-        with patch('production.read_json',return_value=cfg), patch('common.load_config',side_effect=ValueError('secret-canary')):
+        with patch('nuligahelper.ops.settings.read_json',return_value=cfg), patch('nuligahelper.common.load_config',side_effect=ValueError('secret-canary')):
             assert runtime_check.check() == 'NULIGAHELPER_CONFIG'
 
 
@@ -36,11 +36,11 @@ def test_tls_check_uses_verified_context_and_public_hostname():
         def getpeercert(self): return {'notAfter':'Sep 30 00:00:00 2026 GMT'}
     context = ssl.create_default_context()
     assert context.check_hostname and context.verify_mode == ssl.CERT_REQUIRED
-    with patch('operations.socket.create_connection',return_value=Connection()), patch.object(context,'wrap_socket',return_value=TLS()) as wrap, patch('operations.ssl.create_default_context',return_value=context):
+    with patch('nuligahelper.ops.monitoring.socket.create_connection',return_value=Connection()), patch.object(context,'wrap_socket',return_value=TLS()) as wrap, patch('nuligahelper.ops.monitoring.ssl.create_default_context',return_value=context):
         assert operations.certificate_days('club.test',datetime(2026,9,16,tzinfo=timezone.utc)) == 14
         assert wrap.call_args.kwargs['server_hostname'] == 'club.test'
     for category in ('expired','hostname mismatch','untrusted'):
-        with patch('operations.socket.create_connection',return_value=Connection()), patch.object(context,'wrap_socket',side_effect=ssl.SSLCertVerificationError(category)), patch('operations.ssl.create_default_context',return_value=context):
+        with patch('nuligahelper.ops.monitoring.socket.create_connection',return_value=Connection()), patch.object(context,'wrap_socket',side_effect=ssl.SSLCertVerificationError(category)), patch('nuligahelper.ops.monitoring.ssl.create_default_context',return_value=context):
             try: operations.certificate_days('club.test')
             except ssl.SSLCertVerificationError: pass
             else: raise AssertionError('verification failure swallowed')
@@ -48,11 +48,11 @@ def test_tls_check_uses_verified_context_and_public_hostname():
 
 def test_watchdog_detects_stale_or_missing_monitor_and_uses_only_alert_unit():
     for age in (0,1801):
-        with patch('production.success_age',return_value=age), patch('monitor_watchdog.subprocess.run',return_value=SimpleNamespace(returncode=0)) as run:
+        with patch('nuligahelper.ops.settings.success_age',return_value=age), patch('nuligahelper.ops.watchdog.subprocess.run',return_value=SimpleNamespace(returncode=0)) as run:
             assert monitor_watchdog.main() == 0
             assert run.called == (age > 1800)
             if run.called: assert run.call_args.args[0] == ['systemctl','start','nuligahelper-alert@monitor.service']
-    with patch('production.success_age',side_effect=p.ConfigurationError('marker')), patch('monitor_watchdog.subprocess.run',return_value=SimpleNamespace(returncode=1)):
+    with patch('nuligahelper.ops.settings.success_age',side_effect=p.ConfigurationError('marker')), patch('nuligahelper.ops.watchdog.subprocess.run',return_value=SimpleNamespace(returncode=1)):
         assert monitor_watchdog.main() == 2
 
 

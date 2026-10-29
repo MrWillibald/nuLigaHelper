@@ -4,8 +4,8 @@ import os
 import tempfile
 
 import helpers as h
-import db
-import webapp
+from nuligahelper import db
+from nuligahelper import web as webapp
 
 
 _previous_db = os.environ["NULIGAHELPER_DB"]

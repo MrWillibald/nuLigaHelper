@@ -7,8 +7,8 @@ import time
 import uuid
 
 import helpers as h
-import db
-import webapp
+from nuligahelper import db
+from nuligahelper import web as webapp
 
 
 _TEST_DIR = tempfile.mkdtemp(prefix="nuligahelper-concurrency-")

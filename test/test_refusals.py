@@ -6,8 +6,8 @@ from datetime import date
 from unittest.mock import patch
 
 import helpers as h
-import db
-import webapp
+from nuligahelper import db
+from nuligahelper import web as webapp
 
 _previous_db = os.environ["NULIGAHELPER_DB"]
 _db_path = os.path.join(h._TEST_DIR, f"refusal-{next(tempfile._get_candidate_names())}.db")
@@ -176,7 +176,7 @@ def test_03_mv_scope_requires_own_team_and_responsible_game():
     ).status_code == 403
 
 
-@patch("notifier.Notifier.send_account_message", return_value=1)
+@patch("nuligahelper.jobs.notifier.Notifier.send_account_message", return_value=1)
 def test_04_admin_can_approve_fallback_and_correct_past_game(_send_account_message):
     client, token = _client("admin")
     approved = client.post(
@@ -220,7 +220,7 @@ def test_06_admin_and_mv_rights_are_derived_together():
 # Keep this scenario's sample games in the future regardless of execution date.
 for _name, _test in list(globals().items()):
     if _name.startswith("test_") and callable(_test):
-        globals()[_name] = patch("common.effective_today", new=lambda: date(2026, 9, 1))(_test)
+        globals()[_name] = patch("nuligahelper.common.effective_today", new=lambda: date(2026, 9, 1))(_test)
 
 if __name__ == "__main__":
     h.run_all(dict(globals()))

@@ -7,7 +7,7 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 
 import helpers as h
-import db
+from nuligahelper import db
 
 
 def _one_game(date="05.09.2026", time="00:30", number="1001"):
@@ -122,7 +122,7 @@ def test_successful_sync_removes_vanished_blocks_logs_each_and_invalid_sync_does
         }
 
         replacement = _one_game(date="06.09.2026", number="2001")
-        with patch("db.logging.info") as info:
+        with patch("nuligahelper.db.logging.info") as info:
             db.sync_games(session, [replacement], h.SEASON)
         assert not db.get_day_blocks(session, h.SEASON, "05.09.2026")
         removals = [

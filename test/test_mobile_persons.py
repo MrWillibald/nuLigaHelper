@@ -5,7 +5,7 @@ from datetime import date
 from lxml import html
 
 import helpers as h
-import db
+from nuligahelper import db
 from disclosure_markup import assert_early_disclosure_markup
 from test_auth import _new_app
 

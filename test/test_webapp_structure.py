@@ -5,12 +5,13 @@
 # request-hook order and request-independent view builders.
 # ---------------------------------------------------------------
 
+import logging
 from datetime import date
 
 import helpers as h
-import db
-import webapp
-from webapp.statistics import build_statistics
+from nuligahelper import db
+from nuligahelper import web as webapp
+from nuligahelper.web.statistics import build_statistics
 
 EXPECTED_RULES = {
     ("/", "schedule"), ("/api/assignment/cancel-replacement", "api_assignment_cancel_replacement"),
@@ -84,6 +85,16 @@ def test_statistics_builder_runs_without_a_request():
         assert data["total_games"] == len(session.query(db.Game).all())
         assert {"team_stats", "person_stats", "gaps"} <= data.keys()
         assert data["gaps"], "unstaffed future games must appear as outstanding gaps"
+
+
+
+def test_production_journal_classifies_flask_logs_as_web():
+    from nuligahelper.ops.journal_logging import JournalFormatter
+    record = logging.LogRecord(webapp.app.logger.name, logging.INFO, "", 0,
+                               "web request method=GET path=/ status=200", (), None)
+    assert "operation=web " in JournalFormatter("%(message)s").format(record), (
+        "web request logs must keep their journal component after the package rename"
+    )
 
 
 if __name__ == "__main__":

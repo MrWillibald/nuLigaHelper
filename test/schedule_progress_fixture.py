@@ -6,8 +6,8 @@ import os
 from pathlib import Path
 
 import helpers as h
-import db
-import webapp
+from nuligahelper import db
+from nuligahelper import web as webapp
 from sqlalchemy import select
 from werkzeug.serving import make_server
 from test_game_duties import _site

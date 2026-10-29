@@ -15,7 +15,9 @@ from datetime import date, datetime
 from zoneinfo import ZoneInfo
 sys.path.insert(0, os.path.join(os.getcwd(), 'test'))
 import helpers as h
-import db, common, webapp
+from nuligahelper import db
+from nuligahelper import common
+from nuligahelper import web as webapp
 from test_sticky_web import fixture
 from flask import jsonify, request
 from werkzeug.serving import make_server

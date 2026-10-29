@@ -1,7 +1,7 @@
 """Focused domain checks for set-based team membership."""
 
 import helpers as h
-import db
+from nuligahelper import db
 
 
 def test_person_membership_supports_zero_one_several_and_deduplicates_input():

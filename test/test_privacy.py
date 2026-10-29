@@ -6,9 +6,9 @@ from pathlib import Path
 from unittest.mock import patch
 
 import helpers as h
-import db
-import privacy
-import production as p
+from nuligahelper import db
+from nuligahelper.ops import privacy
+from nuligahelper.ops import settings as p
 
 NOW = datetime(2026, 9, 16, tzinfo=timezone.utc)
 NAIVE = NOW.replace(tzinfo=None)

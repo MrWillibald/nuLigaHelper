@@ -12,8 +12,8 @@ from types import SimpleNamespace
 
 import helpers as h  # pyright: ignore[reportImplicitRelativeImport]
 
-import backup
-import common
+from nuligahelper.ops import backup
+from nuligahelper import common
 import requests
 
 
