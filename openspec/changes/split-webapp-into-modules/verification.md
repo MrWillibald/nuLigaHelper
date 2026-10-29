@@ -3,8 +3,8 @@
 Verified on 2026-10-29 with synthetic databases only.
 
 - `webapp.py` → package `webapp/` (commit "Turn webapp.py into the webapp package"),
-  suite green; then the topic split. Modules and sizes: `__init__` 150 (`create_app()`
-  72 lines), `context` 155, `formatting` 55, `security` 325, `auth` 400, `challenges` 456,
+  suite green; then the topic split. Modules and sizes (lines): `__init__` 144 (`create_app()`
+  72), `context` 155, `formatting` 57, `security` 326, `auth` 412, `challenges` 456,
   `schedule` 214, `views` 411, `assignments` 491, `persons` 416, `statistics` 202.
   No module exceeds 500 lines; no function closes over `app` (per-app resources are an
   `AppState` in `app.extensions["nuligahelper"]`).
