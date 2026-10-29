@@ -72,7 +72,7 @@ The system SHALL expose schema upgrades through an explicit command that require
 
 ### Requirement: Existing unversioned databases are adopted only from an exact baseline
 
-The guarded schema-migration command SHALL adopt an unversioned database only when its schema and required invariants exactly match the reviewed baseline. It SHALL record that baseline without replaying historical creation and then apply later revisions. A database with the legacy game-identity schema SHALL be directed through the existing specialized migration first; every other unknown unversioned shape SHALL be refused.
+The guarded schema-migration command SHALL adopt an unversioned database only when its schema and required invariants exactly match the reviewed baseline. It SHALL record that baseline without replaying historical creation and then apply later revisions. A database with the legacy game-identity schema SHALL be refused unchanged with a diagnostic stating that this release no longer converts legacy game identity and that an earlier release providing the specialized game-identity migration must be used first; every other unknown unversioned shape SHALL be refused.
 
 #### Scenario: Current unversioned database matches the baseline
 
@@ -82,9 +82,10 @@ The guarded schema-migration command SHALL adopt an unversioned database only wh
 
 #### Scenario: Legacy game identity is still present
 
-- **WHEN** preflight finds the historical game source-key schema
+- **WHEN** preflight or normal startup finds the historical game source-key schema
 - **THEN** it makes no change
-- **AND** directs the operator to complete the specialized game-identity migration before retrying
+- **AND** the diagnostic states that the legacy game-identity conversion is no longer part of this release and must be completed with an earlier release before retrying
+- **AND** it does not name a command that this release does not provide
 
 #### Scenario: Unversioned schema is not recognized
 
