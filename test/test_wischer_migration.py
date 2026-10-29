@@ -326,7 +326,7 @@ def test_migrated_stale_clients_cannot_recreate_duties_and_admin_history_is_read
             session.commit()
             assert game.assignment_by_role("Wischer").person_id == 5
             for hour in (9, 10):
-                with patch("db.duty_now", return_value=datetime(2026,10,31,hour,tzinfo=ZoneInfo("Europe/Berlin"))):
+                with patch("db.clock.duty_now", return_value=datetime(2026,10,31,hour,tzinfo=ZoneInfo("Europe/Berlin"))):
                     try:
                         db.request_replacement(session, game, "Wischer", 0, 5)
                     except db.DutyLockedError:

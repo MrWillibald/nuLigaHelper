@@ -36,7 +36,7 @@ _db.initialize_db(_db.make_engine(os.environ["NULIGAHELPER_DB"]))
 
 # All legacy fixture duties use a stable pre-season clock. Tests exercising the
 # scheduled boundary explicitly patch duty_now instead of depending on host time.
-_db.duty_now = lambda: datetime(2026, 9, 1, 8, 0, tzinfo=ZoneInfo("Europe/Berlin"))
+_db.clock.duty_now = lambda: datetime(2026, 9, 1, 8, 0, tzinfo=ZoneInfo("Europe/Berlin"))
 
 SEASON = 2026
 ADULT_BIRTH_DATE = date(1990, 1, 1)

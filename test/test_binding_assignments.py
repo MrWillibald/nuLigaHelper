@@ -80,7 +80,7 @@ def test_ordner_transitions_capture_current_label_without_rewriting_old_audits()
         token = db.request_replacement(session, game, db.ROLE_SECURITY, 0, first.id).replacement_token
         db.takeover_slot(session, game, db.ROLE_SECURITY, 0, first.id, token, second)
         db.request_replacement(session, game, db.ROLE_SECURITY, 0, second.id)
-        with patch("db.duty_now", return_value=datetime(2099, 12, 30, 9, tzinfo=ZoneInfo("Europe/Berlin"))):
+        with patch("db.clock.duty_now", return_value=datetime(2099, 12, 30, 9, tzinfo=ZoneInfo("Europe/Berlin"))):
             db.lock_day_before_batch(session, 2026, game.date)
         session.commit()
         session.expire_all()
@@ -125,13 +125,13 @@ def test_batch_locks_complete_cohort_and_late_empty_claims_without_delivery_depe
             block = session.get(db.DayBlock, block_id)
             block_assignments.append(db.claim_block_slot(session, block, 0, None, person))
             db.request_block_replacement(session, block, 0, person.id)
-        with patch("db.duty_now", return_value=datetime(2099, 12, 30, 9, tzinfo=ZoneInfo("Europe/Berlin"))):
+        with patch("db.clock.duty_now", return_value=datetime(2099, 12, 30, 9, tzinfo=ZoneInfo("Europe/Berlin"))):
             marker = db.lock_day_before_batch(session, 2026, game.date)
         session.commit()  # No mail/SMS is attempted by a domain transition.
         assert assignment.locked_at == marker.locked_at and assignment.replacement_token is None
         assert all(a.locked_at == marker.locked_at and a.replacement_token is None for a in block_assignments)
         before = session.query(db.AssignmentAudit).count()
-        with patch("db.duty_now", return_value=datetime(2099, 12, 30, 9, tzinfo=ZoneInfo("Europe/Berlin"))):
+        with patch("db.clock.duty_now", return_value=datetime(2099, 12, 30, 9, tzinfo=ZoneInfo("Europe/Berlin"))):
             db.lock_day_before_batch(session, 2026, game.date)
         session.commit()
         assert session.query(db.AssignmentAudit).count() == before, "batch retry must not duplicate lifecycle audit"
@@ -223,7 +223,7 @@ def test_legacy_retirement_is_prelock_only_and_management_cannot_cancel_commitme
         game.ak = "M"; session.commit()
         old = db.claim_slot(session, game, db.ROLE_CASH, 0, None, person)
         game.ak = "mD"; session.commit()
-        with patch("db.duty_now", return_value=datetime(2099, 12, 30, 9, tzinfo=ZoneInfo("Europe/Berlin"))):
+        with patch("db.clock.duty_now", return_value=datetime(2099, 12, 30, 9, tzinfo=ZoneInfo("Europe/Berlin"))):
             db.lock_day_before_batch(session, 2026, game.date)
         session.commit()
         _refused(lambda: db.release_slot(session, game, db.ROLE_CASH, 0, person.id), db.DutyLockedError)
@@ -242,11 +242,11 @@ def test_fixed_berlin_cutoff_materializes_without_a_reminder_job_and_not_before_
         assignment = db.claim_slot(session, game, db.ROLE_SECURITY, 0, None, person)
         db.request_replacement(session, game, db.ROLE_SECURITY, 0, person.id)
         session.commit()
-        with patch("db.duty_now", return_value=datetime(2099,12,30,8,59,tzinfo=ZoneInfo("Europe/Berlin"))):
+        with patch("db.clock.duty_now", return_value=datetime(2099,12,30,8,59,tzinfo=ZoneInfo("Europe/Berlin"))):
             assert not db.duty_is_locked(session, game, assignment)
             assert db.lock_day_before_batch(session, 2026, game.date) is None
             assert session.query(db.DutyCutoff).count() == 0
-        with patch("db.duty_now", return_value=datetime(2099,12,30,9,tzinfo=ZoneInfo("Europe/Berlin"))):
+        with patch("db.clock.duty_now", return_value=datetime(2099,12,30,9,tzinfo=ZoneInfo("Europe/Berlin"))):
             assert db.duty_is_locked(session, game, assignment), "fixed cutoff cannot wait for a cron or provider"
             db.lock_due_duties(session); session.commit()
             assert assignment.locked_at is not None and assignment.replacement_token is None
@@ -291,7 +291,7 @@ def test_takeover_waiting_for_writer_rechecks_nine_oclock_before_changing_respon
                 session.rollback()
                 return "refused"
     try:
-        with patch("db.duty_now", side_effect=lambda: clock[0]):
+        with patch("db.clock.duty_now", side_effect=lambda: clock[0]):
             with ThreadPoolExecutor(max_workers=1) as pool:
                 with h.Session(engine) as writer:
                     db._lock_game(writer, game_id)

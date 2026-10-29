@@ -32,6 +32,25 @@ Functions that tests replace on the facade to simulate races (`db.claim_slot`, `
 
 From the edges inward, one commit per step with the full suite green: `roles` (+ `task_labels`) → `engine` → `models` → `visibility` → `sync` → `people` → `clock`/`audit` → `day_blocks` → `duties` → `staffing`.
 
+## Implementation notes (2026-10-29)
+
+- Final layers (16 modules, lowest first): `roles`, `errors`, `models`, `people`,
+  `storage`, `games`, `day_blocks`, `visibility`, `clock`, `audit`, `staffing`, `slots`,
+  `locks`, `duties`, `block_duties`, `sync`. Compared with the plan, `engine.py` is named
+  `storage.py`, and `games.py`, `errors.py`, `slots.py`, `locks.py` and `block_duties.py`
+  were added so that no module exceeds ~460 lines and the import graph stays acyclic
+  (the shared slot guards would otherwise form a `duties` ↔ block-duty cycle).
+- Besides `duty_now`, the write-retry budget `SQLITE_TIMEOUT_SECONDS` is also read through
+  its module (`storage.SQLITE_TIMEOUT_SECONDS`) because `test_cake_concurrency.py` patches
+  it. The facade defines `db.duty_now()` as a delegate to `db.clock.duty_now()`, so
+  external callers also see a patched clock; `test/helpers.py` now sets the fixed test
+  clock on `db.clock`.
+- The facade re-imports the former module's external imports, so names such as
+  `db.Session` and `db.select` used by callers keep working.
+- The split was generated from the AST and landed in one commit after the package
+  skeleton commit; every moved definition was compared to the original AST (148 of 148
+  identical apart from the two module-attribute reads).
+
 ## Risks / Trade-offs
 
 - **Silent patch misses** (a test still patching `db.duty_now` passes vacuously) → add a guard test that patches `db.clock.duty_now` to a sentinel time and asserts a lock decision changes; grep that no `patch("db.duty_now"` remains.

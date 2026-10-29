@@ -761,7 +761,7 @@ def test_team_vacancy_dispatch_does_not_write_or_lock_even_when_cutoff_is_due():
     event.listen(session.bind, "before_cursor_execute", record_sql)
     try:
         # Weekly invitations remain read-only even if explicitly invoked late.
-        with patch.object(db, "duty_now", return_value=datetime(2026, 9, 4, 10, tzinfo=ZoneInfo("Europe/Berlin"))):
+        with patch.object(db.clock, "duty_now", return_value=datetime(2026, 9, 4, 10, tzinfo=ZoneInfo("Europe/Berlin"))):
             assert sender.notify_team_vacancies_early(GAME_DATE) == 1
         assert set(statements) <= {"SELECT"}, "sender must never write, commit, lock or begin a serialized writer"
         assert not session.new and not session.dirty and not session.deleted

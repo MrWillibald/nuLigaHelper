@@ -158,7 +158,7 @@ def test_actual_batch_locks_contactless_helpers_and_late_claims_even_when_delive
             def __init__(self, *args): pass
             def notify_game_day(self, *_): raise RuntimeError("synthetic transport failure")
             def __getattr__(self, _): return lambda *args: 0
-        with patch("db.duty_now", return_value=datetime(2026, 10, 31, 9, tzinfo=ZoneInfo("Europe/Berlin"))):
+        with patch("db.clock.duty_now", return_value=datetime(2026, 10, 31, 9, tzinfo=ZoneInfo("Europe/Berlin"))):
             with patch.object(main, "Notifier", FakeNotifier):
                 try:
                     main._send_notifications({}, engine, h.SEASON, date(2026, 10, 31), db.SyncEvents())
@@ -193,12 +193,12 @@ def test_fixed_nine_oclock_cutoff_needs_no_job_and_cancel_never_materializes_mut
         original = client_for(app, ids, "Original")
         replacement = client_for(app, ids, "Replacement")
         target = dict(game_id=ids["game"], role=db.ROLE_SALE, slot=0)
-        with patch("db.duty_now", return_value=datetime(2026, 10, 31, 8, 59, tzinfo=berlin)):
+        with patch("db.clock.duty_now", return_value=datetime(2026, 10, 31, 8, 59, tzinfo=berlin)):
             assert write(original, "/api/assignment/claim", **target, expected_person_id=None).json["ok"]
             wanted = write(original, "/api/assignment/request-replacement", **target, expected_person_id=ids["Original"])
             token = wanted.json["assignment"]["replacement_token"]
             before = audit_count(engine)
-        with patch("db.duty_now", return_value=datetime(2026, 10, 31, 9, 0, tzinfo=berlin)):
+        with patch("db.clock.duty_now", return_value=datetime(2026, 10, 31, 9, 0, tzinfo=berlin)):
             cancelled = original.post("/dienst", data=h.csrf_data({**target, "decision": "cancel"}))
             assert cancelled.status_code == 302 and audit_count(engine) == before, "Cancel must not even materialize due locks"
             page = html.fromstring(original.get("/").get_data(as_text=True))
@@ -257,7 +257,7 @@ def test_weekly_reminder_keeps_search_open_and_preflight_contention_is_reported_
         class FakeNotifier:
             def __init__(self, *args): pass
             def __getattr__(self, _): return lambda *args: 0
-        with patch.object(main, "Notifier", FakeNotifier), patch("db.duty_now", return_value=datetime(2026,10,25,9,tzinfo=ZoneInfo("Europe/Berlin"))):
+        with patch.object(main, "Notifier", FakeNotifier), patch("db.clock.duty_now", return_value=datetime(2026,10,25,9,tzinfo=ZoneInfo("Europe/Berlin"))):
             main._send_notifications({}, engine, h.SEASON, date(2026,10,25), db.SyncEvents())
         with h.Session(engine) as session:
             assignment = session.query(db.Assignment).filter_by(game_id=ids["game"]).one()

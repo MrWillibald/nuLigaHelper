@@ -395,7 +395,7 @@ def test_hidden_direct_candidates_claims_takeovers_and_html_confirmation_keep_ex
     refused = young.post('/api/assignment/claim', json={'game_id': ids['9103'], 'role': db.ROLE_SECURITY, 'slot': 0,
                        'person_id': ids['young'], 'expected_person_id': None}, headers=h.csrf_headers())
     assert refused.status_code == 400, 'hidden claims still enforce age'
-    with patch('db.duty_now', return_value=datetime(2026, 11, 30, 9, tzinfo=ZoneInfo('Europe/Berlin'))):
+    with patch('db.clock.duty_now', return_value=datetime(2026, 11, 30, 9, tzinfo=ZoneInfo('Europe/Berlin'))):
         locked = member.post('/api/assignment/request-replacement', json={'game_id': game_id, 'role': db.ROLE_SECURITY,
                       'slot': 0, 'expected_person_id': ids['member']}, headers=h.csrf_headers())
     assert locked.status_code == 400 and 'gesperrt' in locked.json['error'], 'hidden duties retain their cutoff'
@@ -448,7 +448,7 @@ def test_setting_and_preview_do_not_lock_hidden_duties_but_notifier_and_due_lock
     app, engine, ids = site()
     before = snapshot(engine)
     due = datetime(2026, 11, 30, 9, tzinfo=ZoneInfo('Europe/Berlin'))
-    with patch('db.duty_now', return_value=due), \
+    with patch('db.clock.duty_now', return_value=due), \
          patch.object(notifier.Notifier, 'send_Mail', side_effect=AssertionError('unexpected mail')), \
          patch.object(notifier.Notifier, 'send_SMS', side_effect=AssertionError('unexpected SMS')):
         admin = client(app, ids['admin'])
@@ -463,7 +463,7 @@ def test_setting_and_preview_do_not_lock_hidden_duties_but_notifier_and_due_lock
         assert sender.notify_pre('01.12.2026') == 1, 'hidden game duties still notify'
         assert sender.notify_cakes_early('01.12.2026') == 1, 'hidden cake duties still notify'
         assert len(recorder.mails) == 2
-        with patch('db.duty_now', return_value=due):
+        with patch('db.clock.duty_now', return_value=due):
             db.lock_due_duties(session)
             session.commit()
         duty = session.query(db.Assignment).filter_by(game_id=ids['9102']).one()

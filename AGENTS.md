@@ -27,7 +27,13 @@ Domain and data:
 
 | File | Purpose |
 |---|---|
-| `db.py` | Domain layer: models (teams, persons, games, assignments, day blocks, audit, auth tokens), SQLite engine/startup checks, sync, duty state machine and all mutation helpers |
+| `db/__init__.py` | Domain layer facade: `import db` and `db.<name>` expose every model, constant and helper; the topic modules below hold the code |
+| `db/roles.py`, `db/errors.py`, `db/models.py` | Roles, slot counts, day-block phases, task descriptions; domain exceptions; ORM models and account/team constants |
+| `db/people.py`, `db/storage.py` | Persons, teams, memberships, registration and account maintenance; SQLite engine, PRAGMAs, initialization/verification, write-retry policy (`SQLITE_TIMEOUT_SECONDS`) |
+| `db/games.py`, `db/day_blocks.py`, `db/visibility.py` | Game lookups and sorting (`game_sort_key`); day-block capacity, labels and times; overview date boundary |
+| `db/clock.py`, `db/locks.py`, `db/audit.py` | Duty clock and 09:00 day-before cutoff (`duty_now`); persisted locks; audit snapshots |
+| `db/staffing.py`, `db/slots.py`, `db/duties.py`, `db/block_duties.py` | Required positions and eligibility; shared slot guards; game duty state machine; block duties and cake configuration |
+| `db/sync.py` | Merging scraped games (`sync_games`, `SyncEvents`) |
 | `age_eligibility.py` | Calendar and game-category age rules without exposing private dates |
 | `contact_validation.py` | Validation and canonicalization of e-mail and phone contacts |
 | `task_labels.py` | Display labels for stored role identifiers (kept separate from `db` to avoid an import cycle) |
@@ -80,7 +86,7 @@ documentation, `openspec/` specifications and changes.
 ## Architecture
 
 Single-process Python, no framework beyond Flask and the SQLAlchemy 2.x ORM over one
-SQLite file. Two independent entry points share `db.py`:
+SQLite file. Two independent entry points share the `db` package:
 
 - **`main.py`** – daily job (systemd timer in production): `scraper.fetch_home_games()`
   returns plain dicts (`scraper.GAME_FIELDS`) → `db.sync_games()` merges them and returns
@@ -104,8 +110,12 @@ SQLite file. Two independent entry points share `db.py`:
   `build_schedule()` pre-computes per-game view dicts (including greyed-out options and
   their reasons) so templates stay simple.
 
-Business rules belong in `db.py`; `webapp/` and `manage_db.py` are thin callers and
-the tests target `db.py` directly. `notifier.py` reads assignments from the DB and
+Business rules belong in `db/`; `webapp/` and `manage_db.py` are thin callers and
+the tests target `db` directly. Submodules import only lower layers (order in
+`db/__init__.py`, checked by `test/test_db_structure.py`). Tests patch the duty clock as
+`db.clock.duty_now` and the retry budget as `db.storage.SQLITE_TIMEOUT_SECONDS`; other
+modules read both through their module object (`clock.duty_now()`), never via
+`from … import`, so patches apply everywhere. `notifier.py` reads assignments from the DB and
 renders German messages from `messages.py`; `Notifier._dispatch()` centralizes the
 channel choice and its return counts are asserted by `test/test_notifier.py`.
 

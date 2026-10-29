@@ -167,6 +167,10 @@ Jede Phase ist ein eigener PR, verhaltensneutral, Testsuite grün. Phasen 1–2 
   in Phase 3.
 
 ### Phase 2 – `db.py` in Teilmodule zerlegen
+> **Umgesetzt** mit `split-domain-module`: Paket `db/` mit 16 Modulen in fester Schichtung
+> (`roles` … `sync`); `import db` und alle `db.<name>` bleiben gültig. Tests patchen
+> `db.clock.duty_now` und `db.storage.SQLITE_TIMEOUT_SECONDS`.
+
 - Aufteilung wie in Abschnitt 2, zunächst als Paket `db/` im Wurzelordner;
   `db/__init__.py` re-exportiert die heutige öffentliche API vollständig (`import db`
   und `migrations/env.py` funktionieren weiter).
@@ -288,7 +292,7 @@ Changes in empfohlener Reihenfolge (je ein PR):
 | 3 | `move-debug-switches-to-environment` | 4.1 | `production-operations` (ADDED) | umgesetzt |
 | 4 | `tidy-maintenance-helpers` | 4.2, 4.5, 4.6, 5.4 | keine (Refactoring) | umgesetzt |
 | 5 | `split-webapp-into-modules` | Phase 1 | keine (Refactoring) | umgesetzt |
-| 6 | `split-domain-module` | Phase 2 | keine (Refactoring) | offen |
+| 6 | `split-domain-module` | Phase 2 | keine (Refactoring) | umgesetzt |
 | 7 | `restructure-project-layout` | Phase 3 + Doku-Teil aus Phase 4 | keine (Refactoring) | offen |
 
 1–4 sind klein und inhaltlich unabhängig (sie berühren teils dieselben Doku-Zeilen); 7 setzt 2, 5 und 6 voraus und braucht ein
