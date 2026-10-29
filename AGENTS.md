@@ -7,43 +7,115 @@ paid for.
 ## What this project is
 
 nuLigaHelper organizes home games of the handball department of TuS Raubling.
-It runs as a **daily cron job on a Raspberry Pi** and:
+It runs on a Linux host (e.g. a Raspberry Pi) as a **daily scheduled job** and a web service:
 
 1. scrapes all home games from the BHV/nuLiga Hallenspielplan,
 2. syncs them into a local **SQLite** database (SQLAlchemy 2.x ORM),
 3. reports shifts, missing referees ("§77") and unknown new games,
 4. sends notifications by e-mail or SMS (Twilio) to assigned helpers,
 5. backs up the database file to Dropbox (backup only – no Excel anymore),
-6. serves a **Flask web interface** (local network, port 8080) with passwordless
-   authentication, tiered rights, self-service assignments and statistics.
-   Production serving, TLS and public exposure remain separate work.
+6. serves a **Flask web interface** with passwordless authentication, tiered
+   rights, self-service assignments and statistics. Production runs publicly
+   behind Caddy (TLS) → Gunicorn → systemd; the first cutover has been accepted
+   (see `DEPLOYMENT.md`). `run_webapp.sh` (port 8080) is for local development only.
 
 Language: code/comments in English, UI texts and notification templates in German.
 
 ## Module map
 
-| File                | Purpose                                                                 |
-|---------------------|-------------------------------------------------------------------------|
-| `common.py`         | VERSION, `DEBUG_FLAG`/`CHANGE_DAY`/`DEBUG_TODAY`, `effective_today()`, season-year helper, `load_config()` |
-| `db.py`             | Models incl. accounts, assignment slots/auth tokens/audit, sync and domain helpers |
-| `scraper.py`        | Scrapes nuLiga into plain dicts (keys see `GAME_FIELDS`)                 |
-| `notifier.py`       | All mail/SMS notifications; reads assignments from the DB               |
-| `messages.py`       | Authoritative German notification catalog, descriptive named fields and validated plain-text rendering |
+Domain and data:
+
+| File | Purpose |
+|---|---|
+| `db.py` | Domain layer: models (teams, persons, games, assignments, day blocks, audit, auth tokens), SQLite engine/startup checks, sync, duty state machine and all mutation helpers |
+| `age_eligibility.py` | Calendar and game-category age rules without exposing private dates |
+| `contact_validation.py` | Validation and canonicalization of e-mail and phone contacts |
+| `task_labels.py` | Display labels for stored role identifiers (kept separate from `db` to avoid an import cycle) |
+| `schema_migrations.py`, `migrations/`, `alembic.ini` | Read-only schema inspection and guarded Alembic upgrades |
+| `game_identity_migration.py` | One-time migration from legacy `games.source_key` identity |
+
+Daily job and notifications:
+
+| File | Purpose |
+|---|---|
+| `main.py` | Daily job entry point: scrape, sync, notify, back up |
+| `daily_lock.py` | Per-database process lock against overlapping daily runs |
+| `scraper.py` | Scrapes nuLiga into plain dicts (keys see `GAME_FIELDS`) |
+| `notifier.py` | All mail/SMS notifications; reads assignments from the DB |
+| `messages.py` | Authoritative German notification catalog with named fields and validated rendering |
 | `message_config.py` | Read-only legacy-message preflight and referee-recipient compatibility |
-| `webapp.py`         | Flask app factory: auth/registration, tier checks, pages and JSON APIs   |
-| `manage_db.py`      | CLI to manage persons/games until the web UI covers everything          |
-| `main.py`           | Daily job entry point incl. Dropbox DB backup                           |
-| `templates/`, `static/` | Jinja templates + CSS/JS; visual language copied from www.handball-raubling.de |
-| `test/`             | Offline test suite (`test/run_tests.sh` or `pytest test/ -v`)           |
+| `common.py` | VERSION, `DEBUG_FLAG`/`CHANGE_DAY`/`DEBUG_TODAY`, `effective_today()`, season-year helper, `load_config()` |
+
+Web interface:
+
+| File | Purpose |
+|---|---|
+| `webapp.py` | Flask app factory: production boundary, auth/registration, tier checks, pages and JSON APIs |
+| `auth_abuse.py` | Persistent, privacy-safe authentication abuse controls |
+| `templates/`, `static/` | Jinja templates and CSS/JS; visual language copied from www.handball-raubling.de |
+
+Operations:
+
+| File | Purpose |
+|---|---|
+| `manage_db.py` | Operator CLI for initialization, migration, restore, persons, memberships and assignments |
+| `backup.py` | Online SQLite snapshots, Dropbox publication/retention and offline restore |
+| `production.py` | Validation of deployment data and non-sensitive operation state |
+| `production_logging.py` | Production journal formatting without raw payloads |
+| `operations.py` | Production preflight, launch check, monitoring and alerts |
+| `monitor_watchdog.py` | Independent root cron watchdog for the monitor |
+| `runtime_check.py` | systemd `ExecStartPre` configuration check |
+| `privacy.py` | Bounded retention cleanup with aggregate-only reporting |
+| `release-assets/` | Reviewed systemd, Caddy, Gunicorn and deploy-command templates |
+
+Other: `test/` offline test suite, `docs/` manuals and operations/developer
+documentation, `openspec/` specifications and changes.
+
+## Architecture
+
+Single-process Python, no framework beyond Flask and the SQLAlchemy 2.x ORM over one
+SQLite file. Two independent entry points share `db.py`:
+
+- **`main.py`** – daily job (systemd timer in production): `scraper.fetch_home_games()`
+  returns plain dicts (`scraper.GAME_FIELDS`) → `db.sync_games()` merges them and returns
+  `SyncEvents` (`new_games`, `shifts`, `referee_alerts`, `removed_games`) → `Notifier`
+  turns those events plus date-window checks into mails/SMS → a validated snapshot is
+  published to Dropbox. All timing goes through `common.effective_today()`.
+- **`webapp.py`** – `create_app()` factory with one session per request
+  (`get_session()` / teardown) and a default-deny route guard. Pages: schedule (`/`),
+  statistics (`/statistik`), persons (`/personen`), duty form (`/dienst`), audit
+  (`/audit`), login/registration and legal pages. Mutations go through small JSON APIs
+  called from `static/app.js`: `/api/assignment/{claim,release,request-replacement,
+  cancel-replacement,takeover}`, the same set under `/api/block-assignment/`,
+  `/api/games/<id>/team`, `/api/teams/<id>/mv`, `/api/blocks/<id>/cake-settings` and the
+  candidate reads `/api/games/<id>/candidates` and `/api/blocks/<id>/candidates`.
+  `build_schedule()` pre-computes per-game view dicts (including greyed-out options and
+  their reasons) so templates stay simple.
+
+Business rules belong in `db.py`; `webapp.py` and `manage_db.py` are thin callers and
+the tests target `db.py` directly. `notifier.py` reads assignments from the DB and
+renders German messages from `messages.py`; `Notifier._dispatch()` centralizes the
+channel choice and its return counts are asserted by `test/test_notifier.py`.
+
+No linter or formatter is configured; match the surrounding style (module banner
+comments, English code/comments, German UI and notification strings). `config.json`
+(gitignored) must exist for `main.py`/`notifier.py`; tests never read it or
+`nuliga_helper.db`.
+
+`openspec/` holds the behavior specifications (`openspec/specs/`) and planned or
+archived changes (`openspec/changes/`). Use it for behavior changes and larger
+refactorings.
 
 ## Environment & commands
 
 ```bash
 python3 -m venv venv && ./venv/bin/pip install -r requirements.txt
 ./venv/bin/python test/test_webapp.py     # single test file (also: pytest)
+./venv/bin/python -m pytest test/test_db.py -v -k sync   # single test / pattern
 test/run_tests.sh                          # whole suite, must stay green
 ./run.sh                                   # daily job
 ./run_webapp.sh                            # web UI on http://<ip>:8080
+./venv/bin/python manage_db.py --help      # operator CLI (see docs/betrieb/cli.md)
 ```
 
 - `config.json` holds club, recipient and operational settings; it is gitignored. Email, Twilio and Dropbox
@@ -316,10 +388,15 @@ test/run_tests.sh                          # whole suite, must stay green
 
 ## Conventions
 
+- Task descriptions shown behind the **i** buttons live in `db.TASK_DESCRIPTIONS`,
+  keyed by semantic game roles and day-block phases. Add or rename them together with
+  `db.ROLE_SLOT_COUNT` or `db.BLOCK_PHASES`; never add numbered keys or obsolete roles.
+  `test/test_task_descriptions.py` checks coverage.
 - Tests: offline only, synthetic sample data from `test/helpers.py`; descriptive
   `test_*` names with failure messages that explain the intent. Suite must pass
   before committing.
 - Commit messages: short imperative summary line (+ optional body), matching the
   existing history style.
-- Run `test/run_tests.sh` after every change; keep `README.MD` in sync when
-  features/commands change.
+- Run `test/run_tests.sh` after every change; keep `README.MD` and `docs/` in sync when
+  features/commands change; behavior belongs in `openspec/specs/`, operator
+  procedures in `docs/betrieb/`.

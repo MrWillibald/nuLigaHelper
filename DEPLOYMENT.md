@@ -11,10 +11,10 @@ Run these commands on the server over SSH as an operator with `sudo` access.
 This guide assumes the deploy command, its root-owned
 `/etc/nuligahelper/deployment.json`, the `current` link, and the compatible
 systemd units are installed and have passed the host preflight. The first
-production cutover also needs the operator acceptance described in the private
-operations runbook. The tracked [release asset guide](release-assets/README.md)
-explains the setup and the legacy-release Gunicorn compatibility requirement.
-Complete those gates before using `activate` on production.
+production cutover has been accepted as described in the private operations
+runbook. The tracked [release asset guide](release-assets/README.md) explains the
+setup and the legacy-release Gunicorn compatibility requirement; repeat those
+gates only when a host is rebuilt or re-installed.
 
 Keep `/etc/nuligahelper/web.env`, site configuration, secrets, and the database
 outside every release. The deploy command reads the approved paths from its
@@ -62,13 +62,12 @@ status without private text or recipient values. Privately reconcile customized
 wording in `messages.py`, move referee recipients to
 `club.notifications.referee_targets`, and remove `club.texts`. Keep the previous
 configuration with its compatible application release for rollback. See the
-[message migration guide](README.MD#notification-wording-and-migration); this
+[message migration guide](docs/betrieb/notification-wording.md); this
 step uses no providers/database and creates no notification trigger.
 
 ## 2. Activate in a maintenance window
 
-Keep a second SSH session open for recovery. Verify that the host preflight and
-first-cutover acceptance are complete. Activation takes an exclusive lock,
+Keep a second SSH session open for recovery. Activation takes an exclusive lock,
 pauses the daily and cleanup timers, waits for active jobs, stops public ingress
 and the web service, and checks that no database user remains. It creates a
 validated recovery snapshot and checks schema compatibility before switching
@@ -165,6 +164,6 @@ sudo /usr/local/sbin/nuligahelper-deploy rollback-code --deployment-id "$DEPLOYM
 
 After a schema migration or possible public writes, stop and follow the private
 recovery decision path. Do not automatically restore an older snapshot over
-new assignments or audit entries. The [database restore and migration guide](README.MD#sqlite-production-profile-and-backups)
+new assignments or audit entries. The [database restore and migration guide](docs/betrieb/sqlite-and-backups.md)
 describes the guarded SQLite procedures; the private runbook governs the host
 and service recovery sequence.

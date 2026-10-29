@@ -10,6 +10,7 @@ fi
 source venv/bin/activate
 
 # Local/development server only (trusted LAN, port 8080). For production use the
-# documented Caddy -> loopback Gunicorn -> systemd deployment in deploy/PRODUCTION.md.
+# documented Caddy -> loopback Gunicorn -> systemd deployment (DEPLOYMENT.md and
+# release-assets/README.md).
 echo "Lokaler Entwicklungsserver; nicht öffentlich ins Internet stellen." >&2
 python webapp.py

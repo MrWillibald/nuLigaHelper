@@ -1,7 +1,7 @@
 # Reviewed production release assets
 
-For routine updates after first-cutover acceptance, use the repository's
-[existing-installation deployment guide](../DEPLOYMENT.md).
+The first production cutover has been accepted. For routine updates, use the
+repository's [existing-installation deployment guide](../DEPLOYMENT.md).
 
 This directory contains generic, non-secret files required by a clean checkout.
 The installed systemd services use `/opt/nuligahelper/current` for all code,
@@ -16,9 +16,9 @@ it before interruption. Activation then stops known writers and ingress,
 creates a validated SQLite snapshot, gates the schema, switches `current`, and
 waits up to 60 seconds for the selected web unit, loopback listener, and local
 `/healthz` before reopening Caddy and checking public HTTPS readiness. A
-`Type=simple` start alone is not readiness. **Production activation still needs
-host preflight and first-cutover operator acceptance**, even though
-the command is tracked on protected `master`. Its root-only configuration template is
+`Type=simple` start alone is not readiness. The host preflight and the
+first-cutover operator acceptance are complete, so the command is approved for
+production releases from protected `master`. Its root-only configuration template is
 `deployment.json.example`; the real `/etc/nuligahelper/deployment.json` must
 be root-owned mode 0600 and must not enter Git. The Git source cache is outside
 the service-readable application tree. Its `database` must name the existing
@@ -31,8 +31,8 @@ settings do not enable activation in the current command.
 and read-only schema classification primitives. It does not quiesce writers,
 close ingress, or authorize a migration. Running it alone is not a safe cutover.
 
-The commands below show the intended order after those outstanding approvals.
-Install the reviewed deploy script outside `/opt/nuligahelper` as root, and
+The commands below show the order used for the accepted first cutover; keep it
+for rebuilding or re-installing a host. Install the reviewed deploy script outside `/opt/nuligahelper` as root, and
 replace `<full-sha>` and `<deployment-id>` with the pinned identifiers printed
 by the command. Do not paste environment values into commands or records.
 The host needs `git`, `python3-venv`, `lsof`, `iproute2` (`ss`),
