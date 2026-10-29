@@ -5,7 +5,7 @@
 # helper/team management and statistics. Designed to visually
 # integrate with www.handball-raubling.de
 #
-# Run locally:  ./venv/bin/python webapp.py   (http://<pi-ip>:8080)
+# Run locally:  ./venv/bin/python -m webapp   (http://<pi-ip>:8080)
 # Optional env: NULIGAHELPER_DB=/path/to/nuliga_helper.db
 # ---------------------------------------------------------------
 
@@ -16,6 +16,7 @@ import ipaddress
 import json
 import re
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import common
 import production as production_data
@@ -54,6 +55,9 @@ PRODUCTION_SECURITY_HEADERS = {
     "Referrer-Policy": "strict-origin-when-cross-origin",
     "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
 }
+
+# Templates and static files stay at the repository root.
+PROJECT_DIR = Path(__file__).resolve().parent.parent
 
 _HOST_LABEL = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\Z")
 
@@ -233,7 +237,11 @@ def _ordered_person_options(
 
 def create_app() -> Flask:
     common.refuse_overrides_in_production()
-    app = Flask(__name__)
+    app = Flask(
+        __name__,
+        template_folder=str(PROJECT_DIR / "templates"),
+        static_folder=str(PROJECT_DIR / "static"),
+    )
     production = _production_mode()
     if production:
         from production_logging import configure
@@ -2785,6 +2793,3 @@ def create_app() -> Flask:
 
 app = create_app()
 
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8080)

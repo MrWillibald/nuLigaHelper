@@ -13,4 +13,4 @@ source venv/bin/activate
 # documented Caddy -> loopback Gunicorn -> systemd deployment (DEPLOYMENT.md and
 # release-assets/README.md).
 echo "Lokaler Entwicklungsserver; nicht öffentlich ins Internet stellen." >&2
-python webapp.py
+python -m webapp
