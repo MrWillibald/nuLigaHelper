@@ -410,6 +410,10 @@ tests/run_tests.sh                            # whole suite, must stay green
   loaded relationships. Mutate assignments through the slot helpers (which use
   collection removal and flush), otherwise duplicate
   checks hit ghost rows and inserts silently vanish.
+- `gunicorn --check-config` does not apply `logconfig_dict`, so a stale module path in
+  `release-assets/gunicorn.conf.py` only fails when the service starts. Module paths in
+  configuration strings are invisible to import guards; `tests/ops/test_deployment_assets.py`
+  starts real Gunicorn from a release tree for the old and new web targets.
 - Dispatch counting: a person without mail *and* phone counts as skipped (return 0),
   every valid contact returns 1 — tests rely on these exact counts.
 - Webapp tests build on each other top-to-bottom (a click-through scenario);

@@ -18,7 +18,7 @@ capture_output = True
 access_log_format = '%(m)s %(s)s'
 logconfig_dict = {
     "version": 1, "disable_existing_loggers": False,
-    "formatters": {"safe": {"()": "production_logging.JournalFormatter",
+    "formatters": {"safe": {"()": "nuligahelper.ops.journal_logging.JournalFormatter",
                               "format": "%(asctime)s level=%(levelname)s %(message)s"}},
     "handlers": {"journal": {"class": "logging.StreamHandler", "formatter": "safe",
                                 "stream": "ext://sys.stderr"}},
