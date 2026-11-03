@@ -491,8 +491,15 @@ class SyntheticController:
 
     def systemctl(self, *arguments):
         self.events.append(arguments)
-        self.active[arguments[-1]] = 'active' if arguments[0] == 'start' or \
-            arguments[:2] == ('enable', '--now') else 'inactive'
+        unit = arguments[-1]
+        if arguments[0] == 'start' or arguments[:2] == ('enable', '--now'):
+            self.active[unit] = 'active'
+        elif arguments[0] == 'reset-failed':
+            if self.active.get(unit) == 'failed':
+                self.active[unit] = 'inactive'
+        elif not (arguments[0] == 'stop' and self.active.get(unit) == 'failed'):
+            # Like systemd, "stop" leaves a failed unit failed until reset-failed.
+            self.active[unit] = 'inactive'
 
     def loopback_listener(self):
         return True
@@ -546,6 +553,22 @@ def test_open_database_handle_blocks_cutover_after_web_stops():
         raise AssertionError('open database handle accepted')
     assert controller.active['caddy.service'] == 'inactive'
     assert controller.active['nuligahelper-web.service'] == 'inactive'
+
+
+def test_maintenance_clears_a_failed_web_start_before_cutover():
+    # A previous activation whose web service never became ready leaves the unit
+    # "failed"; entering maintenance again must still read it as closed.
+    controller = SyntheticController()
+    controller.active['nuligahelper-web.service'] = 'failed'
+    result = deploy.quiesce_writers(Path('/synthetic/live.db'), controller,
+                                    wait_seconds=1, clock=lambda: 0,
+                                    sleep=lambda seconds: None)
+    assert result['writers_quiescent'] is True
+    assert controller.active['nuligahelper-web.service'] == 'inactive'
+    events = controller.events
+    assert events.index(('stop', 'nuligahelper-web.service')) < \
+        events.index(('reset-failed', 'nuligahelper-web.service')), \
+        'the failed state is cleared only after the service is stopped'
 
 
 def test_late_started_database_job_blocks_cutover():
@@ -912,6 +935,33 @@ def test_code_only_rollback_restores_prior_release_without_touching_database():
         assert result['public_reopened'] is True
         assert result['timers_paused'] is True
         assert ('start', 'nuligahelper-daily.service') not in controller.events
+
+
+def test_code_only_rollback_accepts_the_failed_web_start_it_undoes():
+    # The rollback exists for a candidate whose web service failed before readiness;
+    # that unit is "failed", not "inactive", until reset-failed clears it.
+    with tempfile.TemporaryDirectory() as directory:
+        config, commit, record, controller = _ready_activation(Path(directory))
+        app_root = Path(config['app_root'])
+        deploy.switch_current(app_root, commit)
+        record['outcome'] = 'failed'
+        controller.active['nuligahelper-web.service'] = 'failed'
+        controller.loopback_listener = lambda: True
+        with patch.object(deploy, 'validate_deployment_record'), \
+                patch.object(deploy, 'write_deployment_record'), \
+                patch.object(deploy, 'schema_probe', return_value={
+                    'gate': 'ready', 'revision': '0003_game_day_task_blocks'}), \
+                patch.object(deploy, 'previous_schema_head',
+                             return_value='0003_game_day_task_blocks'), \
+                patch.object(deploy, 'verify_previous_web_compatibility'), \
+                patch.object(deploy, 'check_health'):
+            result = deploy.rollback_code_only(config, record, controller)
+        assert result['outcome'] == 'rolled_back'
+        assert (app_root / 'current').resolve() == Path(record['previous_release'])
+        events = controller.events
+        assert events.index(('reset-failed', 'nuligahelper-web.service')) < \
+            events.index(('start', 'nuligahelper-web.service'))
+        assert all(controller.active[timer] == 'inactive' for timer in deploy.TIMERS)
 
 
 def test_code_only_rollback_timeout_retains_old_code_data_and_closed_ingress():
