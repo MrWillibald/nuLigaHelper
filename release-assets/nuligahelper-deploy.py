@@ -964,8 +964,11 @@ def previous_schema_head(previous: str) -> str:
     environment = safe_environment()
     environment["PYTHONPATH"] = previous
     revision = run(str(Path(previous) / "venv/bin/python"), "-B", "-c",
-                   "import schema_migrations; "
-                   "heads = schema_migrations.head_revisions(); "
+                   "try:\n"
+                   "    from nuligahelper.db import schema_upgrade as migrations\n"
+                   "except ImportError:\n"
+                   "    import schema_migrations as migrations\n"
+                   "heads = migrations.head_revisions(); "
                    "assert len(heads) == 1; print(heads[0])",
                    env=environment)
     if not re.fullmatch(r"[0-9]{4}_[a-z0-9_]{1,64}", revision):
@@ -1137,7 +1140,10 @@ def prepare(config: dict[str, object], requested: str | None = None) -> dict[str
         run(interpreter, "-m", "pip", "install", "--disable-pip-version-check",
             "-r", str(destination / "requirements-test.txt"), cwd=destination, env=env)
         run(interpreter, "-m", "pip", "check", cwd=destination, env=env)
-        run("bash", str(destination / "test/run_tests.sh"), cwd=destination, env=env)
+        suite = destination / "tests/run_tests.sh"
+        if not suite.is_file():
+            suite = destination / "test/run_tests.sh"  # releases before the package layout
+        run("bash", str(suite), cwd=destination, env=env)
         run(interpreter, "-m", "compileall", "-q", str(destination), cwd=destination, env=env)
         run(interpreter, "-m", "py_compile", str(destination / "release-assets/gunicorn.conf.py"),
             cwd=destination, env=env)

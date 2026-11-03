@@ -1,6 +1,6 @@
 # Database schema
 
-Tables of the SQLite database (SQLAlchemy models in `db.py`). Dates and times are stored as scraped German `dd.mm.yyyy` strings; sort with `db.game_sort_key()`.
+Tables of the SQLite database (SQLAlchemy models in `nuligahelper/db/models.py`). Dates and times are stored as scraped German `dd.mm.yyyy` strings; sort with `db.game_sort_key()`.
 
 - `games`: one task-relevant plan entry identified by `(season_year, game_nr)`; ordinary
   numbers are decimal text, while SPF matches on one date for one full age group collapse
@@ -17,4 +17,4 @@ Tables of the SQLite database (SQLAlchemy models in `db.py`). Dates and times ar
 - `assignment_audit`: append-only assignment-change snapshots that remain readable after deletion
 
 ---
-Back to the [README](../../README.MD)
+Back to the [README](../../README.md)

@@ -1,43 +1,21 @@
 # Initialize or migrate the application schema
 
-Schema revisions are managed by pinned Alembic migrations, but application startup never creates or upgrades schema implicitly. `manage_db.py init` is only for an absent or empty database; web and daily startup require the configured database to be at the current revision. Existing databases are upgraded only through the guarded, stopped-services `migrate-schema` workflow below. A database with the older source-key game identity must first use the separate `migrate-game-identity` prerequisite.
+Schema revisions are managed by pinned Alembic migrations, but application startup never creates or upgrades schema implicitly. `python -m nuligahelper.cli init` is only for an absent or empty database; web and daily startup require the configured database to be at the current revision. Existing databases are upgraded only through the guarded, stopped-services `migrate-schema` workflow below. A database with the older source-key game identity is refused; see [legacy game identity](#legacy-game-identity).
 
-## Migrate legacy game identity
+## Legacy game identity
 
 Databases created before canonical game-number identity contain a non-null
-`games.source_key` column. New application startup detects that schema and exits with
-migration instructions; it never upgrades production data implicitly.
-
-1. Stop public ingress; disable the daily and cleanup timers, wait for running
-   oneshot jobs, stop the web process, and verify no database user or open
-   SQLite handle remains.
-2. Run the guarded migration against the configured database:
-
-   ```bash
-   python3 manage_db.py --db /absolute/path/nuliga_helper.db \
-       migrate-game-identity --confirm-stopped
-   ```
-
-3. The command performs a read-only preflight, reports ambiguous ordinary numbers or
-   conflicting Spielfest task data without changing the database, and creates a dated
-   SQLite-API backup before starting its transaction.
-4. A successful migration converts ordinary numbers to text, collapses all SPF matches
-   with the same date and full age group into one Spielfest, preserves safe game IDs,
-   assignments and audit references, rebuilds the constraint as
-   `(season_year, game_nr)`, and runs row-count, integrity and foreign-key checks.
-5. Record the printed backup path, start one application process, verify the plan,
-   assignments and audit page, then re-enable the daily timer.
-
-If any step fails, keep every writer stopped. The database transaction is rolled back;
-retain the failed file for diagnosis and restore the printed pre-migration backup before
-redeploying the previous application. Do not attempt an in-place reverse migration.
+`games.source_key` column. All deployed databases have been converted. This release no
+longer contains the one-time converter: startup and `migrate-schema` refuse such a
+database unchanged. Convert it first with an earlier release that still provides
+`python -m nuligahelper.cli migrate-game-identity --confirm-stopped`, then continue below.
 
 ## Initialize or upgrade a database
 
 Fresh installation is explicit and only accepts an absent or empty target:
 
 ```bash
-python3 manage_db.py --db /absolute/path/nuliga_helper.db init
+python3 -m nuligahelper.cli --db /absolute/path/nuliga_helper.db init
 ```
 
 Normal web and daily startup perform read-only revision classification before opening the
@@ -48,16 +26,14 @@ To upgrade an existing database:
 
 1. Stop public ingress; disable the daily and cleanup timers, wait for running
    oneshot jobs, stop the web service, and verify no database user remains.
-2. If the command reports legacy `games.source_key`, first complete
-   `migrate-game-identity --confirm-stopped` as described above. Do not reverse this order.
-3. Run the guarded schema migration:
+2. Run the guarded schema migration:
 
    ```bash
-   python3 manage_db.py --db /absolute/path/nuliga_helper.db \
+   python3 -m nuligahelper.cli --db /absolute/path/nuliga_helper.db \
        migrate-schema --confirm-stopped
    ```
 
-4. The command accepts only the reviewed exact unversioned baseline or a known Alembic
+3. The command accepts only the reviewed exact unversioned baseline or a known Alembic
    revision. It creates and validates a dated SQLite-API snapshot before stamping or
    upgrading, applies revisions in order, and runs revision, integrity and foreign-key
    postflight checks, including retained person and assignment data. Unknown and
@@ -105,7 +81,7 @@ To upgrade an existing database:
    assignment ID, lock, replacement token and historical audit. Earlier pending
    revisions retain their separately reviewed effects, including the one-time `0008`
    removal described above; `0009` removes no additional duties. Stop all web/daily
-   database users, run `./venv/bin/python manage_db.py migrate-schema --confirm-stopped`,
+   database users, run `./venv/bin/python -m nuligahelper.cli migrate-schema --confirm-stopped`,
    retain the printed validated snapshot and restart only after postflight succeeds.
    Startup refuses prior revisions without upgrading or seeding settings. Repeating
    migration at head preserves a configured boundary. Recovery requires stopped
@@ -114,7 +90,7 @@ To upgrade an existing database:
    Verification rejects unreviewed schema differences, even if a database already
    carries the current revision label. Previously recognized historical defaults
    remain unchanged, and SQLite uniqueness checks confirm reflected constraints.
-5. Retain the printed `Backup:` path. Start one application process and verify startup,
+4. Retain the printed `Backup:` path. Start one application process and verify startup,
    several multi-team roster entries, MV appointments, assignments, audit history and the
    schedule before deliberately re-enabling normal traffic and the daily/cleanup timers.
    Review the admin roster's missing-date indication, complete legacy dates through
@@ -132,4 +108,4 @@ as a release smoke test.
 
 
 ---
-Back to the [README](../../README.MD) · [Operations index](README.md)
+Back to the [README](../../README.md) · [Operations index](README.md)

@@ -10,4 +10,4 @@ fi
 source venv/bin/activate
 
 # Python owns the per-database overlap lock; exec preserves its status for cron.
-exec python main.py
+exec python -m nuligahelper.jobs.daily

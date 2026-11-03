@@ -13,8 +13,8 @@ from pathlib import Path
 import shutil
 import stat
 
-import backup
-import schema_migrations
+from nuligahelper.ops import backup
+from nuligahelper.db import schema_upgrade
 from alembic.script import ScriptDirectory
 
 
@@ -73,14 +73,14 @@ def schema_gate(database: Path) -> dict[str, str]:
     """Classify without creating a database or running Alembic migrations."""
     if not database.is_absolute() or database.is_symlink():
         raise RecoveryCheckError("approved database path is invalid")
-    heads = schema_migrations.head_revisions()
+    heads = schema_upgrade.head_revisions()
     if len(heads) != 1:
         raise RecoveryCheckError("candidate migration history has no single head")
-    state = schema_migrations.inspect_schema(database)
+    state = schema_upgrade.inspect_schema(database)
     if state.kind == "head" and state.revision == heads[0]:
         gate = "ready"
     elif state.kind in {"baseline", "versioned"}:
-        scripts = ScriptDirectory.from_config(schema_migrations.alembic_config())
+        scripts = ScriptDirectory.from_config(schema_upgrade.alembic_config())
         ancestors = {revision.revision for revision in
                      scripts.iterate_revisions(heads[0], "base")}
         gate = "migration_required" if state.revision in ancestors else "refused"

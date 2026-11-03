@@ -96,33 +96,6 @@ than selecting arbitrary values.
 - **WHEN** a valid SPF group contains matches at different times
 - **THEN** the collapsed Spielfest uses the earliest match time as its plan time
 
-### Requirement: Existing databases migrate without silent task-data loss
-
-The system SHALL provide a backup-first migration from source-key game identity to
-season-scoped canonical game-number identity. The migration SHALL preserve game IDs
-where a survivor can be selected safely, retain unaffected relationships and audit
-history, and stop for manual reconciliation when merging would be ambiguous.
-
-#### Scenario: Existing SPF rows have no conflicting task data
-
-- **WHEN** several stored SPF rows belong to one date and age group and their responsible
-  team and assignments can be combined without conflict
-- **THEN** they are migrated to one Spielfest game with a pseudo game number
-- **AND** retained assignments and audit references point to that game
-
-#### Scenario: SPF rows contain conflicting task data
-
-- **WHEN** stored SPF rows to be collapsed have incompatible responsible teams,
-  duplicate task slots or assignments that violate one-task-per-person
-- **THEN** migration stops with a reconciliation report
-- **AND** it does not silently discard or overwrite task data
-
-#### Scenario: Ordinary stored rows share a game number
-
-- **WHEN** multiple ordinary stored rows in one season have the same game number
-- **THEN** migration stops and identifies those rows for manual survivor selection
-- **AND** the canonical uniqueness constraint is not installed over unresolved data
-
 ### Requirement: Lifecycle events use canonical local identity
 
 The system SHALL carry the affected local game identity through new-game, shift,

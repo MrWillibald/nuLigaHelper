@@ -1,6 +1,6 @@
 # Notification wording and migration
 
-`messages.py` is the single editing point for retained notification subjects,
+`nuligahelper/jobs/messages.py` is the single editing point for retained notification subjects,
 e-mail/SMS bodies and fragments. Its catalog uses explicit keys for day-before
 and weekly reminders, ordinary games and Spielfeste, day blocks, account actions,
 operator alerts and the dormant newspaper feature. Each entry declares the
@@ -11,7 +11,7 @@ the meeting or delivery time of a day block. Display labels come from domain
 data, so numbered positions do not become separate task names in notifications.
 
 Developers edit the relevant catalog entry, preserve the named field contract,
-then review synthetic rendered examples and run `test/run_tests.sh`. When a
+then review synthetic rendered examples and run `tests/run_tests.sh`. When a
 contract changes, update its declaration, meanings and callers together.
 `messages.render(key, **context)` returns `subject`, `email` and `sms` variants;
 `messages.render_fragment(key, **context)` renders a reusable fragment.
@@ -25,7 +25,7 @@ For an existing deployment, run this **read-only** preflight from the candidate
 release before activation, using the actual private configuration path:
 
 ```bash
-./venv/bin/python -m message_config --config /path/to/private/config.json
+./venv/bin/python -m nuligahelper.jobs.message_config --config /path/to/private/config.json
 ```
 
 The command opens no database or provider connection and sends no notifications.
@@ -65,4 +65,4 @@ centralizing text introduces no new duty rules.
 
 
 ---
-Back to the [README](../../README.MD) · [Operations index](README.md)
+Back to the [README](../../README.md) · [Operations index](README.md)
