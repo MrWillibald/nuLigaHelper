@@ -492,6 +492,17 @@ def assert_maintenance_still_closed(database: Path, controller: HostController) 
         raise DeployError("database is open during maintenance")
 
 
+def stop_web_service(controller: HostController) -> None:
+    """Stop the web service so that it reads as closed, even after a failed start.
+
+    systemd keeps a unit that failed (for example a release whose Gunicorn never
+    became ready) in the "failed" state through "stop"; only reset-failed returns
+    it to "inactive", which the maintenance checks require.
+    """
+    controller.systemctl("stop", "nuligahelper-web.service")
+    controller.systemctl("reset-failed", "nuligahelper-web.service")
+
+
 def quiesce_writers(database: Path, controller: HostController, *,
                     wait_seconds: float = 20 * 60,
                     clock=time.monotonic, sleep=time.sleep) -> dict[str, object]:
@@ -513,7 +524,7 @@ def quiesce_writers(database: Path, controller: HostController, *,
                 raise DeployError("database job is still active; timers remain paused")
             sleep(min(2.0, max(0.0, deadline - clock())))
     controller.systemctl("stop", "caddy.service")
-    controller.systemctl("stop", "nuligahelper-web.service")
+    stop_web_service(controller)
     if controller.state("caddy.service").get("ActiveState") != "inactive" or \
             controller.state("nuligahelper-web.service").get("ActiveState") != "inactive":
         raise DeployError("ingress or web service did not stop cleanly")
@@ -994,7 +1005,7 @@ def rollback_code_only(config: dict[str, object], record: dict[str, object],
         raise DeployError("database schema changed; code-only rollback is unsafe")
     if controller.state("caddy.service").get("ActiveState") != "inactive":
         raise DeployError("public ingress is not closed")
-    controller.systemctl("stop", "nuligahelper-web.service")
+    stop_web_service(controller)
     assert_maintenance_still_closed(database, controller)
     gate = schema_probe(candidate, database)
     if gate["gate"] != "ready" or gate["revision"] != record["schema_before"] or \

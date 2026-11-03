@@ -186,6 +186,13 @@ DEPLOYMENT_ID='paste-deployment-id-from-activate-output'
 sudo /usr/local/sbin/nuligahelper-deploy rollback-code --deployment-id "$DEPLOYMENT_ID"
 ```
 
+The ID is also the name of the record `deployment-<ID>.json` in the configured
+`recovery_dir`. A web service that failed before readiness stays `failed` after
+`systemctl stop`; the deploy command clears that state with `reset-failed`. Deploy
+commands installed before that fix refuse with "maintenance state changed" instead:
+check that every timer, Caddy and the database jobs are `inactive`, run
+`sudo systemctl reset-failed nuligahelper-web.service` and repeat the command.
+
 After a schema migration or possible public writes, stop and follow the private
 recovery decision path. Do not automatically restore an older snapshot over
 new assignments or audit entries. The [database restore and migration guide](sqlite-and-backups.md)

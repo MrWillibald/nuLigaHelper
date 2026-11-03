@@ -3,9 +3,12 @@ import os
 from pathlib import Path
 import re
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
+import time
+import urllib.request
 
 from tests import helpers as h
 
@@ -133,6 +136,62 @@ def test_transition_shims_work_from_a_release_tree():
         for name in ('main.py', 'monitor_watchdog.py'):
             result = run('-c', f'import importlib.util; print(importlib.util.find_spec({SHIMS[name]!r}) is not None)')
             assert result.stdout.strip() == 'True', (name, result.stderr)
+
+
+def _serve_health(release, target, environment):
+    """Start Gunicorn like the web unit does; return the /healthz body and its log."""
+    with socket.socket() as probe:
+        probe.bind(('127.0.0.1', 0))
+        port = probe.getsockname()[1]
+    server = subprocess.Popen(
+        [sys.executable, '-B', '-m', 'gunicorn', '--config',
+         str(release / 'release-assets/gunicorn.conf.py'), '--bind', f'127.0.0.1:{port}', target],
+        cwd=release, env=environment, text=True,
+        stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    try:
+        deadline = time.monotonic() + 60
+        while True:
+            if server.poll() is not None:
+                raise AssertionError(f'{target} exited before serving: {server.stderr.read()}')
+            try:
+                with urllib.request.urlopen(f'http://127.0.0.1:{port}/healthz', timeout=5) as response:
+                    body = response.read()
+                break
+            except OSError:
+                if time.monotonic() > deadline:
+                    raise
+                time.sleep(0.2)
+    finally:
+        server.terminate()
+        log = server.communicate(timeout=30)[1]
+    return body, log
+
+
+def test_release_gunicorn_config_serves_old_and_new_web_targets():
+    # The installed web unit loads <release>/release-assets/gunicorn.conf.py; its logging
+    # config resolves module paths at start-up, which --check-config does not exercise.
+    with tempfile.TemporaryDirectory() as directory:
+        release = Path(directory) / 'release'
+        release.mkdir()
+        shutil.copytree(PROJECT / 'nuligahelper', release / 'nuligahelper',
+                        ignore=shutil.ignore_patterns('__pycache__'))
+        shutil.copytree(ASSETS, release / 'release-assets',
+                        ignore=shutil.ignore_patterns('__pycache__'))
+        for name in ('webapp.py', 'alembic.ini'):
+            shutil.copy(PROJECT / name, release / name)
+        database = Path(directory) / 'web.db'
+        environment = {key: value for key, value in os.environ.items()
+                       if not key.startswith(('NULIGAHELPER_', 'PYTHON'))}
+        init = subprocess.run([sys.executable, '-B', '-m', 'nuligahelper.cli', '--db', str(database),
+                               'init'], cwd=release, env=environment, capture_output=True,
+                              text=True, timeout=60)
+        assert init.returncode == 0, init.stderr
+        environment.update(NULIGAHELPER_DB=str(database), NULIGAHELPER_SECRET='synthetic-web-secret')
+        for target in ('webapp:app', 'nuligahelper.web:app'):
+            body, log = _serve_health(release, target, environment)
+            assert body == b'ok\n', (target, log)
+            assert 'level=INFO operation=web event=diagnostic' in log and '127.0.0.1' not in log, (
+                f'{target}: Gunicorn must log through the redacting journal formatter: {log}')
 
 
 if __name__ == '__main__':
