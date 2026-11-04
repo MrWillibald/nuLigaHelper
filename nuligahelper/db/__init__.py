@@ -146,6 +146,7 @@ from nuligahelper.db.games import (
     classify_game_category,
 )
 from nuligahelper.db.day_blocks import (
+    block_date_valid,
     get_day_blocks,
     _valid_cake_delivery_time,
     block_is_configured,
@@ -218,6 +219,7 @@ from nuligahelper.db.sync import (
     ShiftEvent,
     RefereeEvent,
     GameEvent,
+    CancelledBlockDuty,
     SyncEvents,
     sync_games,
 )

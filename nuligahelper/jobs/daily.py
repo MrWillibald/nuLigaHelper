@@ -101,6 +101,11 @@ def _send_notifications(
         logging.info(f"Number of sent shift notifications: {cnt}")
         logging.info("-------------------------------------------------")
 
+        # Report block duties of home-game dates without any game left
+        cnt = notifier.notify_cancelled_block_duties(events.cancelled_block_duties)
+        logging.info(f"Number of sent block cancellation notifications: {cnt}")
+        logging.info("-------------------------------------------------")
+
         # Report newly missing referees detected during sync
         for event in events.referee_alerts:
             notifier.notify_referee_alert(event)

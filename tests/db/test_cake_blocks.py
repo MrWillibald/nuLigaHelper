@@ -131,13 +131,19 @@ def test_same_date_sync_keeps_cake_configuration_and_moved_date_removes_with_aud
             db.sync_games(session, [changed, changed], h.SEASON)
         assert session.get(db.DayBlock, block_id) is retained
         moved = {**data, "date": "04.10.2026"}
-        before_audits = session.query(db.AssignmentAudit).count()
-        with pytest.raises(ValueError, match="verbindlichen"):
-            db.sync_games(session, [moved], h.SEASON)
-        session.rollback()
-        assert session.get(db.DayBlock, block_id).assignment_for_slot(3).id == assignment_id
-        assert session.query(db.AssignmentAudit).count() == before_audits
-        assert session.query(db.Game).filter_by(game_nr=data["game_nr"]).one().date == data["date"]
+        with patch("nuligahelper.common.effective_today", return_value=date(2026, 9, 1)):
+            events = db.sync_games(session, [moved], h.SEASON)
+        assert session.get(db.DayBlock, block_id) is None, "a cancelled date takes its cake block along"
+        assert session.query(db.BlockAssignment).count() == 0
+        duty, = events.cancelled_block_duties
+        assert (duty.person_id, duty.block_date) == (people[0].id, data["date"])
+        audit = session.query(db.AssignmentAudit).filter_by(action="date_remove").one()
+        assert audit.affected_person_id == people[0].id and "03.10.2026" in audit.block_snapshot
+        assert session.query(db.Game).filter_by(game_nr=data["game_nr"]).one().date == "04.10.2026"
+        new_cake = next(b for b in db.get_day_blocks(session, h.SEASON, "04.10.2026")
+                        if b.phase == db.BLOCK_CAKE_DELIVERY)
+        assert not new_cake.assignments and not db.block_is_configured(new_cake), \
+            "a duty does not follow the game to its new date"
 
 
 def test_inactive_people_cannot_claim_cakes_and_stale_release_preserves_occupant():
@@ -186,6 +192,19 @@ def test_cake_reduction_succeeds_only_after_the_position_was_reopened():
         db.configure_cake_block(session, cake, "10:00", 1, "10:00", 2)
         session.commit()
         assert db.block_capacity(cake) == 1
+
+
+def test_retained_open_date_cake_block_refuses_new_settings():
+    with h.Session(h.make_engine()) as session:
+        _data, _preparation, cake, _cleanup, people = _setup(session)
+        db.configure_cake_block(session, cake, "10:00", 2, None, None)
+        session.add(db.BlockAssignment(block=cake, person=people[0], slot=0))
+        cake.date = "offen"
+        session.commit()
+        with pytest.raises(ValueError, match="kein Termin"):
+            db.configure_cake_block(session, cake, "11:00", 3, "10:00", 2)
+        session.rollback()
+        assert (cake.delivery_time, cake.cake_quantity) == ("10:00", 2)
 
 
 if __name__ == "__main__":

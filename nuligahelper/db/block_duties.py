@@ -18,7 +18,7 @@ from nuligahelper.db.roles import BLOCK_CAKE_DELIVERY
 from nuligahelper.db.errors import CakeConfigurationConflictError, SlotConflictError
 from nuligahelper.db.models import ACCOUNT_ACTIVE, BlockAssignment, Person
 from nuligahelper.db.storage import _wait_for_assignment_retry
-from nuligahelper.db.day_blocks import _valid_cake_delivery_time
+from nuligahelper.db.day_blocks import _valid_cake_delivery_time, block_date_valid
 from nuligahelper.db.clock import _claim_lock_time
 from nuligahelper.db.audit import _audit_block_assignment
 from nuligahelper.db.slots import (
@@ -56,6 +56,8 @@ def configure_cake_block(
             enforce_due_duty_locks(session, stored_block)
             if stored_block.phase != BLOCK_CAKE_DELIVERY:
                 raise ValueError("Nur Kuchenlieferungen haben Lieferzeit und Kuchenanzahl.")
+            if not block_date_valid(stored_block.date):
+                raise ValueError("Für diesen Tagesblock steht kein Termin fest.")
             if (
                 stored_block.delivery_time != expected_delivery_time
                 or stored_block.cake_quantity != expected_cake_quantity
@@ -103,6 +105,8 @@ def claim_block_slot(
             stored_block = _lock_day_block(session, block_id)
             enforce_due_duty_locks(session, stored_block)
             _validate_block_slot(stored_block, slot)
+            if not block_date_valid(stored_block.date):
+                raise ValueError("Für diesen Tagesblock steht kein Termin fest.")
             current = _stored_block_slot(session, block_id, slot)
             current_id = current.person_id if current else None
             if current_id != expected_person_id:

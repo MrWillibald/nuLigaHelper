@@ -261,7 +261,7 @@ Eine Ersatzperson für den Verkauf bei Erwachsenen muss zusammen mit der verblei
 
 Besetzte Dienste werden am Vortag um 09:00 Uhr deutscher Ortszeit fest, offene Ersatzsuchen enden. Das gilt auch ohne zugestellte Erinnerung. Ein für Samstag angesetzter Dienst wird also am Freitag um 09:00 Uhr fest; es gibt keine Frist von 24 Stunden vor Spielbeginn.
 
-**Kurzfristiger Ausfall nach der Sperre:** Informiere umgehend deine Mannschaftsverantwortlichen oder die Vereinsorganisation direkt. Du selbst kannst den Dienst im Webservice nicht freigeben oder wechseln. Die gespeicherte Verantwortung bleibt bestehen, bis ein Admin den Dienst über **Auf offen setzen** freigibt; dann erhältst du eine Benachrichtigung. **Spielverschiebung:** Wird ein Spiel auf einen späteren Tag verlegt oder steht vorerst ohne festen Termin im Spielplan, hebt der nächste tägliche Spielplanabgleich die Sperre seiner Spieldienste auf. Du bleibst eingeteilt und verantwortlich; eine durch die Sperre beendete Ersatzsuche startest du bei Bedarf neu. Am Vortag des neuen Termins um 09:00 Uhr wird der Dienst wieder fest. Wird ein Spiel vorverlegt, bleibt eine bestehende Sperre bestehen. Tagesdienste bleiben beim jeweiligen Datum und behalten ihre Sperre.
+**Kurzfristiger Ausfall nach der Sperre:** Informiere umgehend deine Mannschaftsverantwortlichen oder die Vereinsorganisation direkt. Du selbst kannst den Dienst im Webservice nicht freigeben oder wechseln. Die gespeicherte Verantwortung bleibt bestehen, bis ein Admin den Dienst über **Auf offen setzen** freigibt; dann erhältst du eine Benachrichtigung. **Spielverschiebung:** Wird ein Spiel auf einen späteren Tag verlegt oder steht vorerst ohne festen Termin im Spielplan, hebt der nächste tägliche Spielplanabgleich die Sperre seiner Spieldienste auf. Du bleibst eingeteilt und verantwortlich; eine durch die Sperre beendete Ersatzsuche startest du bei Bedarf neu. Am Vortag des neuen Termins um 09:00 Uhr wird der Dienst wieder fest. Wird ein Spiel vorverlegt, bleibt eine bestehende Sperre bestehen. Tagesdienste bleiben beim jeweiligen Datum und behalten ihre Sperre, solange an diesem Tag noch ein Spiel stattfindet.
 
 ## 11 Vorbereitung und Aufräumen übernehmen
 
@@ -284,6 +284,8 @@ Vorbereitung und Aufräumen gehören zum gesamten Heimspieltag. Sie sind von den
 Pro Tagesblock darfst du genau einen Platz übernehmen. Du kannst unabhängig davon einen Spielauftrag und je einen Platz in anderen Tagesblöcken haben, zum Beispiel Vorbereitung und Kuchenlieferung. Prüfe, ob die Aufgaben zeitlich zusammenpassen.
 
 Für diese Tagesdienste gelten dieselben Regeln zur Ersatzsuche, Bestätigung und Sperre wie für Spielaufgaben. Mitglieder und MVs verwalten dabei nur ihre eigenen Tagesdienste; die MV-Zuständigkeit für ein Team erweitert hier die Auswahl nicht. Admins können andere aktive Personen einteilen, solange alle übrigen Regeln erfüllt sind.
+
+**Wenn ein Spieltag entfällt:** Tagesdienste gibt es nur für Tage mit festem Datum. Steht ein Spiel ohne festen Termin im Spielplan, erhält es keine Tagesdienste. Enthält der Spielplan für einen heutigen oder künftigen Tag kein Spiel mehr, entfallen Vorbereitung, Kuchenlieferung und Aufräumen dieses Tages, auch wenn sie bereits fest waren. Du bist dann nicht mehr eingeteilt und erhältst eine Benachrichtigung. Dein Dienst wandert nicht zum neuen Termin mit; trage dich dort bei Bedarf neu ein. Vergangene Tage bleiben unverändert. Ältere Tagesdienste ohne festes Datum bleiben sichtbar, solange jemand eingeteilt ist; freie Plätze lassen sich dort nicht mehr übernehmen.
 
 ## 12 Einen Kuchen zusagen und Kuchen planen
 
@@ -472,7 +474,7 @@ Das **Änderungsprotokoll** ist nur für Admins sichtbar. Es hilft nachzuvollzie
 | Ziel | Gespeicherte Beschreibung des Spiels oder Tagesblocks. |
 | Dienst | Damalige Aufgabenbezeichnung und Platznummer. |
 
-Häufige Aktionsnamen sind **claim** für eine Zusage, **request_open** für eine Ersatzsuche, **request_close** für deren Beendigung, **takeover** für eine Übernahme **lock** für eine Sperre und **unlock** für die automatische Aufhebung einer Sperre, weil das Spiel auf einen späteren Tag verlegt wurde oder keinen festen Termin mehr hat. **release** betrifft eine zulässige Freigabe, etwa eines nicht mehr angebotenen Altdienstes; es bedeutet keine allgemeine Freigabemöglichkeit. **reopen** bedeutet, dass ein Admin den Dienst auf offen gesetzt hat. **Durch Migration entfernt** kennzeichnet eine historische Entfernung bei einer ausdrücklich vorgesehenen Datenumstellung.
+Häufige Aktionsnamen sind **claim** für eine Zusage, **request_open** für eine Ersatzsuche, **request_close** für deren Beendigung, **takeover** für eine Übernahme **lock** für eine Sperre und **unlock** für die automatische Aufhebung einer Sperre, weil das Spiel auf einen späteren Tag verlegt wurde oder keinen festen Termin mehr hat. **release** betrifft eine zulässige Freigabe, etwa eines nicht mehr angebotenen Altdienstes; es bedeutet keine allgemeine Freigabemöglichkeit. **date_remove** bedeutet, dass ein Tagesdienst entfallen ist, weil der Spielplan für diesen Tag kein Spiel mehr enthält. **reopen** bedeutet, dass ein Admin den Dienst auf offen gesetzt hat. **Durch Migration entfernt** kennzeichnet eine historische Entfernung bei einer ausdrücklich vorgesehenen Datenumstellung.
 
 Die Einträge sind unveränderliche Nachweise und keine Rückgängig-Funktion. Historische Aufgabenbezeichnungen bleiben wörtlich erhalten und können von heutigen Bezeichnungen abweichen. Das Protokoll ist auf Dienstzuweisungen ausgerichtet und keine vollständige Liste aller Profil- und Verwaltungsänderungen. Das reine Öffnen einer Karte oder das Abbrechen einer Zusage erzeugt keine erfolgreiche Einteilung.
 
@@ -488,6 +490,7 @@ Der tägliche Hintergrundlauf aktualisiert den gespeicherten Spielplan und verar
 | Sieben Tage vor einem Spieltag | Der Tageslauf erinnert bereits eingeteilte Spiel- und Tageshelfer; für die Vorbereitung gibt es eine eigene Aufgabeninformation. |
 | Vortag eines Spieltags | Der Tageslauf erinnert eingeteilte Helfer an ihre Aufgaben. Der aktive MV der verantwortlichen Mannschaft wird bei offenen Plätzen oder Altersproblemen einbezogen. |
 | Erkannte Spielverschiebung | Eingeteilte Spielhelfer werden über die Änderung informiert. Prüfe den aktualisierten Termin und mögliche Auswirkungen auf deine Planung. |
+| Entfallener Spieltag | Enthält der Spielplan für einen heutigen oder künftigen Tag kein Spiel mehr, erfahren die eingeteilten Tageshelfer, dass ihr Dienst entfällt. |
 
 Gewöhnliche Benachrichtigungen bevorzugen eine hinterlegte E-Mail-Adresse. Nur wenn keine nutzbare E-Mail vorhanden ist, wird eine vorhandene Telefonnummer verwendet. Das ist eine Auswahl des Kontaktwegs und keine Zusicherung, dass eine fehlgeschlagene E-Mail automatisch noch einmal per SMS gesendet wird. Ohne beide Kontaktmöglichkeiten kann keine Nachricht zugestellt werden.
 

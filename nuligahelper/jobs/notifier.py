@@ -426,6 +426,21 @@ class Notifier:
                 cnt += self._dispatch_message(receiver, messages.render(key, **context), game.game_nr)
         return cnt
 
+    def notify_cancelled_block_duties(self, duties: list[db.CancelledBlockDuty]) -> int:
+        """Tell helpers that their day-block duty ended with its home-game date."""
+        count = 0
+        for duty in duties:
+            person = self.session.get(db.Person, duty.person_id)
+            if person is None:
+                continue
+            receiver = self._person_receiver(person, duty.task_label)
+            message = messages.render(
+                "block.date_cancelled", recipient_name=receiver["name"],
+                block_date=duty.block_date, task_label=duty.task_label,
+            )
+            count += self._dispatch_message(receiver, message, f"block-date:{duty.block_date}")
+        return count
+
     def notify_duty_reopened(
         self, person: db.Person, container: db.Game | db.DayBlock, role: str | None = None
     ) -> int:

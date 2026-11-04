@@ -248,6 +248,18 @@ CATALOG: dict[str, MessageTemplate | FragmentTemplate] = {
         caller='Notifier._notify_blocks_early',
         legacy_keys=('mailBlockPreTask', 'textBlockPreTask'),
     ),
+    "block.date_cancelled": MessageTemplate(
+        ("recipient_name", "block_date", "task_label"),
+        'Dein Dienst {task_label} am {block_date} entfällt',
+        'Hallo {recipient_name},\n\nam {block_date} findet kein Heimspiel mehr statt. Dein '
+        'Dienst {task_label} entfällt deshalb und du bist dafür nicht mehr eingeteilt.\n\n'
+        'Falls an einem anderen Tag Hilfe gebraucht wird oder dieser Tag wieder dazukommt, '
+        'trage dich bitte im Heimspielplan neu ein.\n\nViele Grüße\nTuS Raubling Handball',
+        'Hallo {recipient_name}, am {block_date} findet kein Heimspiel mehr statt. Dein Dienst '
+        '{task_label} entfällt, du bist nicht mehr eingeteilt.\nVG TuS Handball',
+        purpose='Tells a helper that synchronization removed a day-block duty of a cancelled date.',
+        caller='Notifier.notify_cancelled_block_duties',
+    ),
     "block.preparation.weekly": MessageTemplate(
         _BLOCK_FIELDS + ("partner_names",),
         'Vorbereitung Dienst {task_label}',

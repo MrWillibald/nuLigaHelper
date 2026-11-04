@@ -261,7 +261,7 @@ def test_schedule_hides_complete_dates_before_filters_but_keeps_invalid_dates_an
     assert tree.xpath('//select[@name="date"]/option/@value') == ['', '01.09.2026', '30.11.2026', 'invalid']
     for phase in db.BLOCK_PHASES:
         blocks = tree.xpath(f'//details[contains(@class,"task-block-{phase}")]')
-        assert len(blocks) == 3, 'visible dates and unresolved dates retain each block phase'
+        assert len(blocks) == 2, 'visible calendar dates keep each block phase; unresolved dates have none'
     hidden = page(guest, '/?show_hidden=1&date=01.12.2026')
     assert 'Unbekannter Spieltag' in hidden.text_content() and 'Keine Spiele oder Tagesdienste' in hidden.text_content()
     assert not hidden.xpath('//details[contains(@class,"game-card")]')

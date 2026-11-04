@@ -10,7 +10,7 @@ which game and when, so the club can answer after the fact why a task slot chang
 ### Requirement: Every assignment change is recorded
 
 The system SHALL record one entry for every change to a game or day-block task
-assignment, whether it was made by the person themselves, by an MV where permitted, by an admin or by permitted pre-cutoff obsolete-duty retirement. Replacement-request opening, authorized cancellation, successful-takeover closure and day-before closure, as well as first locking of an occupied assignment and release of a saved lock because its game was postponed to a later, not-yet-due date or its date became open or unparseable, SHALL be recorded as distinguishable lifecycle transitions even when the occupant does not change. A takeover SHALL record a linked before-and-after responsibility transfer atomically with the assignment and request closure; it SHALL NOT be recorded as an independently committed ordinary release followed by a claim. Repeated enforcement of an already saved lock SHALL NOT append duplicate transition entries. A postponement or open-date unlock SHALL be recorded once per released assignment with system origin and the unchanged responsible helper; it SHALL NOT be recorded as a release or claim. An administrator reopening SHALL be recorded once as a distinguishable `reopen` transition naming the administrator and the removed helper, atomically with the slot change and with closure of any open replacement request; it SHALL NOT be recorded as an ordinary release.
+assignment, whether it was made by the person themselves, by an MV where permitted, by an admin or by permitted pre-cutoff obsolete-duty retirement. Replacement-request opening, authorized cancellation, successful-takeover closure and day-before closure, as well as first locking of an occupied assignment and release of a saved lock because its game was postponed to a later, not-yet-due date or its date became open or unparseable, SHALL be recorded as distinguishable lifecycle transitions even when the occupant does not change. A takeover SHALL record a linked before-and-after responsibility transfer atomically with the assignment and request closure; it SHALL NOT be recorded as an independently committed ordinary release followed by a claim. Repeated enforcement of an already saved lock SHALL NOT append duplicate transition entries. A postponement or open-date unlock SHALL be recorded once per released assignment with system origin and the unchanged responsible helper; it SHALL NOT be recorded as a release or claim. An administrator reopening SHALL be recorded once as a distinguishable `reopen` transition naming the administrator and the removed helper, atomically with the slot change and with closure of any open replacement request; it SHALL NOT be recorded as an ordinary release. Removal of a block assignment because its home-game date was cancelled SHALL be recorded once per assignment as a system `date_remove` transition naming the removed helper, atomically with the removal and with closure of any open replacement request.
 
 #### Scenario: Self-service claim recorded
 
@@ -25,7 +25,7 @@ assignment, whether it was made by the person themselves, by an MV where permitt
 
 #### Scenario: Destructive maintenance is refused
 
-- **WHEN** account deactivation, erroneous-record deletion or game/day/block removal would cancel a binding commitment
+- **WHEN** account deactivation, erroneous-record deletion or game removal would cancel a binding commitment
 - **THEN** the operation is refused atomically and retains person/container/assignment/request state
 - **AND** no audit claims that the commitment was removed
 
@@ -38,9 +38,10 @@ assignment, whether it was made by the person themselves, by an MV where permitt
 
 #### Scenario: Block removal recorded
 
-- **WHEN** synchronization would remove a block containing an assigned commitment
-- **THEN** removal is refused atomically with the block, occupant and request retained
-- **AND** no successful-removal audit is written; snapshots remain readable after any later legitimate empty-container removal
+- **WHEN** synchronization removes a block containing an assigned commitment because its home-game date was cancelled
+- **THEN** one system `date_remove` entry per assignment names the removed helper, block and position
+- **AND** an open replacement request adds one closure entry in the same transaction
+- **AND** snapshots remain readable after the block is gone
 
 #### Scenario: Refused change is not recorded as a change
 
@@ -120,7 +121,7 @@ home-game date, preparation, cake-delivery or cleanup phase, displayed task name
 
 #### Scenario: Cake assignment history remains readable
 
-- **WHEN** a cake position is assigned and later an attempted occupied date removal is refused
+- **WHEN** a cake position is assigned and its date is later cancelled
 - **THEN** the audit identifies the dated cake-delivery block and original position
 - **AND** that description remains readable after the quantity changes or the block is deleted
 

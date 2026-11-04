@@ -132,6 +132,9 @@ class _FakeNotifier:
     def notify_shifts(self, _events):
         return self._call("notify_shifts")
 
+    def notify_cancelled_block_duties(self, _duties):
+        return self._call("notify_cancelled_block_duties")
+
     def notify_referee_alert(self, _event):
         return self._call("notify_referee_alert")
 
@@ -333,6 +336,7 @@ def test_successful_daily_path_orders_lock_sync_backup_and_notifications():
         "session1:enter",
         "notifier:init",
         "notify_shifts",
+        "notify_cancelled_block_duties",
         "notify_referee_alert",
         "notify_new_games",
         "games:03.09.2026",
@@ -459,6 +463,7 @@ def test_backup_failure_is_retained_while_notifications_continue():
     assert [stage for stage, _failure in error.failures] == ["backup:latest_upload"]
     assert state["notification_calls"] == [
         "notify_shifts",
+        "notify_cancelled_block_duties",
         "notify_referee_alert",
         "notify_new_games",
         "notify_game_day",

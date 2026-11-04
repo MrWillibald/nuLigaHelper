@@ -168,6 +168,8 @@ def block_view(block, full_date_games=None):
     slots = []
     for slot in range(db.block_capacity(block)):
         assignment = block.assignment_for_slot(slot)
+        if assignment is None and not db.block_date_valid(block.date):
+            continue  # A retained open-date block offers no new work.
         occupant = assignment.person if assignment else None
         slots.append({
             "label": db.block_slot_label(block, slot),
@@ -317,6 +319,12 @@ def build_schedule(
 
     day_groups = []
     dates = list(dict.fromkeys(game.date for game in all_games))
+    if playing_filter is None and responsible_filter is None:
+        # Occupied open-date blocks stay reachable even when no game has that date.
+        dates += [date for date in dict.fromkeys(session.scalars(
+            db.select(db.DayBlock.date).where(db.DayBlock.season_year == season_year)
+            .order_by(db.DayBlock.id)
+        )) if date not in dates and not db.block_date_valid(date)]
     for game_date in dates:
         if date_filter and game_date != date_filter:
             continue
@@ -327,7 +335,7 @@ def build_schedule(
                 or playing_team_by_ak.get(game.ak or "") == playing_filter)
             and (responsible_filter is None or game.team_id == responsible_filter)
         ]
-        if not team_games:
+        if full_date_games and not team_games:
             continue
         visible_games = team_games
         if person_filter:
@@ -358,7 +366,7 @@ def build_schedule(
         day_groups.append({
             "type": "day",
             "month": month_label,
-            "day": full_date_games[0].day or "",
+            "day": full_date_games[0].day or "" if full_date_games else "",
             "date": game_date,
             "past": bool(d and d < today),
             "games": views,
