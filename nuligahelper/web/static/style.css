@@ -382,7 +382,7 @@ select.select-warn{border-color:#e8b23c;background:#fffaf0}
 
 /* ---- assignment audit ---- */
 .audit-section .section-header{align-items:center}.audit-section .section-header>div:last-child{min-width:0}
-.audit-section .section-header .section-eyebrow{margin-bottom:3px}.audit-filter-card{grid-template-columns:minmax(280px,1.6fr) minmax(220px,1fr) auto}
+.audit-section .section-header .section-eyebrow{margin-bottom:3px}.audit-filter-card{grid-template-columns:minmax(240px,1.5fr) minmax(190px,1fr) minmax(170px,.8fr) auto}
 .data-table-wrap{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#fff}
 .data-table{width:100%;border-collapse:collapse;background:#fff}
 .data-table th{text-align:left;color:var(--navy);font-size:.76rem;text-transform:uppercase;letter-spacing:.05em;

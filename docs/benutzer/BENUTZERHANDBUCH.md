@@ -462,19 +462,19 @@ Das **Änderungsprotokoll** ist nur für Admins sichtbar. Es hilft nachzuvollzie
 *Abbildung 15: 1 Ziel oder Person auswählen und Filtern wählen, 2 darunter die protokollierten Änderungen lesen.*
 
 1. Öffne **Änderungsprotokoll** in der Navigation.
-2. Wähle unter **Ziel** ein Spiel oder einen Tagesblock aus. Alternativ oder zusätzlich kannst du nach **Person** filtern.
+2. Wähle unter **Ziel** ein Spiel oder einen Tagesblock aus. Alternativ oder zusätzlich kannst du nach **Person** und **Aktion** filtern, zum Beispiel nach **Sperre aufgehoben**.
 3. Klicke auf **Filtern**. **Zurücksetzen** entfernt die Einschränkungen.
 
 | Spalte | Bedeutung |
 | --- | --- |
 | Zeit | Zeitpunkt des protokollierten Vorgangs. |
 | Akteur | Person oder System, die beziehungsweise das die Änderung ausgelöst hat, einschließlich der damaligen Rolle. |
-| Aktion | Art der Änderung; einige Bezeichnungen sind technisch und englisch. |
+| Aktion | Art der Änderung. |
 | Person | Von der Einteilung betroffene Person beziehungsweise beteiligte Personen einer Übernahme. |
 | Ziel | Gespeicherte Beschreibung des Spiels oder Tagesblocks. |
 | Dienst | Damalige Aufgabenbezeichnung und Platznummer. |
 
-Häufige Aktionsnamen sind **claim** für eine Zusage, **request_open** für eine Ersatzsuche, **request_close** für deren Beendigung, **takeover** für eine Übernahme **lock** für eine Sperre und **unlock** für die automatische Aufhebung einer Sperre, weil das Spiel auf einen späteren Tag verlegt wurde oder keinen festen Termin mehr hat. **release** betrifft eine zulässige Freigabe, etwa eines nicht mehr angebotenen Altdienstes; es bedeutet keine allgemeine Freigabemöglichkeit. **date_remove** bedeutet, dass ein Tagesdienst entfallen ist, weil der Spielplan für diesen Tag kein Spiel mehr enthält. **reopen** bedeutet, dass ein Admin den Dienst auf offen gesetzt hat. **Durch Migration entfernt** kennzeichnet eine historische Entfernung bei einer ausdrücklich vorgesehenen Datenumstellung.
+Die Spalte und der Filter **Aktion** verwenden diese Bezeichnungen: **Zusage**, **Ersatzsuche geöffnet** und **Ersatzsuche beendet**. Eine Übernahme erscheint als **Übernahme abgegeben** und **Übernahme angenommen**. **Sperre** kennzeichnet einen fest gewordenen Dienst. **Sperre aufgehoben** ist die automatische Aufhebung, weil das Spiel auf einen späteren Tag verlegt wurde oder keinen festen Termin mehr hat. **Freigabe** betrifft eine zulässige Freigabe, etwa eines nicht mehr angebotenen Altdienstes; sie bedeutet keine allgemeine Freigabemöglichkeit. **Auf offen gesetzt** bedeutet, dass ein Admin den Dienst geleert hat. **Spieltag entfallen** bedeutet, dass ein Tagesdienst entfallen ist, weil der Spielplan für diesen Tag kein Spiel mehr enthält. **Durch Migration entfernt** kennzeichnet eine historische Entfernung bei einer ausdrücklich vorgesehenen Datenumstellung. Ältere Einträge ohne deutsche Bezeichnung erscheinen unter ihrem gespeicherten Namen.
 
 Die Einträge sind unveränderliche Nachweise und keine Rückgängig-Funktion. Historische Aufgabenbezeichnungen bleiben wörtlich erhalten und können von heutigen Bezeichnungen abweichen. Das Protokoll ist auf Dienstzuweisungen ausgerichtet und keine vollständige Liste aller Profil- und Verwaltungsänderungen. Das reine Öffnen einer Karte oder das Abbrechen einer Zusage erzeugt keine erfolgreiche Einteilung.
 
