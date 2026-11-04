@@ -457,9 +457,9 @@ Wenn jemand die Einstellung zwischenzeitlich geändert hat, kann dein veralteter
 
 Das **Änderungsprotokoll** ist nur für Admins sichtbar. Es hilft nachzuvollziehen, wer einen Dienst übernommen, eine Ersatzsuche geöffnet oder beendet hat und wann eine Einteilung fest geworden ist.
 
-![Änderungsprotokoll mit Ziel- und Personenfilter sowie Einträgen](screenshots/15-protokoll.png)
+![Änderungsprotokoll mit Ziel-, Personen- und Aktionsfilter sowie Einträgen](screenshots/15-protokoll.png)
 
-*Abbildung 15: 1 Ziel oder Person auswählen und Filtern wählen, 2 darunter die protokollierten Änderungen lesen.*
+*Abbildung 15: 1 Ziel, Person oder Aktion auswählen und Filtern wählen, 2 darunter die protokollierten Änderungen lesen.*
 
 1. Öffne **Änderungsprotokoll** in der Navigation.
 2. Wähle unter **Ziel** ein Spiel oder einen Tagesblock aus. Alternativ oder zusätzlich kannst du nach **Person** und **Aktion** filtern, zum Beispiel nach **Sperre aufgehoben**.
