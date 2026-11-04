@@ -360,3 +360,229 @@ def test_deactivation_rechecks_saved_dates_instead_of_cached_past_containers():
 
 if __name__ == "__main__":
     h.run_all(dict(globals()))
+
+
+# ---------------------------------------------------------------
+# Postponed and undated games release locks their date no longer justifies
+# ---------------------------------------------------------------
+
+_BERLIN = ZoneInfo("Europe/Berlin")
+_FIRST_DATE, _LATER_DATE = "05.12.2026", "20.12.2026"
+
+
+def _at(year, month, day, hour=10):
+    return patch("nuligahelper.db.clock.duty_now",
+                 return_value=datetime(year, month, day, hour, tzinfo=_BERLIN))
+
+
+def _record(game_nr, game_date, time="18:00"):
+    return {"day": "Sa", "date": game_date, "time": time, "hall": 1, "game_nr": game_nr,
+            "ak": "BL M", "home": "TuS Raubling", "guest": "Gast", "score": ""}
+
+
+def _sync(session, *records, season=2026):
+    db.sync_games(session, list(records), season)
+
+
+def _audit_actions(session, action):
+    return list(session.scalars(select(db.AssignmentAudit).where(
+        db.AssignmentAudit.action == action).order_by(db.AssignmentAudit.id)))
+
+
+def _postponement_seed():
+    """Game 9101 is moved in the tests; 9102 keeps the original date and its blocks."""
+    engine = h.make_engine()
+    with h.Session(engine) as session:
+        people = [db.Person(name=f"Helper {i}", birth_date=date(1990, 1, 1),
+                            account_status=db.ACCOUNT_ACTIVE) for i in range(5)]
+        session.add_all(people); session.commit()
+        _sync(session, _record("9101", _FIRST_DATE), _record("9102", _FIRST_DATE, "20:00"))
+        return engine, [p.id for p in people]
+
+
+def _game(session, game_nr="9101"):
+    return session.scalars(select(db.Game).where(db.Game.game_nr == game_nr)).one()
+
+
+def _locked_game_duty(session, people, role=db.ROLE_SECURITY):
+    """Claim a duty before cutoff and lock it at the original 09:00 day-before cutoff."""
+    with _at(2026, 12, 1):
+        assignment = db.claim_slot(session, _game(session), role, 0, None,
+                                   session.get(db.Person, people[1]))
+        session.commit()
+    with _at(2026, 12, 4, 9):
+        db.lock_due_duties(session); session.commit()
+    assert assignment.locked_at is not None
+    return assignment
+
+
+def test_postponement_to_a_later_open_date_releases_locks_without_vacating_duties():
+    engine, people = _postponement_seed()
+    with h.Session(engine) as session:
+        game = _game(session)
+        preparation = next(block for block in db.get_day_blocks(session, 2026, _FIRST_DATE)
+                           if block.phase == db.BLOCK_PREPARATION)
+        with _at(2026, 12, 1):
+            ordner = db.claim_slot(session, game, db.ROLE_SECURITY, 0, None, session.get(db.Person, people[1]))
+            timing = db.claim_slot(session, game, db.ROLE_TIMEKEEPER, 0, None, session.get(db.Person, people[2]))
+            db.request_replacement(session, game, db.ROLE_SECURITY, 0, people[1])
+            block_duty = db.claim_block_slot(session, preparation, 0, None, session.get(db.Person, people[1]))
+            session.commit()
+        with _at(2026, 12, 4, 9):
+            db.lock_due_duties(session); session.commit()
+        with _at(2026, 12, 5, 8):
+            late = db.claim_slot(session, game, db.ROLE_CASH, 0, None, session.get(db.Person, people[3]))
+            session.commit()
+        assert all(a.locked_at is not None for a in (ordner, timing, late, block_duty))
+        assert ordner.replacement_token is None, "the original cutoff closes the open search"
+
+        with _at(2026, 12, 6):
+            _sync(session, _record("9101", _LATER_DATE), _record("9102", _FIRST_DATE, "20:00"))
+            assert [a.locked_at for a in (ordner, timing, late)] == [None, None, None], \
+                "a later, not yet due date must release every saved game-duty lock, including late claims"
+            assert (ordner.person_id, timing.person_id, late.person_id) == (people[1], people[2], people[3])
+            assert ordner.replacement_token is None, "a search closed by the old lock must not reopen"
+            assert block_duty.locked_at is not None, "day blocks stay with their date and keep their lock"
+            unlocks = _audit_actions(session, "unlock")
+            assert sorted(a.affected_person_id for a in unlocks) == sorted(people[1:4])
+            assert all(a.actor_tier == "system" and a.actor_person_id is None for a in unlocks)
+            assert all(_LATER_DATE in a.game_snapshot for a in unlocks)
+
+            _sync(session, _record("9101", _LATER_DATE), _record("9102", _FIRST_DATE, "20:00"))
+            assert len(_audit_actions(session, "unlock")) == 3, "a repeated sync must not duplicate unlock evidence"
+
+            request = db.request_replacement(session, _game(session), db.ROLE_SECURITY, 0, people[1])
+            db.takeover_slot(session, _game(session), db.ROLE_SECURITY, 0, people[1],
+                             request.replacement_token, session.get(db.Person, people[4]))
+            session.commit()
+            assert ordner.person_id == people[4], "unlocked duties follow ordinary replacement rules"
+
+        locks_before = len(_audit_actions(session, "lock"))
+        with _at(2026, 12, 19, 9):
+            db.lock_due_duties(session); session.commit()
+        assert all(a.locked_at is not None for a in (ordner, timing, late)), "the new cutoff locks again"
+        assert len(_audit_actions(session, "lock")) == locks_before + 3
+    engine.dispose()
+
+
+def test_locks_stay_when_the_current_date_still_justifies_them():
+    cases = {
+        "later date whose cutoff is already due": ((2026, 12, 10), "08.12.2026", "18:00", False),
+        "later date with a saved cutoff marker": ((2026, 12, 6), _LATER_DATE, "18:00", True),
+        "same date with a new start time": ((2026, 12, 6), _FIRST_DATE, "16:00", False),
+        "earlier date": ((2026, 12, 4), "04.12.2026", "18:00", False),
+    }
+    for label, (now, new_date, new_time, marker) in cases.items():
+        engine, people = _postponement_seed()
+        with h.Session(engine) as session:
+            assignment = _locked_game_duty(session, people)
+            if marker:
+                session.add(db.DutyCutoff(season_year=2026, date=new_date, locked_at=datetime(2026, 12, 19, 9)))
+                session.commit()
+            with _at(*now):
+                _sync(session, _record("9101", new_date, new_time), _record("9102", _FIRST_DATE, "20:00"))
+            assert assignment.locked_at is not None, f"{label}: the saved lock must remain"
+            assert not _audit_actions(session, "unlock"), f"{label}: no unlock may be recorded"
+        engine.dispose()
+
+
+def test_open_or_unparseable_dates_release_locks():
+    for open_date in ("", "offen"):
+        engine, people = _postponement_seed()
+        with h.Session(engine) as session:
+            assignment = _locked_game_duty(session, people)
+            with _at(2026, 12, 6):
+                _sync(session, _record("9101", open_date), _record("9102", _FIRST_DATE, "20:00"))
+                assert assignment.locked_at is None, f"date {open_date!r} has no cutoff and cannot keep a lock"
+                assert assignment.person_id == people[1]
+                assert db.request_replacement(session, _game(session), db.ROLE_SECURITY, 0, people[1]).replacement_token
+            assert len(_audit_actions(session, "unlock")) == 1
+        engine.dispose()
+
+
+def test_stored_open_date_lock_is_released_once_and_valid_dates_govern_again():
+    engine, people = _postponement_seed()
+    with h.Session(engine) as session:
+        assignment = _locked_game_duty(session, people)
+        with _at(2026, 12, 6):
+            _sync(session, _record("9101", "offen"), _record("9102", _FIRST_DATE, "20:00"))
+            assignment.locked_at = datetime(2026, 12, 4, 9)  # Lock saved while the date was already open.
+            session.commit()
+            _sync(session, _record("9101", "offen"), _record("9102", _FIRST_DATE, "20:00"))
+            assert assignment.locked_at is None, "a stored open date must release a lock without a date change"
+            _sync(session, _record("9101", "offen"), _record("9102", _FIRST_DATE, "20:00"))
+            assert len(_audit_actions(session, "unlock")) == 2
+
+            assignment.locked_at = datetime(2026, 12, 4, 9)
+            session.commit()
+            _sync(session, _record("9101", _LATER_DATE), _record("9102", _FIRST_DATE, "20:00"))
+            assert assignment.locked_at is None, "open to a later not yet due date releases a remaining lock"
+
+        with _at(2026, 12, 10):
+            _sync(session, _record("9101", "offen"), _record("9102", _FIRST_DATE, "20:00"))
+            _sync(session, _record("9101", "08.12.2026"), _record("9102", _FIRST_DATE, "20:00"))
+            game = _game(session)
+            assert db.duty_is_locked(session, game, assignment), "a valid, already due date locks again"
+            db.lock_due_duties(session); session.commit()
+            assert assignment.locked_at is not None
+    engine.dispose()
+
+
+def test_unlocked_open_date_duty_keeps_invalid_date_age_rules():
+    engine, people = _postponement_seed()
+    with h.Session(engine) as session:
+        timing = _locked_game_duty(session, people, db.ROLE_TIMEKEEPER)
+        with _at(2026, 12, 6):
+            _sync(session, _record("9101", "offen"), _record("9102", _FIRST_DATE, "20:00"))
+            assert timing.locked_at is None
+            request = db.request_replacement(session, _game(session), db.ROLE_TIMEKEEPER, 0, people[1])
+            token = request.replacement_token
+            session.commit()
+            _refused(lambda: db.takeover_slot(session, _game(session), db.ROLE_TIMEKEEPER, 0, people[1],
+                                              token, session.get(db.Person, people[4])),
+                     db.AgeEligibilityError)
+            session.rollback()
+            assert timing.person_id == people[1], "an invalid game date still cannot authorize a timing takeover"
+    engine.dispose()
+
+
+def test_first_sync_after_release_repairs_games_moved_before_it():
+    engine, people = _postponement_seed()
+    with h.Session(engine) as session:
+        with _at(2026, 12, 1):
+            _sync(session, _record("9101", _FIRST_DATE), _record("9102", _FIRST_DATE, "20:00"),
+                  _record("9103", "10.12.2026"))
+            _sync(session, _record("9301", "06.12.2025"), season=2025)
+        stale = {}
+        for game_nr, season in (("9101", 2026), ("9102", 2026), ("9103", 2026), ("9301", 2025)):
+            game = session.scalars(select(db.Game).where(db.Game.game_nr == game_nr,
+                                                         db.Game.season_year == season)).one()
+            with _at(2026, 12, 1):
+                stale[game_nr] = db.claim_slot(session, game, db.ROLE_SECURITY, 0, None,
+                                               session.get(db.Person, people[1]))
+        session.commit()
+        # State as left by the previous release: the games were already moved, but
+        # their duties still carry the original 04.12. cutoff and its lock audits.
+        old_cutoff = datetime(2026, 12, 4, 9)
+        for game_nr, assignment in stale.items():
+            assignment.locked_at = old_cutoff
+            db.audit._audit_assignment(session, assignment, "lock", None, "system")
+        _game(session, "9101").date = _LATER_DATE          # still in the scrape
+        _game(session, "9103").date = "21.12.2026"          # no longer in the scrape
+        session.commit()
+        old_audits = [(a.id, a.action, a.game_snapshot) for a in
+                      session.scalars(select(db.AssignmentAudit).order_by(db.AssignmentAudit.id))]
+
+        with _at(2026, 12, 6):
+            _sync(session, _record("9101", _LATER_DATE), _record("9102", _FIRST_DATE, "20:00"))
+        assert stale["9101"].locked_at is None and stale["9103"].locked_at is None, \
+            "duties of games moved before this release must be repaired by the first sync"
+        assert stale["9102"].locked_at == old_cutoff, "a game whose own cutoff is due keeps its lock"
+        assert stale["9301"].locked_at == old_cutoff, "other seasons are not part of this sync"
+        assert all(a.person_id == people[1] for a in stale.values())
+        unlocks = _audit_actions(session, "unlock")
+        assert sorted(a.game_id for a in unlocks) == sorted([stale["9101"].game_id, stale["9103"].game_id])
+        assert [(a.id, a.action, a.game_snapshot) for a in session.scalars(
+            select(db.AssignmentAudit).where(db.AssignmentAudit.id <= old_audits[-1][0])
+            .order_by(db.AssignmentAudit.id))] == old_audits, "historical audits stay unchanged"
+    engine.dispose()

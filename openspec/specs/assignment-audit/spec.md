@@ -10,7 +10,7 @@ which game and when, so the club can answer after the fact why a task slot chang
 ### Requirement: Every assignment change is recorded
 
 The system SHALL record one entry for every change to a game or day-block task
-assignment, whether it was made by the person themselves, by an MV where permitted, by an admin or by permitted pre-cutoff obsolete-duty retirement. Replacement-request opening, authorized cancellation, successful-takeover closure and day-before closure, as well as first locking of an occupied assignment, SHALL be recorded as distinguishable lifecycle transitions even when the occupant does not change. A takeover SHALL record a linked before-and-after responsibility transfer atomically with the assignment and request closure; it SHALL NOT be recorded as an independently committed ordinary release followed by a claim. Repeated enforcement of an already saved lock SHALL NOT append duplicate transition entries.
+assignment, whether it was made by the person themselves, by an MV where permitted, by an admin or by permitted pre-cutoff obsolete-duty retirement. Replacement-request opening, authorized cancellation, successful-takeover closure and day-before closure, as well as first locking of an occupied assignment and release of a saved lock because its game was postponed to a later, not-yet-due date or its date became open or unparseable, SHALL be recorded as distinguishable lifecycle transitions even when the occupant does not change. A takeover SHALL record a linked before-and-after responsibility transfer atomically with the assignment and request closure; it SHALL NOT be recorded as an independently committed ordinary release followed by a claim. Repeated enforcement of an already saved lock SHALL NOT append duplicate transition entries. A postponement or open-date unlock SHALL be recorded once per released assignment with system origin and the unchanged responsible helper; it SHALL NOT be recorded as a release or claim.
 
 #### Scenario: Self-service claim recorded
 
@@ -65,6 +65,14 @@ assignment, whether it was made by the person themselves, by an MV where permitt
 - **WHEN** the day-before boundary first locks an occupied duty with an open replacement request
 - **THEN** lifecycle audit evidence identifies the lock and request closure while retaining the original responsible helper
 - **AND** enforcing the same saved transition again creates no duplicate entry
+
+#### Scenario: Postponement unlock recorded
+
+- **WHEN** synchronization releases the saved lock of an occupied duty because its game moved to a later, not-yet-due date or has an open or unparseable date
+- **THEN** one system lifecycle entry identifies the unlock, the game and position and the unchanged responsible helper
+- **AND** the entry does not claim that the assignment was released or reassigned
+- **AND** the same evidence is recorded when the first synchronization after this release repairs a game moved before it
+- **AND** a later re-lock at a valid date's cutoff is recorded as a new lock transition
 
 #### Scenario: Confirmation is cancelled
 

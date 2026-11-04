@@ -1,7 +1,8 @@
 # ---------------------------------------------------------------
 #                          nuLigaHelper
 # ---------------------------------------------------------------
-# Persisting due day-before locks and closing open replacement requests.
+# Persisting due day-before locks and closing open replacement requests;
+# releasing saved game locks that the current game date no longer justifies.
 # ---------------------------------------------------------------
 
 from __future__ import annotations
@@ -16,7 +17,7 @@ from nuligahelper.db import age_eligibility
 
 from nuligahelper.db import clock
 from nuligahelper.db import storage
-from nuligahelper.db.models import DayBlock, DutyCutoff, Game
+from nuligahelper.db.models import Assignment, DayBlock, DutyCutoff, Game
 from nuligahelper.db.storage import _wait_for_assignment_retry
 from nuligahelper.db.clock import duty_cutoff_at, duty_is_locked
 from nuligahelper.db.audit import _audit_assignment, _audit_block_assignment
@@ -87,3 +88,30 @@ def lock_day_before_batch(session: Session, season_year: int, date: str) -> Duty
         except OperationalError as exc:
             session.rollback()
             _wait_for_assignment_retry(deadline, exc)
+
+
+def release_unbound_game_locks(session: Session, game: Game) -> int:
+    """Release saved game-duty locks that the game's current date does not justify.
+
+    Every saved lock carries the cutoff of the date it was locked on. A game whose
+    date is open/unparseable has no cutoff; a game whose valid date has neither a
+    saved nor a due cutoff, and whose cutoff lies after the saved lock, was moved
+    to a later date. Its helpers keep their duties under ordinary pre-cutoff rules.
+    Evaluated on stored state, so repeated calls are idempotent; caller commits.
+    """
+    cutoff = None
+    if age_eligibility.parse_game_date(game.date) is not None:
+        if duty_is_locked(session, game):
+            return 0
+        cutoff = duty_cutoff_at(game).replace(tzinfo=None)
+    locked = session.scalars(select(Assignment).where(
+        Assignment.game_id == game.id, Assignment.locked_at.is_not(None),
+    ).execution_options(populate_existing=True)).all()
+    released = 0
+    for assignment in locked:
+        if cutoff is not None and assignment.locked_at >= cutoff:
+            continue
+        assignment.locked_at = None
+        _audit_assignment(session, assignment, "unlock", None, "system")
+        released += 1
+    return released

@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from nuligahelper.db.models import DayBlock, Game
 from nuligahelper.db.people import get_or_create_team
 from nuligahelper.db.day_blocks import reconcile_day_blocks
-from nuligahelper.db.locks import enforce_due_duty_locks
+from nuligahelper.db.locks import enforce_due_duty_locks, release_unbound_game_locks
 
 
 @dataclass
@@ -59,6 +59,9 @@ def sync_games(session: Session, scraped: list[dict], season_year: int) -> SyncE
     - Existing games get their scraped fields updated; date/time changes and
       newly missing referees ("§77") are reported via the returned events.
     - Games no longer present in the scrape stay untouched but are logged.
+    - Saved duty locks of every stored game of the season are released when the
+      game's current date no longer justifies them (later not-yet-due or open
+      date), including games moved before this rule existed.
 
     `scraped` items must be dicts with keys:
     day, date, time, hall, game_nr, ak, home, guest, score
@@ -137,6 +140,11 @@ def sync_games(session: Session, scraped: list[dict], season_year: int) -> SyncE
             GameEvent(game.id, game.game_nr, game.ak or "")
         )
         logging.warning(f"Game {game.game_nr} not contained in online plan anymore")
+
+    session.flush()
+    released = sum(release_unbound_game_locks(session, game) for game in existing.values())
+    if released:
+        logging.info(f"Released {released} duty locks of postponed or undated games")
 
     # Teams mirror the scraped age classes ("ak") so they are always available
     for ak in sorted({rec["ak"] for rec in scraped if rec["ak"]}):
