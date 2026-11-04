@@ -254,7 +254,7 @@ Eine Ersatzperson für den Verkauf bei Erwachsenen muss zusammen mit der verblei
 
 Besetzte Dienste werden am Vortag um 09:00 Uhr deutscher Ortszeit fest, offene Ersatzsuchen enden. Das gilt auch ohne zugestellte Erinnerung. Ein für Samstag angesetzter Dienst wird also am Freitag um 09:00 Uhr fest; es gibt keine Frist von 24 Stunden vor Spielbeginn.
 
-**Kurzfristiger Ausfall nach der Sperre:** Informiere umgehend die Vereinsorganisation direkt. Im Webservice gibt es dafür keine Freigabe oder Wechselmöglichkeit. Die gespeicherte Verantwortung bleibt bestehen. Auch eine spätere Spielverschiebung hebt eine bereits bestehende Sperre nicht automatisch auf.
+**Kurzfristiger Ausfall nach der Sperre:** Informiere umgehend die Vereinsorganisation direkt. Im Webservice gibt es dafür keine Freigabe oder Wechselmöglichkeit. Die gespeicherte Verantwortung bleibt bestehen. **Spielverschiebung:** Wird ein Spiel auf einen späteren Tag verlegt oder steht vorerst ohne festen Termin im Spielplan, hebt der nächste tägliche Spielplanabgleich die Sperre seiner Spieldienste auf. Du bleibst eingeteilt und verantwortlich; eine durch die Sperre beendete Ersatzsuche startest du bei Bedarf neu. Am Vortag des neuen Termins um 09:00 Uhr wird der Dienst wieder fest. Wird ein Spiel vorverlegt, bleibt eine bestehende Sperre bestehen. Tagesdienste bleiben beim jeweiligen Datum und behalten ihre Sperre.
 
 ## 11 Vorbereitung und Aufräumen übernehmen
 

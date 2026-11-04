@@ -261,7 +261,7 @@ Eine Ersatzperson für den Verkauf bei Erwachsenen muss zusammen mit der verblei
 
 Besetzte Dienste werden am Vortag um 09:00 Uhr deutscher Ortszeit fest, offene Ersatzsuchen enden. Das gilt auch ohne zugestellte Erinnerung. Ein für Samstag angesetzter Dienst wird also am Freitag um 09:00 Uhr fest; es gibt keine Frist von 24 Stunden vor Spielbeginn.
 
-**Kurzfristiger Ausfall nach der Sperre:** Informiere umgehend deine Mannschaftsverantwortlichen oder die Vereinsorganisation direkt. Im Webservice gibt es dafür keine Freigabe und keinen Admin-Schalter zum Wechseln. Die gespeicherte Verantwortung bleibt bestehen. Auch eine spätere Spielverschiebung hebt eine bereits bestehende Sperre nicht automatisch auf.
+**Kurzfristiger Ausfall nach der Sperre:** Informiere umgehend deine Mannschaftsverantwortlichen oder die Vereinsorganisation direkt. Im Webservice gibt es dafür keine Freigabe und keinen Admin-Schalter zum Wechseln. Die gespeicherte Verantwortung bleibt bestehen. **Spielverschiebung:** Wird ein Spiel auf einen späteren Tag verlegt oder steht vorerst ohne festen Termin im Spielplan, hebt der nächste tägliche Spielplanabgleich die Sperre seiner Spieldienste auf. Du bleibst eingeteilt und verantwortlich; eine durch die Sperre beendete Ersatzsuche startest du bei Bedarf neu. Am Vortag des neuen Termins um 09:00 Uhr wird der Dienst wieder fest. Wird ein Spiel vorverlegt, bleibt eine bestehende Sperre bestehen. Tagesdienste bleiben beim jeweiligen Datum und behalten ihre Sperre.
 
 ## 11 Vorbereitung und Aufräumen übernehmen
 
@@ -472,7 +472,7 @@ Das **Änderungsprotokoll** ist nur für Admins sichtbar. Es hilft nachzuvollzie
 | Ziel | Gespeicherte Beschreibung des Spiels oder Tagesblocks. |
 | Dienst | Damalige Aufgabenbezeichnung und Platznummer. |
 
-Häufige Aktionsnamen sind **claim** für eine Zusage, **request_open** für eine Ersatzsuche, **request_close** für deren Beendigung, **takeover** für eine Übernahme und **lock** für eine Sperre. **release** betrifft eine zulässige Freigabe, etwa eines nicht mehr angebotenen Altdienstes; es bedeutet keine allgemeine Freigabemöglichkeit. **Durch Migration entfernt** kennzeichnet eine historische Entfernung bei einer ausdrücklich vorgesehenen Datenumstellung.
+Häufige Aktionsnamen sind **claim** für eine Zusage, **request_open** für eine Ersatzsuche, **request_close** für deren Beendigung, **takeover** für eine Übernahme **lock** für eine Sperre und **unlock** für die automatische Aufhebung einer Sperre, weil das Spiel auf einen späteren Tag verlegt wurde oder keinen festen Termin mehr hat. **release** betrifft eine zulässige Freigabe, etwa eines nicht mehr angebotenen Altdienstes; es bedeutet keine allgemeine Freigabemöglichkeit. **Durch Migration entfernt** kennzeichnet eine historische Entfernung bei einer ausdrücklich vorgesehenen Datenumstellung.
 
 Die Einträge sind unveränderliche Nachweise und keine Rückgängig-Funktion. Historische Aufgabenbezeichnungen bleiben wörtlich erhalten und können von heutigen Bezeichnungen abweichen. Das Protokoll ist auf Dienstzuweisungen ausgerichtet und keine vollständige Liste aller Profil- und Verwaltungsänderungen. Das reine Öffnen einer Karte oder das Abbrechen einer Zusage erzeugt keine erfolgreiche Einteilung.
 

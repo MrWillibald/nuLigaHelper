@@ -253,7 +253,11 @@ tests/run_tests.sh                            # whole suite, must stay green
   The fixed cutoff applies even if cron is missed or no reminder can be delivered.
   Use the shared aware `db.duty_now()` clock (effective date from
   `common.effective_today()`), recheck inside every writer after serialization and
-  retries, and retain any saved lock after game date/category changes. Due lock
+  retries, and retain any saved lock after category changes or a move to an earlier
+  or already due date. Exception: on every sync, `db.release_unbound_game_locks()`
+  releases saved game-duty locks whose game date is open/unparseable or a later date
+  without a saved or due cutoff (also repairing games moved before this rule), with a
+  system `unlock` audit; helpers stay assigned and day blocks are unaffected. Due lock
   persistence records the season/date marker, closes open requests and audits first
   locks idempotently; `db.lock_due_duties()` runs as an explicit preflight transaction
   before schedule/API mutations and reminder dispatch, never a hidden commit of

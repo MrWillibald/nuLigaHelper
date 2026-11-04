@@ -57,6 +57,7 @@ FACADE_NAMES = """
     membership_label membership_team_ids membership_team_names membership_teams
     missing_slots offered_positions person_label person_teams position_label
     reactivate_person reconcile_day_blocks register_person relationship
+    release_unbound_game_locks
     release_block_slot release_slot replace_person_teams request_block_replacement
     request_replacement required_positions resolve_db_path role_label
     schedule_date_visible schedule_visibility_boundary select selectinload sessionmaker

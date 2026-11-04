@@ -191,6 +191,7 @@ from nuligahelper.db.locks import (
     enforce_due_duty_locks,
     lock_due_duties,
     lock_day_before_batch,
+    release_unbound_game_locks,
 )
 from nuligahelper.db.duties import (
     _replacement_change,

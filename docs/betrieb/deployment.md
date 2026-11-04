@@ -40,6 +40,29 @@ the host in this order:
 A follow-up release removes the shims; deploy it only after every host runs the
 updated units and deploy command.
 
+### One-time transition: unlocking postponed games
+
+From the release that introduces `unlock` audit entries, each daily synchronization
+releases saved game-duty locks whose game date no longer justifies them: games moved to
+a later date whose day-before cutoff has not passed, and games with an open or
+unparseable date. Games that were postponed **before** this release still carry their
+old locks; no migration or extra command is needed for them:
+
+1. Deploy and activate the release as described below. There is no schema revision.
+2. The first daily run after the timers resume (section 3, `resume-timers --catchup
+   run` or the next scheduled 09:00 run) repairs those games inside its sync
+   transaction. Helpers stay assigned, closed replacement requests stay closed and
+   no message is sent because of the unlock itself.
+3. Afterwards, open the audit page (filtered by **Ziel** for a known postponed game if
+   needed) and check that the new `unlock` entries concern only postponed or undated
+   games of the current season, each with the system actor and the unchanged helper.
+   Games whose current date is already due keep their locks. The daily job journal
+   also logs the number of released locks.
+
+Rolling back to the previous release keeps the released locks cleared; that release
+locks the duties again at the new date's cutoff. Restore the pre-activation snapshot
+only if the release must be undone completely.
+
 Keep `/etc/nuligahelper/web.env`, site configuration, secrets, and the database
 outside every release. The deploy command reads the approved paths from its
 private configuration. Never use an in-place `git pull`, run `python -m nuligahelper.cli init`
