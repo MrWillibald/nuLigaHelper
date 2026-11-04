@@ -23,6 +23,7 @@ from flask import (
 from nuligahelper import common
 from nuligahelper import db
 
+from nuligahelper.web.challenges import _account_notifier
 from nuligahelper.web.context import _assignment_unavailable_response, _conflict_response, api_error, get_session, Registry
 from nuligahelper.web.formatting import parse_date
 from nuligahelper.web.schedule import api_block_candidates, api_game_candidates
@@ -252,6 +253,50 @@ def api_block_assignment_release():
                    assignment=duty_state(block, block.assignment_for_slot(slot)))
 
 
+def _notify_reopened(person, container, role) -> bool:
+    """A delivery problem must not undo a saved reopening; the admin is warned instead."""
+    try:
+        return _account_notifier().notify_duty_reopened(person, container, role) > 0
+    except Exception as exc:
+        logging.warning("Duty reopen notification failed: %s", type(exc).__name__)
+        return False
+
+
+def reopen_duty(is_block: bool):
+    if is_block:
+        data, session_db, container, slot, error = _block_assignment_request()
+        role = None
+    else:
+        data, session_db, container, role, slot, error = _assignment_request()
+    if error is not None:
+        return error
+    if g.tier != "admin":
+        return api_error("Nur Admins können einen Dienst auf offen setzen.", 403)
+    try:
+        expected_id = int(data.get("expected_person_id"))
+    except (TypeError, ValueError):
+        return api_error("Die erwartete Person fehlt.")
+    try:
+        if is_block:
+            person = db.reopen_block_slot(session_db, container, slot, expected_id, g.viewer, g.tier)
+        else:
+            person = db.reopen_slot(session_db, container, role, slot, expected_id, g.viewer, g.tier)
+        session_db.commit()
+    except db.SlotConflictError as exc:
+        session_db.rollback()
+        return _conflict_response(exc)
+    except db.AssignmentTemporarilyUnavailableError as exc:
+        session_db.rollback()
+        return _assignment_unavailable_response(exc)
+    except ValueError as exc:
+        session_db.rollback()
+        return api_error(str(exc))
+    notified = _notify_reopened(person, container, role)
+    extra = {"block_id": container.id, "block": block_view(container)} if is_block else {
+        "staffing": db.staffing_status(container)}
+    return jsonify(ok=True, notified=notified, assignment=duty_state(container, None), **extra)
+
+
 def replacement_change(is_block: bool, takeover: bool, cancel: bool = False):
     if is_block:
         data, session_db, container, slot, error = _block_assignment_request()
@@ -312,6 +357,16 @@ def api_assignment_cancel_replacement():
     return replacement_change(False, False, cancel=True)
 
 
+@routes.post("/api/assignment/reopen")
+def api_assignment_reopen():
+    return reopen_duty(False)
+
+
+@routes.post("/api/block-assignment/reopen")
+def api_block_assignment_reopen():
+    return reopen_duty(True)
+
+
 @routes.post("/api/assignment/takeover")
 def api_assignment_takeover():
     return replacement_change(False, True)
@@ -361,7 +416,9 @@ def assignment_form():
             (False, "request-replacement"): api_assignment_request_replacement,
             (False, "cancel-replacement"): api_assignment_cancel_replacement,
             (False, "release"): api_assignment_release,
+            (False, "reopen"): api_assignment_reopen,
             (True, "claim"): api_block_assignment_claim,
+            (True, "reopen"): api_block_assignment_reopen,
             (True, "takeover"): api_block_takeover,
             (True, "request-replacement"): api_block_request_replacement,
             (True, "cancel-replacement"): api_block_cancel_replacement,
@@ -374,6 +431,12 @@ def assignment_form():
         result = response.get_json()
         if not result.get("ok"):
             return render_template("message.html", message=result.get("error", "Dienst konnte nicht gespeichert werden.")), response.status_code
+        if action == "reopen":
+            if result.get("notified"):
+                flash("Dienst auf offen gesetzt. Die Person wurde benachrichtigt.", "success")
+            else:
+                flash("Dienst auf offen gesetzt. Die Person konnte nicht benachrichtigt werden; bitte informiere sie persönlich.", "warning")
+            return redirect(url_for("schedule"))
         flash("Ersatz gesucht. Die bisherige Person bleibt verantwortlich." if action == "request-replacement"
               else "Ersatzsuche beendet. Die Einteilung bleibt verbindlich." if action == "cancel-replacement"
               else "Bestehender Dienst freigegeben." if action == "release" else "Verbindliche Einteilung gespeichert.", "success")
@@ -389,14 +452,17 @@ def assignment_form():
         return api_error("Dieser Dienst wird nicht angeboten.", 403)
     people = [p for p in payload["people"] if p["id"] in state["candidate_ids"]
               and p["id"] != state["occupant_id"]]
-    confirming = request.method == "POST"
+    reopening = request.method == "POST" and action == "reopen"
+    if reopening and not state["can_reopen"]:
+        return api_error("Nur Admins können einen Dienst auf offen setzen.", 403)
+    confirming = request.method == "POST" and not reopening
     selected = next((p for p in people if str(p["id"]) == values.get("person_id")), None)
     if confirming and selected is None:
         return api_error("Diese Person kann nicht eingeteilt werden.")
     target = {"block_id" if is_block else "game_id": target_id, "slot": slot}
     if not is_block:
         target["role"] = role
-    if confirming:
+    if confirming or reopening:
         # Preserve the selection page's CAS expectations, not refreshed values.
         target.update(expected_person_id=values.get("expected_person_id", ""),
                       expected_request_token=values.get("expected_request_token", ""))
@@ -404,7 +470,7 @@ def assignment_form():
         target.update(expected_person_id=state["occupant_id"] or "",
                       expected_request_token=state["replacement_token"] or "")
     return render_template("assignment_form.html", target=target, state=state, people=people,
-                           selected=selected, confirming=confirming,
+                           selected=selected, confirming=confirming, reopening=reopening,
                            action="takeover" if state["occupant_id"] else "claim",
                            label=db.block_slot_label(container, slot) if is_block else db.position_label(role, slot),
                            date=container.date)

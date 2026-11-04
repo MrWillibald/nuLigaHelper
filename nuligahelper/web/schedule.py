@@ -133,6 +133,8 @@ def api_block_candidates(block_id: int):
     allowed, used_ids = {}, set()
     for slot in range(db.block_capacity(block)):
         assignment = block.assignment_for_slot(slot)
+        if assignment is None and not db.block_date_valid(block.date):
+            continue
         scope = block_slot_scope(block, assignment.person if assignment else None)
         state = duty_state(block, assignment)
         can_request = not state["locked"] and may_request_block(block, assignment)

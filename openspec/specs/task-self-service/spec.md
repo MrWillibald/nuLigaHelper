@@ -105,7 +105,7 @@ An MV SHALL retain authority to confirm claims for active members of the respons
 
 ### Requirement: Admins assign anyone
 
-An admin SHALL retain roster-wide authority to confirm empty-slot claims and manage unlocked replacement requests and takeovers for active persons, subject to the same binding, current-state, eligibility and cutoff rules. Admin status SHALL NOT permit ordinary release of an offered commitment or any occupied-assignment change after lock.
+An admin SHALL retain roster-wide authority to confirm empty-slot claims and manage unlocked replacement requests and takeovers for active persons, subject to the same binding, current-state, eligibility and cutoff rules. Admin status SHALL NOT permit ordinary release of an offered commitment or any occupied-assignment change after lock, other than the explicit administrator reopening of a duty.
 
 #### Scenario: Admin reassigns a task
 
@@ -114,7 +114,7 @@ An admin SHALL retain roster-wide authority to confirm empty-slot claims and man
 
 #### Scenario: Admin cannot override a lock
 
-- **WHEN** an admin attempts to replace or release a locked occupied duty
+- **WHEN** an admin attempts an ordinary release, replacement request or takeover of a locked occupied duty
 - **THEN** the change is refused and the responsible helper remains recorded
 
 ### Requirement: Existing assignment rules apply to every tier
@@ -221,7 +221,7 @@ For a free age-restricted game slot, selectable candidates SHALL be limited to c
 
 ### Requirement: Self-service is limited to games that are still ahead
 
-Members and MVs SHALL remain unable to claim or change past-game assignments. Empty offered current/future positions SHALL remain claimable after cutoff, with successful claims immediately locked. The former admin correction permission SHALL NOT authorize changes to locked occupied assignments, including past ones. Destructive account, game, date or block maintenance SHALL be refused when it would cancel a binding commitment; it SHALL NOT grant an ordinary historical correction or staffing override.
+Members and MVs SHALL remain unable to claim or change past-game assignments. Empty offered current/future positions SHALL remain claimable after cutoff, with successful claims immediately locked. The former admin correction permission SHALL NOT authorize changes to locked occupied assignments, including past ones. Destructive account, game, date or block maintenance SHALL be refused when it would cancel a binding commitment, except removal of block duties of a cancelled home-game date by synchronization; it SHALL NOT grant an ordinary historical correction or staffing override.
 
 #### Scenario: Member claims a past game
 
@@ -321,7 +321,7 @@ in another container on the same date.
 
 ### Requirement: Kasse replaces the per-game Unterstützung task
 
-The current per-game role named Unterstützung SHALL be named Kasse. It SHALL remain assignable, auditable, included in assigned-person statistics and included in helper notifications when occupied. It SHALL also carry the additional ordering/security duties of the rejected second Ordner while Ordner remains a separate required singleton. Kasse SHALL be offered and required only for adult games. Youth and unknown-category games SHALL not offer new Kasse claims. Retained Kasse assignments SHALL stay visible under existing rights, remain in personal statistics and helper reminders, and SHALL not affect required progress, open duties or MV follow-up. They SHALL offer existing authorized release-only retirement before the fixed cutoff, SHALL refuse ordinary release after cutoff and SHALL never offer a new claim, replacement request or takeover. Destructive account and game/date/block maintenance that would cancel a binding commitment SHALL be refused atomically. No optional game duties SHALL be offered.
+The current per-game role named Unterstützung SHALL be named Kasse. It SHALL remain assignable, auditable, included in assigned-person statistics and included in helper notifications when occupied. It SHALL also carry the additional ordering/security duties of the rejected second Ordner while Ordner remains a separate required singleton. Kasse SHALL be offered and required only for adult games. Youth and unknown-category games SHALL not offer new Kasse claims. Retained Kasse assignments SHALL stay visible under existing rights, remain in personal statistics and helper reminders, and SHALL not affect required progress, open duties or MV follow-up. They SHALL offer existing authorized release-only retirement before the fixed cutoff, SHALL refuse ordinary release after cutoff and SHALL never offer a new claim, replacement request or takeover. Destructive account and game/date/block maintenance that would cancel a binding commitment SHALL be refused atomically, except removal of block duties of a cancelled home-game date by synchronization. No optional game duties SHALL be offered.
 
 The migration SHALL preserve every current Unterstützung assignment's game, person and position under Kasse. It SHALL retain historical audit snapshots with the role text recorded at the time. The newly introduced Reinigung positions SHALL not receive those migrated assignments.
 
@@ -470,7 +470,7 @@ An authorized request before cutoff SHALL mark an offered occupied duty `Ersatz 
 
 ### Requirement: Day-before reminder locks occupied duties
 
-At the authoritative day-before reminder boundary, every occupied game and day-block duty SHALL become locked and any outstanding replacement request SHALL close with the original helper retained. Weekly reminders SHALL NOT lock. After lock the web assignment service SHALL refuse occupied-duty replacement requests, releases, takeovers and changes for every tier without an admin override. Empty offered positions SHALL remain claimable within existing date/eligibility rights and successful late claims SHALL be immediately locked. The authoritative cutoff SHALL be 09:00 Europe/Berlin on the day before the duty, independently of the reminder job or delivery. Assignment writes SHALL recheck the aware local clock inside serialization and after retries, consult saved locks and persist due dated cutoff/lock/request-closure transitions idempotently. A missing marker, stale page, missed job, contactless helper, failed delivery or restart SHALL NOT postpone the deadline. Reminder batches SHALL persist due transitions before dispatch without advancing the deadline on an early call. Locked state SHALL remain visible on authoritative reads even before cron persists its marker.
+At the authoritative day-before reminder boundary, every occupied game and day-block duty SHALL become locked and any outstanding replacement request SHALL close with the original helper retained. Weekly reminders SHALL NOT lock. After lock the web assignment service SHALL refuse occupied-duty replacement requests, releases, takeovers and changes for every tier without an admin override; only the explicit administrator reopening of a duty is exempt. Empty offered positions SHALL remain claimable within existing date/eligibility rights and successful late claims SHALL be immediately locked. The authoritative cutoff SHALL be 09:00 Europe/Berlin on the day before the duty, independently of the reminder job or delivery. Assignment writes SHALL recheck the aware local clock inside serialization and after retries, consult saved locks and persist due dated cutoff/lock/request-closure transitions idempotently. A missing marker, stale page, missed job, contactless helper, failed delivery or restart SHALL NOT postpone the deadline. Reminder batches SHALL persist due transitions before dispatch without advancing the deadline on an early call. Locked state SHALL remain visible on authoritative reads even before cron persists its marker.
 
 #### Scenario: Weekly reminder
 
@@ -506,7 +506,7 @@ At the authoritative day-before reminder boundary, every occupied game and day-b
 
 #### Scenario: No in-service post-lock replacement
 
-- **WHEN** any tier requests a change to an occupied locked duty
+- **WHEN** any tier requests a replacement, takeover, ordinary release or occupant change for an occupied locked duty
 - **THEN** the service refuses it and preserves the occupant
 - **AND** later replacement arrangements remain outside this service
 
@@ -594,3 +594,75 @@ On every synchronization, the system SHALL release saved locks of occupied dutie
 
 - **WHEN** a game with an open date later receives a valid date whose day-before cutoff is already due
 - **THEN** its occupied duties lock again under the existing day-before rules
+
+### Requirement: Administrators reopen occupied duties
+
+A current active administrator SHALL be able to switch an occupied game or day-block duty back to open after explicit confirmation, before or after its cutoff. The slot SHALL become empty, the helper SHALL no longer be responsible and any open replacement request SHALL close. Duties dated before today SHALL be refused; open or unparseable dates SHALL be permitted. No other tier or entry point SHALL offer this operation.
+
+#### Scenario: Admin reopens a duty before cutoff
+
+- **WHEN** an administrator confirms reopening an occupied game or day-block duty before its cutoff
+- **THEN** the slot is empty and the former helper is no longer assigned
+- **AND** the position counts as open in staffing and vacancy reporting
+
+#### Scenario: Admin reopens a locked duty
+
+- **WHEN** an administrator confirms reopening an occupied duty after its 09:00 day-before cutoff or with a saved lock
+- **THEN** the slot is empty despite the lock
+- **AND** every other occupied duty of that date keeps its lock
+
+#### Scenario: Open replacement request is closed
+
+- **WHEN** an administrator reopens a duty with an open replacement request
+- **THEN** the request closes in the same transaction as the slot change
+- **AND** a takeover naming that request is refused as stale
+
+#### Scenario: Reopened slot after cutoff is claimed
+
+- **WHEN** an eligible person confirms a claim of a slot reopened after the cutoff
+- **THEN** the claim succeeds under the existing late-claim rules
+- **AND** the new assignment is immediately locked
+
+#### Scenario: Past duty is refused
+
+- **WHEN** an administrator attempts to reopen a duty dated before today
+- **THEN** the request is refused and the assignment and its statistics remain unchanged
+
+#### Scenario: Duty of an open date is reopened
+
+- **WHEN** an administrator reopens a duty whose game or block has an open or unparseable date
+- **THEN** the slot becomes empty under the same rules as a current duty
+
+#### Scenario: Non-administrator attempts to reopen
+
+- **WHEN** a guest, member, MV or a former administrator submits a reopen request
+- **THEN** the request is refused and the assignment is unchanged
+- **AND** the schedule offers them no reopen control
+
+#### Scenario: Occupant changed in the meantime
+
+- **WHEN** a reopen request names an occupant who no longer holds the slot
+- **THEN** the request is refused with a conflict and the current occupant
+- **AND** no helper is removed or notified
+
+#### Scenario: Reopening leaves a non-youth sale group without an adult
+
+- **WHEN** an administrator reopens the seller who supplied adult coverage at a non-youth game
+- **THEN** the slot becomes empty and the remaining seller stays assigned
+- **AND** a later claim of the last sale slot must satisfy the collective adult rule
+
+### Requirement: Reopened helpers are notified
+
+After a reopening has been saved, the system SHALL notify the removed helper through the ordinary channel preference with German wording naming the duty and date. A failed or skipped notification SHALL NOT undo the reopening; the administrator SHALL be told that the helper was not reached. Refused or conflicting requests SHALL NOT send a notification.
+
+#### Scenario: Helper is notified
+
+- **WHEN** a reopening is saved for a helper with an e-mail address or phone number
+- **THEN** one message is sent, preferring e-mail and falling back to SMS
+
+#### Scenario: Helper cannot be reached
+
+- **WHEN** a reopening is saved and the helper has no contact or delivery fails
+- **THEN** the slot stays open
+- **AND** the administrator sees a warning to inform the helper personally
+- **AND** the warning contains no contact data

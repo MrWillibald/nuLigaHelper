@@ -177,6 +177,67 @@ def test_shift_notifications_reach_all_assigned_helpers_except_missing_contacts(
     assert n.notify_shifts(shifts) == 5
 
 
+def test_reopened_duty_notifies_the_removed_helper_with_exact_counts():
+    session, game, n, rec = _setup()
+    block = db.get_day_blocks(session, h.SEASON, GAME_DATE)[0]
+    mail = db.Person(name="Mail Helper", email="mail@test.invalid", phone="+4915100000001")
+    phone = db.Person(name="Phone Helper", phone="+4915100000002")
+    unreachable = db.Person(name="No Contact")
+    assert n.notify_duty_reopened(mail, game, db.ROLE_SECURITY) == 1
+    assert n.notify_duty_reopened(phone, block) == 1
+    assert n.notify_duty_reopened(unreachable, block) == 0, "a missing contact counts as skipped"
+    assert len(rec.mails) == 1 and len(rec.smss) == 1, "e-mail wins and SMS is the fallback"
+    assert db.role_label(db.ROLE_SECURITY) in rec.mails[0][2] and GAME_DATE in rec.mails[0][2]
+    assert block.label in rec.smss[0][1] and GAME_DATE in rec.smss[0][1]
+
+
+def test_cancelled_block_duties_notify_each_helper_with_exact_counts():
+    session, _game, n, rec = _setup()
+    mail = db.Person(name="Mail Helper", email="mail@test.invalid", phone="+4915100000001")
+    phone = db.Person(name="Phone Helper", phone="+4915100000002")
+    unreachable = db.Person(name="No Contact")
+    session.add_all([mail, phone, unreachable])
+    session.flush()
+    duties = [db.CancelledBlockDuty(person.id, "12.12.2026", "Aufräumen 2")
+              for person in (mail, phone, unreachable)]
+    duties.append(db.CancelledBlockDuty(999999, "12.12.2026", "Aufräumen 3"))
+    assert n.notify_cancelled_block_duties(duties) == 2, "no contact and a missing person are skipped"
+    assert len(rec.mails) == 1 and len(rec.smss) == 1, "e-mail wins and SMS is the fallback"
+    assert "Aufräumen 2" in rec.mails[0][2] and "12.12.2026" in rec.smss[0][1]
+
+
+def test_failed_cancellation_message_leaves_the_saved_removal_and_is_reported_to_the_job():
+    session, _game, n, _rec = _setup()
+    helper = db.Person(name="Cancelled Helper", email="cancelled@test.invalid",
+                       birth_date=h.ADULT_BIRTH_DATE, account_status=db.ACCOUNT_ACTIVE)
+    session.add(helper)
+    session.flush()
+    block = db.get_day_blocks(session, h.SEASON, GAME_DATE)[-1]
+    slot = next(index for index in range(db.block_capacity(block)) if block.assignment_for_slot(index) is None)
+    db.claim_block_slot(session, block, slot, None, helper)
+    session.commit()
+    moved = {**h.sample_games()[0], "date": "12.12.2026"}
+    events = db.sync_games(session, [moved], h.SEASON)
+    assert [d.person_id for d in events.cancelled_block_duties].count(helper.id) == 1
+    with patch.object(n, "send_Mail", side_effect=OSError("smtp down")):
+        try:
+            n.notify_cancelled_block_duties(events.cancelled_block_duties)
+        except OSError:
+            pass
+        else:
+            raise AssertionError("the daily job must see a failed notification stage")
+    session.rollback()
+    assert not helper.block_assignments, "the saved removal is not undone by a failed message"
+
+
+def test_reopened_duty_message_handles_spielfest_and_open_dates():
+    session, game, n, rec = _setup()
+    game.ak, game.home, game.guest, game.date = "SPF mini", "", "", ""
+    helper = db.Person(name="Open Date Helper", email="open@test.invalid")
+    assert n.notify_duty_reopened(helper, game, db.ROLE_SALE) == 1
+    assert "Spielfest SPF mini" in rec.all_text() and "am offen" in rec.all_text()
+
+
 def _add_cleaning_helpers(session, game):
     helpers = [
         db.Person(

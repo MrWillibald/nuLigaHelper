@@ -39,6 +39,7 @@ from nuligahelper.db.audit import _audit_assignment, _audit_block_assignment, _g
 from nuligahelper.db.staffing import claim_eligibility
 from nuligahelper.db.slots import (
     _authorize_duty_write,
+    _authorize_reopen,
     _lock_day_block,
     _lock_game,
     _slot_assignment,
@@ -174,6 +175,54 @@ def takeover_block_slot(session, block, slot, expected_person_id,
                         expected_request_token, person, actor=None, actor_tier="system"):
     return _replacement_change(session, block, None, slot, expected_person_id,
                                expected_request_token, person, actor, actor_tier)
+
+
+def _reopen_change(
+    session: Session, container: Game | DayBlock, role: str | None, slot: int,
+    expected_person_id: int, actor: Person | None, actor_tier: str,
+) -> Person:
+    """Empty one occupied slot for an admin, even after lock; caller commits."""
+    is_game = isinstance(container, Game)
+    if is_game:
+        _validate_slot(role, slot)
+    elif type(slot) is not int or slot < 0:
+        raise ValueError("Ungültiger Aufgabenplatz.")
+    container_id, actor_id = container.id, actor.id if actor else None
+    assignment_type = Assignment if is_game else BlockAssignment
+    audit = _audit_assignment if is_game else _audit_block_assignment
+    deadline = time.monotonic() + storage.SQLITE_TIMEOUT_SECONDS
+    while True:
+        try:
+            stored = (_lock_game(session, container_id) if is_game
+                      else _lock_day_block(session, container_id))
+            enforce_due_duty_locks(session, stored)
+            stored_actor = _authorize_reopen(session, stored, actor_id, actor_tier)
+            current = (_stored_slot(session, container_id, role, slot) if is_game
+                       else _stored_block_slot(session, container_id, slot))
+            current_id = current.person_id if current else None
+            if current is None or current_id != expected_person_id:
+                raise SlotConflictError(current_id)
+            person = current.person
+            if current.replacement_token is not None:
+                audit(session, current, "request_close", stored_actor, actor_tier)
+            audit(session, current, "reopen", stored_actor, actor_tier)
+            session.flush()
+            session.execute(
+                delete(assignment_type).where(assignment_type.id == current.id)
+                .execution_options(synchronize_session=False)
+            )
+            session.flush()
+            session.expire(stored, ["assignments"])
+            session.expire(person, ["assignments" if is_game else "block_assignments"])
+            session.expunge(current)
+            return person
+        except OperationalError as exc:
+            session.rollback()
+            _wait_for_assignment_retry(deadline, exc)
+
+
+def reopen_slot(session, game, role, slot, expected_person_id, actor=None, actor_tier="system"):
+    return _reopen_change(session, game, role, slot, expected_person_id, actor, actor_tier)
 
 
 def claim_slot(

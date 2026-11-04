@@ -146,6 +146,7 @@ from nuligahelper.db.games import (
     classify_game_category,
 )
 from nuligahelper.db.day_blocks import (
+    block_date_valid,
     get_day_blocks,
     _valid_cake_delivery_time,
     block_is_configured,
@@ -203,6 +204,7 @@ from nuligahelper.db.duties import (
     takeover_block_slot,
     claim_slot,
     release_slot,
+    reopen_slot,
     set_role_assignments,
     assign_person,
     unassign_person,
@@ -211,11 +213,13 @@ from nuligahelper.db.block_duties import (
     configure_cake_block,
     claim_block_slot,
     release_block_slot,
+    reopen_block_slot,
 )
 from nuligahelper.db.sync import (
     ShiftEvent,
     RefereeEvent,
     GameEvent,
+    CancelledBlockDuty,
     SyncEvents,
     sync_games,
 )

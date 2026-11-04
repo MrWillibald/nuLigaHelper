@@ -10,6 +10,8 @@ from lxml import html
 from tests import helpers as h
 from nuligahelper import db
 from nuligahelper import web as webapp
+from nuligahelper.web.statistics import build_statistics
+from tests.web.test_sticky_web import client_for, fixture as sticky_fixture
 
 
 previous_db = os.environ["NULIGAHELPER_DB"]
@@ -214,6 +216,57 @@ def test_audit_view_lists_block_target_filter_and_snapshot(_today):
     assert f'value="block-{IDS["future"]}"' in page
     assert "05.09.2026 | Vorbereitung" in page
     assert "Block Match" in page
+
+
+def _retained_block_fixture(phase):
+    directory, engine, site, ids = sticky_fixture()
+    with h.Session(engine) as session:
+        block = db.DayBlock(season_year=h.SEASON, date="offen", phase=phase)
+        session.add(block)
+        session.flush()
+        if phase == db.BLOCK_CAKE_DELIVERY:
+            block.cake_quantity, block.delivery_time = 2, "10:00"
+        session.add(db.BlockAssignment(block=block, person_id=ids["Original"], slot=0))
+        session.commit()
+        ids["retained"] = block.id
+    return directory, engine, site, ids
+
+
+@patch("nuligahelper.common.effective_today", return_value=date(2026, 10, 30))
+def test_retained_open_date_block_without_a_game_stays_reachable_and_offers_no_free_position(_today):
+    for phase in db.BLOCK_PHASES:
+        directory, engine, site, ids = _retained_block_fixture(phase)
+        try:
+            admin = client_for(site, ids, "Admin")
+            tree = html.fromstring(admin.get("/").get_data(as_text=True))
+            card = tree.xpath(f'//details[@id="block-{ids["retained"]}"]')
+            assert card, f"a retained {phase} block must stay visible without any game on its date"
+            assert "Ohne Datum" in tree.text_content()
+            assert "Original" in card[0].text_content()
+            assert card[0].xpath('.//button[@data-reopen and not(@hidden)]'), "admins can still empty it"
+            assert len(card[0].xpath('.//*[@data-block-slot]')) == 1, "free positions are not offered"
+            payload = admin.get(f'/api/blocks/{ids["retained"]}/candidates').json
+            assert list(payload["slots"]) == ["0"]
+            assert payload["block"]["vacancies"] == {}
+            filtered = admin.get(f'/?responsible_team=team-{ids["game"]}').get_data(as_text=True)
+            assert f'id="block-{ids["retained"]}"' not in filtered, "team filters show games only"
+        finally:
+            engine.dispose()
+            directory.cleanup()
+
+
+@patch("nuligahelper.common.effective_today", return_value=date(2026, 10, 30))
+def test_statistics_keep_personal_counts_but_report_no_gap_for_retained_blocks(_today):
+    directory, engine, site, ids = _retained_block_fixture(db.BLOCK_CAKE_DELIVERY)
+    try:
+        with h.Session(engine) as session:
+            data = build_statistics(session, h.SEASON, date(2026, 10, 30))
+        person = next(row for row in data["person_stats"] if row["name"] == "Original")
+        assert person["jobs"] == 1, "an occupied retained position keeps counting"
+        assert not [gap for gap in data["gaps"] if gap["date"] == "offen"]
+    finally:
+        engine.dispose()
+        directory.cleanup()
 
 
 if __name__ == "__main__":

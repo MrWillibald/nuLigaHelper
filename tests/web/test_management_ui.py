@@ -2,10 +2,16 @@
 
 import os
 import tempfile
+from datetime import date
+from unittest.mock import patch
+
+from lxml import html
 
 from tests import helpers as h
 from nuligahelper import db
 from nuligahelper import web as webapp
+from nuligahelper.web.formatting import audit_action_label
+from tests.web.test_sticky_web import audit_count, client_for, fixture as sticky_fixture, write
 
 
 _previous_db = os.environ["NULIGAHELPER_DB"]
@@ -317,6 +323,76 @@ def test_04_admin_has_all_management_cards_and_status_filtering():
     ).status_code == 302
     with h.Session(ENGINE) as session:
         assert db.membership_team_ids(session.get(db.Person, IDS["member"])) == ()
+
+
+def test_audit_action_labels_fall_back_to_the_stored_name():
+    assert audit_action_label("lock") == "Sperre"
+    assert audit_action_label("legacy_action") == "legacy_action"
+
+
+def _audit_rows(tree):
+    return [row.xpath('string(.//td[@data-label="Aktion"])').strip()
+            for row in tree.xpath('//tr[contains(@class,"audit-entry")]')]
+
+
+def _action_filter(tree):
+    return tree.xpath('//select[@name="action"]')[0]
+
+
+def test_audit_filters_by_action_alone_and_combined_with_target_and_person():
+    directory, engine, site, ids = sticky_fixture()
+    try:
+        with patch("nuligahelper.common.effective_today", return_value=date(2026, 10, 30)):
+            first, second = client_for(site, ids, "Original"), client_for(site, ids, "Replacement")
+            target = dict(game_id=ids["game"], role=db.ROLE_SECURITY, slot=0)
+            other = dict(game_id=ids["game"], role=db.ROLE_SALE, slot=0)
+            block = dict(block_id=ids[db.BLOCK_CLEANUP], slot=0)
+            assert write(first, "/api/assignment/claim", **target, expected_person_id=None).json["ok"]
+            assert write(second, "/api/assignment/claim", **other, expected_person_id=None).json["ok"]
+            assert write(first, "/api/block-assignment/claim", **block, expected_person_id=None).json["ok"]
+            assert write(first, "/api/assignment/request-replacement", **target,
+                         expected_person_id=ids["Original"]).json["ok"]
+            admin = client_for(site, ids, "Admin")
+        with h.Session(engine) as session:
+            session.add(db.AssignmentAudit(
+                actor_tier="system", action="legacy_action", role="Altdienst", slot=0, actor_name="System",
+                affected_person_name="Historisch", game_snapshot="historisch",
+            ))
+            session.commit()
+        before = audit_count(engine)
+
+        tree = html.fromstring(admin.get("/audit").get_data(as_text=True))
+        assert len(_audit_rows(tree)) == 5
+        select = _action_filter(tree)
+        options = dict(zip(select.xpath('./option/@value'), [o.text_content() for o in select.xpath('./option')]))
+        assert options == {"": "Alle Aktionen", "claim": "Zusage", "request_open": "Ersatzsuche geöffnet",
+                           "legacy_action": "legacy_action"}, "only stored actions are offered"
+        assert not select.xpath('./option[@selected]')
+
+        tree = html.fromstring(admin.get("/audit?action=claim").get_data(as_text=True))
+        assert _audit_rows(tree) == ["Zusage"] * 3
+        assert _action_filter(tree).xpath('./option[@selected]/@value') == ["claim"]
+
+        tree = html.fromstring(admin.get("/audit?action=legacy_action").get_data(as_text=True))
+        assert _audit_rows(tree) == ["legacy_action"], "an unlabelled action can be selected"
+
+        query = f'action=claim&target=game-{ids["game"]}&person_id={ids["Original"]}'
+        tree = html.fromstring(admin.get(f"/audit?{query}").get_data(as_text=True))
+        assert _audit_rows(tree) == ["Zusage"], "all three filters apply together"
+        assert len(_action_filter(tree).xpath('./option')) == 4, "the list ignores the other filters"
+
+        unknown = admin.get("/audit?action=nonsense")
+        tree = html.fromstring(unknown.get_data(as_text=True))
+        assert unknown.status_code == 200 and _audit_rows(tree) == []
+        assert "Keine Einträge." in tree.text_content()
+
+        for name in ("Original", "MV"):
+            assert client_for(site, ids, name).get("/audit?action=claim").status_code == 403
+        assert site.test_client().get("/audit?action=claim").status_code in {302, 401, 403}
+        assert audit_count(engine) == before, "filtering is read-only"
+    finally:
+        engine.dispose()
+        directory.cleanup()
 
 
 if __name__ == "__main__":

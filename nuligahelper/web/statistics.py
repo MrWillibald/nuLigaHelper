@@ -17,7 +17,7 @@ from nuligahelper import common
 from nuligahelper import db
 
 from nuligahelper.web.context import api_error, get_session, Registry
-from nuligahelper.web.formatting import ak_color, display_time, parse_date
+from nuligahelper.web.formatting import ak_color, audit_action_label, display_time, parse_date
 from nuligahelper.web.views import visibility_scope
 
 routes = Registry()
@@ -161,6 +161,9 @@ def audit():
     if g.tier != "admin":
         return api_error("Keine Berechtigung.", 403)
     query = get_session().query(db.AssignmentAudit)
+    actions = [row[0] for row in get_session().query(db.AssignmentAudit.action).distinct()]
+    actions.sort(key=lambda action: audit_action_label(action).casefold())
+    selected_action = (request.args.get("action") or "").strip()
     game_id = request.args.get("game_id", type=int)
     target = (request.args.get("target") or "").strip()
     person_id = request.args.get("person_id", type=int)
@@ -175,6 +178,8 @@ def audit():
             db.AssignmentAudit.actor_person_id == person_id,
             db.AssignmentAudit.affected_person_id == person_id,
         ))
+    if selected_action:
+        query = query.filter(db.AssignmentAudit.action == selected_action)
     entries = query.order_by(
         db.AssignmentAudit.changed_at.desc(), db.AssignmentAudit.id.desc()
     ).all()
@@ -195,6 +200,9 @@ def audit():
         selected_game=game_id,
         selected_target=target or (f"game-{game_id}" if game_id is not None else ""),
         selected_person=person_id,
+        actions=actions,
+        selected_action=selected_action,
+        audit_action_label=audit_action_label,
     )
 
 

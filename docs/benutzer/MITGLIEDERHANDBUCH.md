@@ -254,7 +254,7 @@ Eine Ersatzperson für den Verkauf bei Erwachsenen muss zusammen mit der verblei
 
 Besetzte Dienste werden am Vortag um 09:00 Uhr deutscher Ortszeit fest, offene Ersatzsuchen enden. Das gilt auch ohne zugestellte Erinnerung. Ein für Samstag angesetzter Dienst wird also am Freitag um 09:00 Uhr fest; es gibt keine Frist von 24 Stunden vor Spielbeginn.
 
-**Kurzfristiger Ausfall nach der Sperre:** Informiere umgehend die Vereinsorganisation direkt. Im Webservice gibt es dafür keine Freigabe oder Wechselmöglichkeit. Die gespeicherte Verantwortung bleibt bestehen. **Spielverschiebung:** Wird ein Spiel auf einen späteren Tag verlegt oder steht vorerst ohne festen Termin im Spielplan, hebt der nächste tägliche Spielplanabgleich die Sperre seiner Spieldienste auf. Du bleibst eingeteilt und verantwortlich; eine durch die Sperre beendete Ersatzsuche startest du bei Bedarf neu. Am Vortag des neuen Termins um 09:00 Uhr wird der Dienst wieder fest. Wird ein Spiel vorverlegt, bleibt eine bestehende Sperre bestehen. Tagesdienste bleiben beim jeweiligen Datum und behalten ihre Sperre.
+**Kurzfristiger Ausfall nach der Sperre:** Informiere umgehend die Vereinsorganisation direkt. Im Webservice kannst du den Dienst nicht freigeben oder wechseln. Die gespeicherte Verantwortung bleibt bestehen, bis die Vereinsorganisation den Dienst auf offen setzt; dann erhältst du eine Benachrichtigung. **Spielverschiebung:** Wird ein Spiel auf einen späteren Tag verlegt oder steht vorerst ohne festen Termin im Spielplan, hebt der nächste tägliche Spielplanabgleich die Sperre seiner Spieldienste auf. Du bleibst eingeteilt und verantwortlich; eine durch die Sperre beendete Ersatzsuche startest du bei Bedarf neu. Am Vortag des neuen Termins um 09:00 Uhr wird der Dienst wieder fest. Wird ein Spiel vorverlegt, bleibt eine bestehende Sperre bestehen. Tagesdienste bleiben beim jeweiligen Datum und behalten ihre Sperre, solange an diesem Tag noch ein Spiel stattfindet.
 
 ## 11 Vorbereitung und Aufräumen übernehmen
 
@@ -277,6 +277,8 @@ Vorbereitung und Aufräumen gehören zum gesamten Heimspieltag. Sie sind von den
 Pro Tagesblock darfst du genau einen Platz übernehmen. Du kannst unabhängig davon einen Spielauftrag und je einen Platz in anderen Tagesblöcken haben, zum Beispiel Vorbereitung und Kuchenlieferung. Prüfe, ob die Aufgaben zeitlich zusammenpassen.
 
 Für diese Tagesdienste gelten dieselben Regeln zur Ersatzsuche, Bestätigung und Sperre wie für Spielaufgaben. Du verwaltest dabei deine eigenen Tagesdienste über dein Konto.
+
+**Wenn ein Spieltag entfällt:** Tagesdienste gibt es nur für Tage mit festem Datum. Steht ein Spiel ohne festen Termin im Spielplan, erhält es keine Tagesdienste. Enthält der Spielplan für einen heutigen oder künftigen Tag kein Spiel mehr, entfallen Vorbereitung, Kuchenlieferung und Aufräumen dieses Tages, auch wenn sie bereits fest waren. Du bist dann nicht mehr eingeteilt und erhältst eine Benachrichtigung. Dein Dienst wandert nicht zum neuen Termin mit; trage dich dort bei Bedarf neu ein. Vergangene Tage bleiben unverändert. Ältere Tagesdienste ohne festes Datum bleiben sichtbar, solange jemand eingeteilt ist; freie Plätze lassen sich dort nicht mehr übernehmen.
 
 ## 12 Einen Kuchen zusagen
 
@@ -353,6 +355,7 @@ Der tägliche Hintergrundlauf aktualisiert den gespeicherten Spielplan und verar
 | Sieben Tage vor einem Spieltag | Der Tageslauf erinnert bereits eingeteilte Spiel- und Tageshelfer; für die Vorbereitung gibt es eine eigene Aufgabeninformation. |
 | Vortag eines Spieltags | Der Tageslauf erinnert eingeteilte Helfer an ihre Aufgaben. |
 | Erkannte Spielverschiebung | Eingeteilte Spielhelfer werden über die Änderung informiert. Prüfe den aktualisierten Termin und mögliche Auswirkungen auf deine Planung. |
+| Entfallener Spieltag | Enthält der Spielplan für einen heutigen oder künftigen Tag kein Spiel mehr, erfahren die eingeteilten Tageshelfer, dass ihr Dienst entfällt. |
 
 Gewöhnliche Benachrichtigungen bevorzugen eine hinterlegte E-Mail-Adresse. Nur wenn keine nutzbare E-Mail vorhanden ist, wird eine vorhandene Telefonnummer verwendet. Das ist eine Auswahl des Kontaktwegs und keine Zusicherung, dass eine fehlgeschlagene E-Mail automatisch noch einmal per SMS gesendet wird. Ohne beide Kontaktmöglichkeiten kann keine Nachricht zugestellt werden.
 
@@ -398,7 +401,7 @@ Warte kurz und lade den aktuellen Stand erneut. Prüfe bei einem Fehler nach **B
 
 ### Ich bin fest eingeteilt und falle kurzfristig aus
 
-Kontaktiere direkt die Vereinsorganisation. Im Webservice bleibt die Einteilung bestehen; eine Profiländerung kann die Sperre nicht aufheben. Eine ausbleibende Erinnerung verlängert die Wechselmöglichkeit nicht.
+Kontaktiere direkt die Vereinsorganisation. Im Webservice bleibt die Einteilung bestehen, bis die Vereinsorganisation den Dienst auf offen setzt; eine Profiländerung kann die Sperre nicht aufheben. Eine ausbleibende Erinnerung verlängert die Wechselmöglichkeit nicht.
 
 ### Meine Profildaten lassen sich nicht speichern
 

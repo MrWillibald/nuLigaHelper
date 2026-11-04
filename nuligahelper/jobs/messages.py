@@ -248,6 +248,18 @@ CATALOG: dict[str, MessageTemplate | FragmentTemplate] = {
         caller='Notifier._notify_blocks_early',
         legacy_keys=('mailBlockPreTask', 'textBlockPreTask'),
     ),
+    "block.date_cancelled": MessageTemplate(
+        ("recipient_name", "block_date", "task_label"),
+        'Dein Dienst {task_label} am {block_date} entfällt',
+        'Hallo {recipient_name},\n\nam {block_date} findet kein Heimspiel mehr statt. Dein '
+        'Dienst {task_label} entfällt deshalb und du bist dafür nicht mehr eingeteilt.\n\n'
+        'Falls an einem anderen Tag Hilfe gebraucht wird oder dieser Tag wieder dazukommt, '
+        'trage dich bitte im Heimspielplan neu ein.\n\nViele Grüße\nTuS Raubling Handball',
+        'Hallo {recipient_name}, am {block_date} findet kein Heimspiel mehr statt. Dein Dienst '
+        '{task_label} entfällt, du bist nicht mehr eingeteilt.\nVG TuS Handball',
+        purpose='Tells a helper that synchronization removed a day-block duty of a cancelled date.',
+        caller='Notifier.notify_cancelled_block_duties',
+    ),
     "block.preparation.weekly": MessageTemplate(
         _BLOCK_FIELDS + ("partner_names",),
         'Vorbereitung Dienst {task_label}',
@@ -285,6 +297,40 @@ CATALOG: dict[str, MessageTemplate | FragmentTemplate] = {
         shared_sms=True,
         purpose='Spielfest rescheduling notice without invented opponents.',
         caller='Notifier.notify_shifts',
+    ),
+    "duty.game.reopened": MessageTemplate(
+        _GAME_FIELDS,
+        'Dein Dienst {task_label} wurde aufgehoben',
+        'Hallo {recipient_name},\n\ndein Dienst {task_label} beim Spiel der {age_class} '
+        '{home_team_name} gegen {away_team_name} am {game_date} um {game_start_time} wurde '
+        'von der Vereinsorganisation auf offen gesetzt. Du bist für diesen Dienst nicht mehr '
+        'eingeteilt.\n\nViele Grüße\nTuS Raubling Handball',
+        'Hallo {recipient_name},\ndein Dienst {task_label} am {game_date} um {game_start_time} '
+        '({age_class}) wurde auf offen gesetzt. Du bist dafür nicht mehr eingeteilt.\n'
+        'VG TuS Handball',
+        purpose='Tells a helper that an administrator removed them from an ordinary-game duty.',
+        caller='Notifier.notify_duty_reopened',
+    ),
+    "duty.spielfest.reopened": MessageTemplate(
+        _SPF_FIELDS,
+        'Dein Dienst {task_label} wurde aufgehoben',
+        'Hallo {recipient_name},\n\ndein Dienst {task_label} beim Spielfest {age_class} am '
+        '{game_date} um {game_start_time} wurde von der Vereinsorganisation auf offen gesetzt. '
+        'Du bist für diesen Dienst nicht mehr eingeteilt.\n\nViele Grüße\nTuS Raubling Handball',
+        shared_sms=True,
+        purpose='Tells a helper that an administrator removed them from a Spielfest duty.',
+        caller='Notifier.notify_duty_reopened',
+    ),
+    "duty.block.reopened": MessageTemplate(
+        ("recipient_name", "block_date", "task_label"),
+        'Dein Dienst {task_label} wurde aufgehoben',
+        'Hallo {recipient_name},\n\ndein Dienst {task_label} am {block_date} wurde von der '
+        'Vereinsorganisation auf offen gesetzt. Du bist für diesen Dienst nicht mehr '
+        'eingeteilt.\n\nViele Grüße\nTuS Raubling Handball',
+        'Hallo {recipient_name},\ndein Dienst {task_label} am {block_date} wurde auf offen '
+        'gesetzt. Du bist dafür nicht mehr eingeteilt.\nVG TuS Handball',
+        purpose='Tells a helper that an administrator removed them from a day-block duty.',
+        caller='Notifier.notify_duty_reopened',
     ),
     "referee.missing": MessageTemplate(
         ("recipient_name", "age_class", "game_date", "game_start_time", "notified_person_names"),

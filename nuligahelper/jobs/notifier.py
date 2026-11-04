@@ -426,6 +426,47 @@ class Notifier:
                 cnt += self._dispatch_message(receiver, messages.render(key, **context), game.game_nr)
         return cnt
 
+    def notify_cancelled_block_duties(self, duties: list[db.CancelledBlockDuty]) -> int:
+        """Tell helpers that their day-block duty ended with its home-game date."""
+        count = 0
+        for duty in duties:
+            person = self.session.get(db.Person, duty.person_id)
+            if person is None:
+                continue
+            receiver = self._person_receiver(person, duty.task_label)
+            message = messages.render(
+                "block.date_cancelled", recipient_name=receiver["name"],
+                block_date=duty.block_date, task_label=duty.task_label,
+            )
+            count += self._dispatch_message(receiver, message, f"block-date:{duty.block_date}")
+        return count
+
+    def notify_duty_reopened(
+        self, person: db.Person, container: db.Game | db.DayBlock, role: str | None = None
+    ) -> int:
+        """Tell a helper that an admin removed them from a duty."""
+        date = container.date or "offen"
+        if isinstance(container, db.DayBlock):
+            task = self._block_reminder_task(container)
+            receiver = self._person_receiver(person, task)
+            message = messages.render(
+                "duty.block.reopened", recipient_name=receiver["name"],
+                block_date=date, task_label=task,
+            )
+            return self._dispatch_message(receiver, message, f"block:{container.id}")
+        task = db.role_label(role)
+        receiver = self._person_receiver(person, task)
+        context = {
+            "recipient_name": receiver["name"], "task_label": task, "game_date": date,
+            "age_class": container.ak or "", "game_start_time": container.time or "",
+        }
+        if db.is_spielfest(container):
+            key = "duty.spielfest.reopened"
+        else:
+            key = "duty.game.reopened"
+            context.update(home_team_name=container.home or "", away_team_name=container.guest or "")
+        return self._dispatch_message(receiver, messages.render(key, **context), container.game_nr)
+
     # ---------------------------------------------------------------------------
     # Missing referee notifications
     # ---------------------------------------------------------------------------

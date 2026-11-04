@@ -69,7 +69,7 @@
     {% set task_help_ids.index = task_help_ids.index + 1 %}
     <div class="assign-field" data-duty-label="{{ s.label }}" data-required="{{ 'true' if s.required else 'false' }}"{% if viewer %} data-occupant-id="{{ s.person_id or '' }}"
          data-replacement-token="{{ s.replacement_token or '' }}" data-locked="{{ 'true' if s.locked else 'false' }}"
-         data-seeking-replacement="{{ 'true' if s.seeking_replacement else 'false' }}" data-can-request-replacement="{{ 'true' if s.can_request_replacement else 'false' }}"
+         data-seeking-replacement="{{ 'true' if s.seeking_replacement else 'false' }}" data-can-request-replacement="{{ 'true' if s.can_request_replacement else 'false' }}" data-can-reopen="{{ 'true' if s.can_reopen else 'false' }}"
          data-release-only="{{ 'true' if s.retained else 'false' }}" data-late-claim-locked="{{ 'true' if s.late_claim_locked else 'false' }}"{% endif %}>
       {{ task_help(s, task_help_ids.index) }}
       {{ duty_state(s) }}
@@ -85,7 +85,8 @@
       </select>
       {% elif not s.person_name %}<strong>– offen –</strong>{% endif %}
       {% if viewer and (s.editable or s.can_request_replacement) and not s.retained and not s.locked %}<button class="btn btn-secondary duty-request" type="button" data-request-replacement data-game="{{ g.id }}" data-role="{{ s.role }}" data-slot="{{ s.slot }}"{% if not s.person_id or not s.can_request_replacement %} hidden{% endif %}>{% if s.seeking_replacement %}Ersatzsuche beenden{% else %}Ersatz suchen{% endif %}</button>{% endif %}
-      {% if viewer and (s.editable or s.can_request_replacement) %}<noscript><a href="{{ url_for('assignment_form', game_id=g.id, role=s.role, slot=s.slot) }}">Dienst bearbeiten</a></noscript>{% endif %}
+      {% if viewer_tier == 'admin' %}<button class="btn btn-secondary duty-request" type="button" data-reopen data-game="{{ g.id }}" data-role="{{ s.role }}" data-slot="{{ s.slot }}"{% if not s.can_reopen %} hidden{% endif %}>Auf offen setzen</button>{% endif %}
+      {% if viewer and (s.editable or s.can_request_replacement or s.can_reopen) %}<noscript><a href="{{ url_for('assignment_form', game_id=g.id, role=s.role, slot=s.slot) }}">Dienst bearbeiten</a></noscript>{% endif %}
     </div>
     {% endfor %}
   </div>
@@ -132,7 +133,7 @@
     {% set task_help_ids.index = task_help_ids.index + 1 %}
     <div class="assign-field" data-duty-label="{{ s.label }}"{% if viewer %} data-block-slot="{{ s.slot }}" data-occupant-id="{{ s.person_id or '' }}"
          data-replacement-token="{{ s.replacement_token or '' }}" data-locked="{{ 'true' if s.locked else 'false' }}"
-         data-seeking-replacement="{{ 'true' if s.seeking_replacement else 'false' }}" data-can-request-replacement="{{ 'true' if s.can_request_replacement else 'false' }}" data-late-claim-locked="{{ 'true' if s.late_claim_locked else 'false' }}"{% endif %}>
+         data-seeking-replacement="{{ 'true' if s.seeking_replacement else 'false' }}" data-can-request-replacement="{{ 'true' if s.can_request_replacement else 'false' }}" data-can-reopen="{{ 'true' if s.can_reopen else 'false' }}" data-late-claim-locked="{{ 'true' if s.late_claim_locked else 'false' }}"{% endif %}>
       {{ task_help(s, task_help_ids.index) }}
       {{ duty_state(s) }}
       {% if (s.editable or s.can_request_replacement) and not s.locked %}
@@ -143,7 +144,8 @@
       </select>
       {% elif not s.person_name %}<strong>– offen –</strong>{% endif %}
       {% if viewer and (s.editable or s.can_request_replacement) and not s.locked %}<button class="btn btn-secondary duty-request" type="button" data-request-replacement data-block="{{ b.id }}" data-slot="{{ s.slot }}"{% if not s.person_id or not s.can_request_replacement %} hidden{% endif %}>{% if s.seeking_replacement %}Ersatzsuche beenden{% else %}Ersatz suchen{% endif %}</button>{% endif %}
-      {% if viewer and (s.editable or s.can_request_replacement) %}<noscript><a href="{{ url_for('assignment_form', block_id=b.id, slot=s.slot) }}">Dienst bearbeiten</a></noscript>{% endif %}
+      {% if viewer_tier == 'admin' %}<button class="btn btn-secondary duty-request" type="button" data-reopen data-block="{{ b.id }}" data-slot="{{ s.slot }}"{% if not s.can_reopen %} hidden{% endif %}>Auf offen setzen</button>{% endif %}
+      {% if viewer and (s.editable or s.can_request_replacement or s.can_reopen) %}<noscript><a href="{{ url_for('assignment_form', block_id=b.id, slot=s.slot) }}">Dienst bearbeiten</a></noscript>{% endif %}
     </div>
     {% endfor %}
   </div>
@@ -304,12 +306,23 @@
 <dialog id="assignment-confirmation" class="assignment-confirmation" aria-labelledby="assignment-confirmation-title" aria-describedby="assignment-confirmation-context assignment-confirmation-notice">
   <h3 id="assignment-confirmation-title">Dienst verbindlich bestätigen</h3>
   <p id="assignment-confirmation-context" data-confirmation-context></p>
-  <p class="duty-state duty-state-locked" data-confirmation-late hidden>Die Frist am Vortag um 09:00 Uhr (Europe/Berlin) ist bereits erreicht. Diese Zusage ist sofort fest; eine Änderung im Webdienst ist danach ausgeschlossen.</p>
-  <p id="assignment-confirmation-notice">Mit der Bestätigung wird diese Einteilung verbindlich. Die eingeteilte Person bleibt verantwortlich, bis eine berechtigte und geeignete Person den Dienst übernimmt. Ersatz ist nur bis zum Vortag um 09:00 Uhr (Europe/Berlin) möglich. Ab diesem Zeitpunkt können besetzte Dienste im Webdienst weder freigegeben noch geändert werden. Wird ein dann noch freier Dienst übernommen, ist diese Zusage sofort fest. Die Frist gilt auch, wenn keine Erinnerung zugestellt wird.</p>
+  <p class="duty-state duty-state-locked" data-confirmation-late hidden>Die Frist am Vortag um 09:00 Uhr (Europe/Berlin) ist bereits erreicht. Diese Zusage ist sofort fest; Helfer und MVs können sie im Webdienst danach nicht mehr ändern.</p>
+  <p id="assignment-confirmation-notice">Mit der Bestätigung wird diese Einteilung verbindlich. Die eingeteilte Person bleibt verantwortlich, bis eine berechtigte und geeignete Person den Dienst übernimmt. Ersatz ist nur bis zum Vortag um 09:00 Uhr (Europe/Berlin) möglich. Ab diesem Zeitpunkt können Helfer und MVs besetzte Dienste im Webdienst weder freigeben noch ändern. Wird ein dann noch freier Dienst übernommen, ist diese Zusage sofort fest. Die Frist gilt auch, wenn keine Erinnerung zugestellt wird.</p>
   <div class="assignment-confirmation-actions">
     <button class="btn btn-secondary" type="button" data-confirmation-cancel autofocus>Abbrechen</button>
     <button class="btn btn-primary" type="button" data-confirmation-confirm>Bestätigen</button>
   </div>
 </dialog>
+{% if viewer_tier == 'admin' %}
+<dialog id="reopen-confirmation" class="assignment-confirmation" aria-labelledby="reopen-confirmation-title" aria-describedby="reopen-confirmation-context reopen-confirmation-notice">
+  <h3 id="reopen-confirmation-title">Dienst auf offen setzen</h3>
+  <p id="reopen-confirmation-context" data-confirmation-context></p>
+  <p id="reopen-confirmation-notice">Die Person verliert diesen Dienst und wird benachrichtigt. Das gilt auch für einen bereits festen Dienst. Der Platz ist danach frei.</p>
+  <div class="assignment-confirmation-actions">
+    <button class="btn btn-secondary" type="button" data-confirmation-cancel autofocus>Abbrechen</button>
+    <button class="btn btn-primary" type="button" data-confirmation-confirm>Bestätigen</button>
+  </div>
+</dialog>
+{% endif %}
 {% endif %}
 {% endblock %}

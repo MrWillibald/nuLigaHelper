@@ -22,6 +22,20 @@ SLOT_LABELS = [
     for slot in range(count)
 ]
 
+AUDIT_ACTION_LABELS = {
+    "claim": "Zusage",
+    "release": "Freigabe",
+    "request_open": "Ersatzsuche geöffnet",
+    "request_close": "Ersatzsuche beendet",
+    "takeover_out": "Übernahme abgegeben",
+    "takeover_in": "Übernahme angenommen",
+    "lock": "Sperre",
+    "unlock": "Sperre aufgehoben",
+    "migration_remove": "Durch Migration entfernt",
+    "reopen": "Auf offen gesetzt",
+    "date_remove": "Spieltag entfallen",
+}
+
 COUNTRY_CODES = [
     ("+49", "Deutschland (+49)"),
     ("+43", "Österreich (+43)"),
@@ -31,6 +45,11 @@ COUNTRY_CODES = [
     ("+420", "Tschechien (+420)"),
     ("custom", "Andere Ländervorwahl"),
 ]
+
+
+def audit_action_label(action: str) -> str:
+    """Historical actions without a label stay readable under their stored name."""
+    return AUDIT_ACTION_LABELS.get(action, action)
 
 
 def ak_color(ak: str | None) -> str:

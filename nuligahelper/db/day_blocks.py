@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
+from nuligahelper.db import age_eligibility
 from nuligahelper.db.roles import (
     BLOCK_CAKE_DELIVERY,
     BLOCK_CLEANUP,
@@ -27,6 +28,11 @@ from nuligahelper.db.games import get_games_on_date
 
 if TYPE_CHECKING:
     from nuligahelper.db.models import Game
+
+
+def block_date_valid(value: str | None) -> bool:
+    """Blocks belong to calendar dates; empty and placeholder values are open."""
+    return age_eligibility.parse_game_date(value) is not None
 
 
 def get_day_blocks(
@@ -124,9 +130,14 @@ def calculated_block_time(
 
 
 def reconcile_day_blocks(
-    session: Session, season_year: int, active_dates: set[str]
+    session: Session, season_year: int, active_dates: set[str],
+    retained_dates: frozenset[str] | set[str] = frozenset(),
 ) -> None:
-    """Ensure dated phases and remove only genuinely empty vanished blocks."""
+    """Ensure dated phases and remove only genuinely empty vanished blocks.
+
+    Occupied blocks of `retained_dates` stay; any other occupied vanished block
+    is refused, because only the caller may decide to cancel its duties.
+    """
     with session.no_autoflush:
         session.execute(update(DayBlock).where(DayBlock.season_year == season_year)
                         .values(id=DayBlock.id).execution_options(synchronize_session=False))
@@ -136,7 +147,8 @@ def reconcile_day_blocks(
     ).execution_options(populate_existing=True)))
     for block in existing:
         session.expire(block, ["assignments"])
-    if any(block.date not in active_dates and block.assignments for block in existing):
+    if any(block.date not in active_dates and block.date not in retained_dates
+           and block.assignments for block in existing):
         raise ValueError("Ein Heimspieltag mit verbindlichen Einteilungen kann nicht entfernt werden.")
     by_key = {(block.date, block.phase): block for block in existing}
     for block_date in sorted(active_dates):
@@ -147,7 +159,7 @@ def reconcile_day_blocks(
                 )
     session.flush()
     for block in existing:
-        if block.date in active_dates:
+        if block.date in active_dates or block.assignments:
             continue
         logging.info(
             "day_block_removed season_year=%s date=%s phase=%s removed_assignments=%s",

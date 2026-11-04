@@ -10,7 +10,7 @@ which game and when, so the club can answer after the fact why a task slot chang
 ### Requirement: Every assignment change is recorded
 
 The system SHALL record one entry for every change to a game or day-block task
-assignment, whether it was made by the person themselves, by an MV where permitted, by an admin or by permitted pre-cutoff obsolete-duty retirement. Replacement-request opening, authorized cancellation, successful-takeover closure and day-before closure, as well as first locking of an occupied assignment and release of a saved lock because its game was postponed to a later, not-yet-due date or its date became open or unparseable, SHALL be recorded as distinguishable lifecycle transitions even when the occupant does not change. A takeover SHALL record a linked before-and-after responsibility transfer atomically with the assignment and request closure; it SHALL NOT be recorded as an independently committed ordinary release followed by a claim. Repeated enforcement of an already saved lock SHALL NOT append duplicate transition entries. A postponement or open-date unlock SHALL be recorded once per released assignment with system origin and the unchanged responsible helper; it SHALL NOT be recorded as a release or claim.
+assignment, whether it was made by the person themselves, by an MV where permitted, by an admin or by permitted pre-cutoff obsolete-duty retirement. Replacement-request opening, authorized cancellation, successful-takeover closure and day-before closure, as well as first locking of an occupied assignment and release of a saved lock because its game was postponed to a later, not-yet-due date or its date became open or unparseable, SHALL be recorded as distinguishable lifecycle transitions even when the occupant does not change. A takeover SHALL record a linked before-and-after responsibility transfer atomically with the assignment and request closure; it SHALL NOT be recorded as an independently committed ordinary release followed by a claim. Repeated enforcement of an already saved lock SHALL NOT append duplicate transition entries. A postponement or open-date unlock SHALL be recorded once per released assignment with system origin and the unchanged responsible helper; it SHALL NOT be recorded as a release or claim. An administrator reopening SHALL be recorded once as a distinguishable `reopen` transition naming the administrator and the removed helper, atomically with the slot change and with closure of any open replacement request; it SHALL NOT be recorded as an ordinary release. Removal of a block assignment because its home-game date was cancelled SHALL be recorded once per assignment as a system `date_remove` transition naming the removed helper, atomically with the removal and with closure of any open replacement request.
 
 #### Scenario: Self-service claim recorded
 
@@ -25,7 +25,7 @@ assignment, whether it was made by the person themselves, by an MV where permitt
 
 #### Scenario: Destructive maintenance is refused
 
-- **WHEN** account deactivation, erroneous-record deletion or game/day/block removal would cancel a binding commitment
+- **WHEN** account deactivation, erroneous-record deletion or game removal would cancel a binding commitment
 - **THEN** the operation is refused atomically and retains person/container/assignment/request state
 - **AND** no audit claims that the commitment was removed
 
@@ -38,9 +38,10 @@ assignment, whether it was made by the person themselves, by an MV where permitt
 
 #### Scenario: Block removal recorded
 
-- **WHEN** synchronization would remove a block containing an assigned commitment
-- **THEN** removal is refused atomically with the block, occupant and request retained
-- **AND** no successful-removal audit is written; snapshots remain readable after any later legitimate empty-container removal
+- **WHEN** synchronization removes a block containing an assigned commitment because its home-game date was cancelled
+- **THEN** one system `date_remove` entry per assignment names the removed helper, block and position
+- **AND** an open replacement request adds one closure entry in the same transaction
+- **AND** snapshots remain readable after the block is gone
 
 #### Scenario: Refused change is not recorded as a change
 
@@ -73,6 +74,13 @@ assignment, whether it was made by the person themselves, by an MV where permitt
 - **AND** the entry does not claim that the assignment was released or reassigned
 - **AND** the same evidence is recorded when the first synchronization after this release repairs a game moved before it
 - **AND** a later re-lock at a valid date's cutoff is recorded as a new lock transition
+
+#### Scenario: Administrator reopening recorded
+
+- **WHEN** an administrator reopens an occupied game or day-block duty
+- **THEN** one `reopen` entry names the administrator as actor and the removed helper as affected person
+- **AND** an open replacement request adds one closure entry in the same transaction
+- **AND** a refused or conflicting reopen request appends no entry
 
 #### Scenario: Confirmation is cancelled
 
@@ -113,7 +121,7 @@ home-game date, preparation, cake-delivery or cleanup phase, displayed task name
 
 #### Scenario: Cake assignment history remains readable
 
-- **WHEN** a cake position is assigned and later an attempted occupied date removal is refused
+- **WHEN** a cake position is assigned and its date is later cancelled
 - **THEN** the audit identifies the dated cake-delivery block and original position
 - **AND** that description remains readable after the quantity changes or the block is deleted
 
@@ -212,3 +220,43 @@ entries in a readable form on both desktop and mobile screens. It SHALL remain r
 
 - **WHEN** a guest, a member or an MV requests the record
 - **THEN** access is refused
+
+### Requirement: Administrators filter the audit by action
+
+The audit page SHALL offer an `Aktion` filter listing every action present in the audit with a German label, plus `Alle Aktionen`. Selecting an action SHALL show only entries with that action, combined with the target and person filters. The filter SHALL be a read-only GET and SHALL remain administrator-only.
+
+#### Scenario: Filtering by one action
+
+- **WHEN** an administrator selects `Sperre` and submits the filter
+- **THEN** only entries with the stored action `lock` are listed
+- **AND** `Sperre` stays selected in the filter
+
+#### Scenario: Action combined with other filters
+
+- **WHEN** an administrator filters by an action together with a target and a person
+- **THEN** only entries matching all three filters are listed
+
+#### Scenario: Action list is independent of other filters
+
+- **WHEN** a target or person filter is active
+- **THEN** the `Aktion` list still offers every action stored in the audit
+
+#### Scenario: Historical action without a label
+
+- **WHEN** the audit contains an action without a German label
+- **THEN** the filter offers it under its stored name and it can be selected
+
+#### Scenario: Unknown action value
+
+- **WHEN** a request names an action that is not stored in the audit
+- **THEN** the page shows no entries and no error
+
+#### Scenario: Filter is reset
+
+- **WHEN** an administrator chooses `Zurücksetzen`
+- **THEN** all entries are listed and `Alle Aktionen` is selected
+
+#### Scenario: Non-administrator requests a filtered audit
+
+- **WHEN** a guest, member or MV opens the audit page with an action filter
+- **THEN** access is refused as for the unfiltered page

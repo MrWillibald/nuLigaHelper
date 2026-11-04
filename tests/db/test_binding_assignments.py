@@ -358,8 +358,142 @@ def test_deactivation_rechecks_saved_dates_instead_of_cached_past_containers():
         engine.dispose()
 
 
-if __name__ == "__main__":
-    h.run_all(dict(globals()))
+def _reopen_setup(session, game_id, people):
+    """Return the game, the admin actor and a helper holding the timekeeper duty."""
+    game, admin, helper = (session.get(db.Game, game_id), session.get(db.Person, people[0]),
+                           session.get(db.Person, people[1]))
+    db.claim_slot(session, game, db.ROLE_TIMEKEEPER, 0, None, helper)
+    session.commit()
+    return game, admin, helper
+
+
+def _reopen_audits(session):
+    return list(session.scalars(select(db.AssignmentAudit).where(db.AssignmentAudit.action == "reopen")))
+
+
+def test_admin_reopens_an_unlocked_duty_and_only_a_reopen_transition_is_recorded():
+    engine, game_id, people, _ = _seed()
+    with h.Session(engine) as session:
+        game, admin, helper = _reopen_setup(session, game_id, people)
+        removed = db.reopen_slot(session, game, db.ROLE_TIMEKEEPER, 0, helper.id, admin, "admin")
+        session.commit()
+        assert removed.id == helper.id, "the caller needs the removed helper for the notification"
+        assert not [a for a in game.assignments if a.role == db.ROLE_TIMEKEEPER]
+        assert db.missing_slots(game).get(db.ROLE_TIMEKEEPER), "a reopened slot counts as vacant"
+        assert not helper.assignments, "the helper must not keep a ghost assignment"
+        audit, = _reopen_audits(session)
+        assert (audit.actor_person_id, audit.affected_person_id, audit.actor_tier) == (admin.id, helper.id, "admin")
+        assert session.query(db.AssignmentAudit).filter_by(action="release").count() == 0, \
+            "reopening is not an ordinary release"
+    engine.dispose()
+
+
+def test_admin_reopens_a_locked_duty_and_other_locks_of_the_date_stay():
+    engine, game_id, people, _ = _seed()
+    with h.Session(engine) as session:
+        game, admin, helper = _reopen_setup(session, game_id, people)
+        other = session.get(db.Person, people[2])
+        db.claim_slot(session, game, db.ROLE_SECRETARY, 0, None, other)
+        session.commit()
+        with _at(2099, 12, 30):
+            db.reopen_slot(session, game, db.ROLE_TIMEKEEPER, 0, helper.id, admin, "admin")
+            session.commit()
+            kept, = game.assignments
+            assert kept.person_id == other.id and kept.locked_at is not None, "other duties keep their lock"
+            late = db.claim_slot(session, game, db.ROLE_TIMEKEEPER, 0, None, session.get(db.Person, people[3]))
+            session.commit()
+            assert late.locked_at is not None, "a late claim of a reopened slot locks immediately"
+            _refused(lambda: db.release_slot(session, game, db.ROLE_SECRETARY, 0, other.id, admin, "admin"),
+                     db.DutyLockedError)
+    engine.dispose()
+
+
+def test_reopening_closes_an_open_request_and_a_stale_takeover_is_refused():
+    engine, game_id, people, _ = _seed()
+    with h.Session(engine) as session:
+        game, admin, helper = _reopen_setup(session, game_id, people)
+        token = db.request_replacement(session, game, db.ROLE_TIMEKEEPER, 0, helper.id,
+                                       actor=helper, actor_tier="member").replacement_token
+        session.commit()
+        db.reopen_slot(session, game, db.ROLE_TIMEKEEPER, 0, helper.id, admin, "admin")
+        session.commit()
+        actions = [a.action for a in session.scalars(select(db.AssignmentAudit).order_by(db.AssignmentAudit.id))]
+        assert actions == ["claim", "request_open", "request_close", "reopen"]
+        incoming = session.get(db.Person, people[2])
+        _refused(lambda: db.takeover_slot(session, game, db.ROLE_TIMEKEEPER, 0, helper.id, token, incoming,
+                                          actor=incoming, actor_tier="member"), db.SlotConflictError)
+    engine.dispose()
+
+
+def test_reopening_refuses_past_duties_and_permits_today_and_open_dates():
+    engine, game_id, people, _ = _seed()
+    with h.Session(engine) as session:
+        game, admin, helper = _reopen_setup(session, game_id, people)
+        with patch("nuligahelper.common.effective_today", return_value=date(2100, 1, 1)):
+            _refused(lambda: db.reopen_slot(session, game, db.ROLE_TIMEKEEPER, 0, helper.id, admin, "admin"))
+        session.rollback()
+        assert [a.person_id for a in game.assignments] == [helper.id], "past work stays recorded"
+        assert not _reopen_audits(session)
+        with patch("nuligahelper.common.effective_today", return_value=date(2099, 12, 31)):
+            db.reopen_slot(session, game, db.ROLE_TIMEKEEPER, 0, helper.id, admin, "admin")
+        session.commit()
+        db.claim_slot(session, game, db.ROLE_SECRETARY, 0, None, helper)
+        game.date = "offen"
+        session.commit()
+        db.reopen_slot(session, game, db.ROLE_SECRETARY, 0, helper.id, admin, "admin")
+        session.commit()
+        assert not game.assignments
+    engine.dispose()
+
+
+def test_reopening_requires_a_current_admin():
+    engine, game_id, people, _ = _seed()
+    with h.Session(engine) as session:
+        game, admin, helper = _reopen_setup(session, game_id, people)
+        attempts = [(helper, "member"), (helper, "mv"), (helper, "admin"), (None, "system"), (None, "cli")]
+        for actor, tier in attempts:
+            _refused(lambda: db.reopen_slot(session, game, db.ROLE_TIMEKEEPER, 0, helper.id, actor, tier))
+            session.rollback()
+        admin.is_admin = False
+        session.commit()
+        _refused(lambda: db.reopen_slot(session, game, db.ROLE_TIMEKEEPER, 0, helper.id, admin, "admin"))
+        session.rollback()
+        assert [a.person_id for a in game.assignments] == [helper.id]
+        assert not _reopen_audits(session)
+    engine.dispose()
+
+
+def test_reopening_names_the_expected_occupant():
+    engine, game_id, people, _ = _seed()
+    with h.Session(engine) as session:
+        game, admin, helper = _reopen_setup(session, game_id, people)
+        _refused(lambda: db.reopen_slot(session, game, db.ROLE_TIMEKEEPER, 0, people[2], admin, "admin"),
+                 db.SlotConflictError)
+        _refused(lambda: db.reopen_slot(session, game, db.ROLE_SECRETARY, 0, helper.id, admin, "admin"),
+                 db.SlotConflictError)
+        session.rollback()
+        assert [a.person_id for a in game.assignments] == [helper.id], "a stale page cannot remove a newer helper"
+        assert not _reopen_audits(session)
+    engine.dispose()
+
+
+def test_reopening_the_sole_adult_seller_keeps_the_collective_rule_for_the_last_slot():
+    engine, game_id, people, _ = _seed()
+    with h.Session(engine) as session:
+        game, admin, adult = (session.get(db.Game, game_id), session.get(db.Person, people[0]),
+                              session.get(db.Person, people[1]))
+        minor = session.get(db.Person, people[2])
+        other_minor = session.get(db.Person, people[3])
+        minor.birth_date = other_minor.birth_date = date(2095, 1, 1)
+        db.claim_slot(session, game, db.ROLE_SALE, 0, None, adult)
+        db.claim_slot(session, game, db.ROLE_SALE, 1, None, minor)
+        session.commit()
+        db.reopen_slot(session, game, db.ROLE_SALE, 0, adult.id, admin, "admin")
+        session.commit()
+        assert [a.person_id for a in game.assignments] == [minor.id]
+        _refused(lambda: db.claim_slot(session, game, db.ROLE_SALE, 0, None, other_minor))
+    engine.dispose()
+
 
 
 # ---------------------------------------------------------------
@@ -586,3 +720,7 @@ def test_first_sync_after_release_repairs_games_moved_before_it():
             select(db.AssignmentAudit).where(db.AssignmentAudit.id <= old_audits[-1][0])
             .order_by(db.AssignmentAudit.id))] == old_audits, "historical audits stay unchanged"
     engine.dispose()
+
+
+if __name__ == "__main__":
+    h.run_all(dict(globals()))

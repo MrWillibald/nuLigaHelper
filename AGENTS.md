@@ -94,7 +94,8 @@ SQLite file. Two independent entry points share the `db` package:
 
 - **`jobs/daily.py`** – daily job (systemd timer in production): `scraper.fetch_home_games()`
   returns plain dicts (`scraper.GAME_FIELDS`) → `db.sync_games()` merges them and returns
-  `SyncEvents` (`new_games`, `shifts`, `referee_alerts`, `removed_games`) → `Notifier`
+  `SyncEvents` (`new_games`, `shifts`, `referee_alerts`, `removed_games`,
+  `cancelled_block_duties`) → `Notifier`
   turns those events plus date-window checks into mails/SMS → a validated snapshot is
   published to Dropbox. All timing goes through `common.effective_today()`.
 - **`web/`** – `create_app()` factory with one session per request
@@ -108,7 +109,7 @@ SQLite file. Two independent entry points share the `db` package:
   statistics (`/statistik`), persons (`/personen`), duty form (`/dienst`), audit
   (`/audit`), login/registration and legal pages. Mutations go through small JSON APIs
   called from `web/static/app.js`: `/api/assignment/{claim,release,request-replacement,
-  cancel-replacement,takeover}`, the same set under `/api/block-assignment/`,
+  cancel-replacement,takeover,reopen}`, the same set under `/api/block-assignment/`,
   `/api/games/<id>/team`, `/api/teams/<id>/mv`, `/api/blocks/<id>/cake-settings` and the
   candidate reads `/api/games/<id>/candidates` and `/api/blocks/<id>/candidates`.
   `build_schedule()` pre-computes per-game view dicts (including greyed-out options and
@@ -223,6 +224,14 @@ tests/run_tests.sh                            # whole suite, must stay green
   and kept in sync by `static/app.js`); enforced by the unique constraint
   `(game_id, person_id)` on `assignments`, by `db.assign_person` (raises
   `ValueError`) and by the web/CLI entry points.
+- **Administrators may reopen a duty.** `db.reopen_slot()` / `db.reopen_block_slot()`
+  (`/api/assignment/reopen`, `/api/block-assignment/reopen`, `Auf offen setzen`) empty an
+  occupied duty, also after lock, and are the only exception to the two rules below.
+  They require a current active admin (never system/CLI callers), an explicit confirmation
+  and the expected occupant, and refuse duties dated before `common.effective_today()`;
+  open dates are permitted. An open request closes in the same transaction and a `reopen`
+  audit names admin and helper. The helper is notified after commit; a failed or skipped
+  message keeps the slot open and the response reports `notified: false`.
 - **Assignments are binding; ordinary withdrawal never creates a vacancy.** Before
   any UI claim or takeover, show German `Bestätigen` / `Abbrechen` confirmation
   explaining continued responsibility and the day-before lock. Selection, opening,
@@ -268,10 +277,20 @@ tests/run_tests.sh                            # whole suite, must stay green
   reopen commitments; weekly reminders do not lock. Empty offered duties stay
   claimable within existing rights and lock immediately when claimed after cutoff.
   No tier, including admin or CLI, may release, request replacement for or change a
-  locked occupied duty. There is no 24-hour window, automatic return, periodic
+  locked occupied duty, apart from the explicit admin reopening above. There is no 24-hour window, automatic return, periodic
   rollback or replacement broadcast. A saved cutoff is not proof of delivery.
 
-- **Day blocks are dated, team-independent containers.** Preparation and cleanup
+- **Day blocks are dated, team-independent containers and need a calendar date**
+  (`db.block_date_valid()`). Games with an empty, placeholder or unparseable date get no
+  blocks. `sync_games()` removes empty vanished blocks. Occupied open-date blocks are
+  retained without failing the sync, stay visible even without a game, offer no claims,
+  cake settings or vacancies, and are removed by the first sync after they are empty.
+  When a scrape has no game for today or a later date, sync removes that date's blocks
+  and assignments, including locked duties and open requests, with a system `date_remove`
+  audit per assignment; `SyncEvents.cancelled_block_duties` carries the snapshots for the
+  helper notification, which is not retried. Past dates keep occupied blocks. Removed
+  duties never follow a game or return with the date. An empty scrape for a season with
+  stored games fails before any change. Preparation and cleanup
   keep three positions each; cake delivery uses `db.block_capacity()` and starts
   with quantity/time unset. Only admins configure cakes through
   `db.configure_cake_block()`, with expected saved settings. Zero is an explicit
@@ -318,11 +337,11 @@ tests/run_tests.sh                            # whole suite, must stay green
   removed; retain account status, MV appointments, assignments and request state.
   Past-only deactivation remains possible and preserves past duties/history.
   Erroneous-record deletion refuses any assigned commitment, including past ones;
-  deleting an empty mistaken record preserves historical audit snapshots. Removal of
-  an occupied game/day/block, including the last game of a date, is refused without
-  partial destructive synchronization or successful-removal audits/notifications.
+  deleting an empty mistaken record preserves historical audit snapshots. Stored games
+  are never removed by sync. The only exception is removal of block duties of a cancelled
+  home-game date, described under day blocks.
   These restrictions apply before and after cutoff and have no administrator/system
-  override. Successful deactivation without blocking duties clears MV appointments;
+  override; admin reopening is a separate per-duty operation, not destructive maintenance. Successful deactivation without blocking duties clears MV appointments;
   reactivation restores no historically released assignment.
 
 - Current task names use `db.role_label()` / `db.position_label()`. **Ordner** retains

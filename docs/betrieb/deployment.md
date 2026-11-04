@@ -40,6 +40,26 @@ the host in this order:
 A follow-up release removes the shims; deploy it only after every host runs the
 updated units and deploy command.
 
+### One-time transition: day blocks need a calendar date
+
+From the release that introduces `date_remove` audit entries, day blocks exist for
+calendar dates only and a date without any scraped game no longer fails the sync. There
+is no schema revision or extra command:
+
+1. Deploy and activate the release as described below.
+2. The first daily run removes empty blocks with a placeholder date such as "offen" and
+   logs each removal. Occupied ones stay visible on the schedule under **Ohne Datum**
+   until an admin empties them with **Auf offen setzen**.
+3. If an earlier sync was failing because a date had lost its last game while its blocks
+   were occupied, that run now removes those duties and notifies the helpers. Before
+   resuming timers, check that the nuLiga plan is complete, because a partial plan cancels
+   the duties of the dates it misses. An empty plan fails without changes.
+4. Afterwards, filter the audit page for the affected date and check the `date_remove`
+   entries; they name everyone affected if a helper must be told by hand after a failed
+   notification stage.
+
+Rolling back keeps removed duties removed; only a database backup restores them.
+
 ### One-time transition: unlocking postponed games
 
 From the release that introduces `unlock` audit entries, each daily synchronization
