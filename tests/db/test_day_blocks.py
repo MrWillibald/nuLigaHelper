@@ -171,5 +171,65 @@ def test_database_constraints_reject_duplicate_block_occupants():
             session.flush()
 
 
+def test_admin_reopens_a_locked_block_duty_and_a_late_claim_locks_immediately():
+    engine = h.make_engine()
+    with h.Session(engine) as session:
+        db.sync_games(session, [_one_game()], h.SEASON)
+        block = db.get_day_blocks(session, h.SEASON, "05.09.2026")[0]
+        admin = db.Person(name="Admin", birth_date=h.ADULT_BIRTH_DATE,
+                          account_status=db.ACCOUNT_ACTIVE, is_admin=True)
+        helper, late = (db.Person(name=name, birth_date=h.ADULT_BIRTH_DATE, account_status=db.ACCOUNT_ACTIVE)
+                        for name in ("Block helper", "Late helper"))
+        session.add_all([admin, helper, late])
+        session.flush()
+        db.claim_block_slot(session, block, 0, None, helper)
+        session.commit()
+        cutoff = db.duty_cutoff_at("05.09.2026")
+        today = cutoff.date()
+        with (patch("nuligahelper.db.clock.duty_now", return_value=cutoff),
+              patch("nuligahelper.common.effective_today", return_value=today)):
+            with pytest.raises(ValueError):
+                db.release_block_slot(session, block, 0, helper.id, admin, "admin")
+            session.rollback()
+            removed = db.reopen_block_slot(session, block, 0, helper.id, admin, "admin")
+            session.commit()
+            assert removed.id == helper.id and block.assignment_for_slot(0) is None
+            assert not helper.block_assignments
+            audit = session.query(db.AssignmentAudit).filter_by(action="reopen").one()
+            assert (audit.actor_person_id, audit.affected_person_id) == (admin.id, helper.id)
+            assert audit.block_id == block.id and audit.game_id is None
+            claimed = db.claim_block_slot(session, block, 0, None, late)
+            session.commit()
+            assert claimed.locked_at is not None, "a late claim of a reopened slot locks immediately"
+
+
+def test_block_reopening_refuses_other_tiers_past_dates_and_stale_occupants():
+    engine = h.make_engine()
+    with h.Session(engine) as session:
+        db.sync_games(session, [_one_game()], h.SEASON)
+        block = db.get_day_blocks(session, h.SEASON, "05.09.2026")[0]
+        admin = db.Person(name="Admin", birth_date=h.ADULT_BIRTH_DATE,
+                          account_status=db.ACCOUNT_ACTIVE, is_admin=True)
+        helper = db.Person(name="Block helper", birth_date=h.ADULT_BIRTH_DATE, account_status=db.ACCOUNT_ACTIVE)
+        session.add_all([admin, helper])
+        session.flush()
+        db.claim_block_slot(session, block, 0, None, helper)
+        session.commit()
+        before = datetime(2026, 9, 1).date()
+        with patch("nuligahelper.common.effective_today", return_value=before):
+            with pytest.raises(ValueError, match="Nur Admins"):
+                db.reopen_block_slot(session, block, 0, helper.id, helper, "member")
+            session.rollback()
+            with pytest.raises(db.SlotConflictError):
+                db.reopen_block_slot(session, block, 0, admin.id, admin, "admin")
+            session.rollback()
+        with patch("nuligahelper.common.effective_today", return_value=datetime(2026, 9, 6).date()):
+            with pytest.raises(ValueError, match="Vergangene"):
+                db.reopen_block_slot(session, block, 0, helper.id, admin, "admin")
+            session.rollback()
+        assert block.assignment_for_slot(0).person_id == helper.id
+        assert session.query(db.AssignmentAudit).filter_by(action="reopen").count() == 0
+
+
 if __name__ == "__main__":
     h.run_all(dict(globals()))

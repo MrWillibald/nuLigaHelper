@@ -426,6 +426,32 @@ class Notifier:
                 cnt += self._dispatch_message(receiver, messages.render(key, **context), game.game_nr)
         return cnt
 
+    def notify_duty_reopened(
+        self, person: db.Person, container: db.Game | db.DayBlock, role: str | None = None
+    ) -> int:
+        """Tell a helper that an admin removed them from a duty."""
+        date = container.date or "offen"
+        if isinstance(container, db.DayBlock):
+            task = self._block_reminder_task(container)
+            receiver = self._person_receiver(person, task)
+            message = messages.render(
+                "duty.block.reopened", recipient_name=receiver["name"],
+                block_date=date, task_label=task,
+            )
+            return self._dispatch_message(receiver, message, f"block:{container.id}")
+        task = db.role_label(role)
+        receiver = self._person_receiver(person, task)
+        context = {
+            "recipient_name": receiver["name"], "task_label": task, "game_date": date,
+            "age_class": container.ak or "", "game_start_time": container.time or "",
+        }
+        if db.is_spielfest(container):
+            key = "duty.spielfest.reopened"
+        else:
+            key = "duty.game.reopened"
+            context.update(home_team_name=container.home or "", away_team_name=container.guest or "")
+        return self._dispatch_message(receiver, messages.render(key, **context), container.game_nr)
+
     # ---------------------------------------------------------------------------
     # Missing referee notifications
     # ---------------------------------------------------------------------------

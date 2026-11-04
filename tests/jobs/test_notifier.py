@@ -177,6 +177,28 @@ def test_shift_notifications_reach_all_assigned_helpers_except_missing_contacts(
     assert n.notify_shifts(shifts) == 5
 
 
+def test_reopened_duty_notifies_the_removed_helper_with_exact_counts():
+    session, game, n, rec = _setup()
+    block = db.get_day_blocks(session, h.SEASON, GAME_DATE)[0]
+    mail = db.Person(name="Mail Helper", email="mail@test.invalid", phone="+4915100000001")
+    phone = db.Person(name="Phone Helper", phone="+4915100000002")
+    unreachable = db.Person(name="No Contact")
+    assert n.notify_duty_reopened(mail, game, db.ROLE_SECURITY) == 1
+    assert n.notify_duty_reopened(phone, block) == 1
+    assert n.notify_duty_reopened(unreachable, block) == 0, "a missing contact counts as skipped"
+    assert len(rec.mails) == 1 and len(rec.smss) == 1, "e-mail wins and SMS is the fallback"
+    assert db.role_label(db.ROLE_SECURITY) in rec.mails[0][2] and GAME_DATE in rec.mails[0][2]
+    assert block.label in rec.smss[0][1] and GAME_DATE in rec.smss[0][1]
+
+
+def test_reopened_duty_message_handles_spielfest_and_open_dates():
+    session, game, n, rec = _setup()
+    game.ak, game.home, game.guest, game.date = "SPF mini", "", "", ""
+    helper = db.Person(name="Open Date Helper", email="open@test.invalid")
+    assert n.notify_duty_reopened(helper, game, db.ROLE_SALE) == 1
+    assert "Spielfest SPF mini" in rec.all_text() and "am offen" in rec.all_text()
+
+
 def _add_cleaning_helpers(session, game):
     helpers = [
         db.Person(

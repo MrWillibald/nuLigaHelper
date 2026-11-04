@@ -203,6 +203,7 @@ from nuligahelper.db.duties import (
     takeover_block_slot,
     claim_slot,
     release_slot,
+    reopen_slot,
     set_role_assignments,
     assign_person,
     unassign_person,
@@ -211,6 +212,7 @@ from nuligahelper.db.block_duties import (
     configure_cake_block,
     claim_block_slot,
     release_block_slot,
+    reopen_block_slot,
 )
 from nuligahelper.db.sync import (
     ShiftEvent,

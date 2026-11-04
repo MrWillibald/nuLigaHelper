@@ -1,6 +1,7 @@
 """Cake configuration, variable capacity and retained dated assignment history."""
 
-from datetime import datetime
+from datetime import date, datetime
+from unittest.mock import patch
 
 import pytest
 from sqlalchemy.exc import IntegrityError
@@ -165,6 +166,26 @@ def test_metadata_checks_reject_negative_quantity_and_non_cake_settings():
             with pytest.raises(IntegrityError):
                 session.flush()
             session.rollback()
+
+
+def test_cake_reduction_succeeds_only_after_the_position_was_reopened():
+    with h.Session(h.make_engine()) as session:
+        _data, _preparation, cake, _cleanup, people = _setup(session)
+        admin = people[4]
+        admin.is_admin = True
+        for person in people:
+            person.account_status = db.ACCOUNT_ACTIVE
+        db.configure_cake_block(session, cake, "10:00", 2, None, None)
+        db.claim_block_slot(session, cake, 1, None, people[0])
+        session.commit()
+        with pytest.raises(ValueError):
+            db.configure_cake_block(session, cake, "10:00", 1, "10:00", 2)
+        session.rollback()
+        with patch("nuligahelper.common.effective_today", return_value=date(2026, 10, 3)):
+            db.reopen_block_slot(session, cake, 1, people[0].id, admin, "admin")
+        db.configure_cake_block(session, cake, "10:00", 1, "10:00", 2)
+        session.commit()
+        assert db.block_capacity(cake) == 1
 
 
 if __name__ == "__main__":

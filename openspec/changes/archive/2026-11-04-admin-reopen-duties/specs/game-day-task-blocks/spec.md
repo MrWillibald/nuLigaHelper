@@ -1,0 +1,118 @@
+# Spec Delta
+
+## MODIFIED Requirements
+
+### Requirement: Administrators configure the cake delivery
+
+Administrators SHALL be able to set the delivery time and requested cake quantity for each cake block. The quantity SHALL be a nonnegative whole number and SHALL define one volunteer position per requested cake. Zero SHALL mean no cakes are requested. A new block SHALL begin without a guessed time or quantity, SHALL show that setup is needed and SHALL not accept claims until both settings are configured. Other viewers SHALL not change those settings. Invalid time or quantity SHALL be refused without changing saved settings.
+
+Each occupied cake position SHALL represent one cake contribution by its volunteer. Increasing quantity SHALL add empty positions while preserving existing positions. A decrease that would remove an occupied position SHALL be refused; configuration SHALL NOT release, replace or silently retire its helper. No force-release or cake-duty retirement path SHALL be added to make such a decrease possible, apart from the general explicit administrator reopening of a duty; remaining positions SHALL not be silently renumbered. A stale configuration update SHALL be refused with the current settings rather than overwrite a newer edit. Claims SHALL be validated against the currently saved capacity.
+
+#### Scenario: One volunteer per cake
+
+- **WHEN** an administrator configures four requested cakes and a valid delivery time
+- **THEN** the block provides exactly four numbered volunteer positions
+- **AND** each occupied position represents one cake
+
+#### Scenario: Delivery time is independent of games
+
+- **WHEN** game start times change after cake delivery has been configured
+- **THEN** the administrator's saved delivery time remains unchanged
+
+#### Scenario: Increase requested quantity
+
+- **WHEN** the requested quantity increases from two to four
+- **THEN** the first two positions and any occupants remain unchanged
+- **AND** two empty positions are added
+
+#### Scenario: Occupied position would be removed
+
+- **WHEN** quantity is reduced below the number of an occupied position
+- **THEN** the update is refused with an explanation
+- **AND** settings, positions and assignments remain unchanged
+
+#### Scenario: Reduction removes only empty positions
+
+- **WHEN** an administrator reduces quantity and every removed position is genuinely empty
+- **THEN** the reduction succeeds subject to current-settings validation
+- **AND** retained positions keep their occupants and original position numbers
+- **AND** no occupied assignment is released or compacted
+
+#### Scenario: Explicit release permits reduction
+
+- **WHEN** an administrator attempts an ordinary release of an occupied cake position to permit a quantity reduction
+- **THEN** the release does not bypass binding protection and the reduction remains refused while the position is occupied
+- **AND** only the explicit, confirmed administrator reopening of that position can empty it, after which the reduction is evaluated as for any empty position
+
+#### Scenario: Explicitly request no cakes
+
+- **WHEN** an administrator configures zero cakes and no assignments would be removed
+- **THEN** the block shows that no cakes are requested
+- **AND** it exposes no volunteer positions
+- **AND** this state is distinct from unknown quantity
+
+#### Scenario: Configuration update races a claim
+
+- **WHEN** a claim targets a position removed by a committed quantity reduction
+- **THEN** the claim is refused without creating an assignment or a successful-change audit
+
+#### Scenario: Stale administrator edit
+
+- **WHEN** an administrator submits settings based on an older saved configuration
+- **THEN** the stale update is refused
+- **AND** the response identifies the current settings
+
+#### Scenario: Non-admin changes settings
+
+- **WHEN** a member or MV attempts to change delivery time or cake quantity
+- **THEN** the update is refused on the server
+
+#### Scenario: Replacement request does not permit reduction
+
+- **WHEN** a quantity decrease would remove a cake position whose helper is seeking a replacement
+- **THEN** the decrease is refused because that position remains occupied
+- **AND** the helper, responsibility and request remain saved
+
+#### Scenario: Locked cake occupant cannot be removed by configuration
+
+- **WHEN** an administrator decreases quantity to remove an occupied locked cake position
+- **THEN** the update is refused without releasing the helper or providing an administrator override
+
+#### Scenario: Empty capacity is added after the boundary
+
+- **WHEN** an administrator increases cake quantity after the day-before boundary without changing an existing occupant
+- **THEN** any new configured empty positions follow the ordinary empty-duty claim rules
+- **AND** a successful late claim is immediately locked
+
+### Requirement: All day-block duties share the binding assignment lifecycle
+
+Preparation, cleanup and every configured cake-delivery position SHALL use the same pre-save binding confirmation, replacement-request, atomic takeover and day-before occupied-duty lock rules as offered game duties. The lock boundary SHALL be 09:00 Europe/Berlin on the day before the duty independently of the reminder job or delivery. The complete dated cohort, including empty positions, SHALL use durable idempotent cutoff state and authoritative clock checks after acquiring write access and after retries; a missing cron marker SHALL NOT postpone locking. The current helper SHALL remain assigned and responsible while `Ersatz gesucht` is open. A valid authorized takeover before the boundary SHALL transfer the occupied position atomically, preserving per-block one-duty rules, current capacity, compare-and-swap conflicts and audit history. No new individual age rule SHALL be introduced for a day block. Block authority SHALL remain team independent: ordinary members and MVs act only for themselves, while an administrator acts within existing person-assignment rights without a lock override, apart from the explicit administrator reopening of a duty. A truly empty configured position SHALL remain claimable after the boundary and SHALL become immediately locked when successfully claimed.
+
+#### Scenario: Preparation helper seeks a replacement
+
+- **WHEN** an assigned helper opens a permitted replacement request for a preparation position before the boundary
+- **THEN** the helper stays assigned and responsible while `Ersatz gesucht` is visible
+- **AND** no empty position or second preparation duty for that person is created
+
+#### Scenario: Cleanup takeover conflicts
+
+- **WHEN** a cleanup takeover names an occupant or replacement request that has already changed
+- **THEN** the takeover is refused with the current authoritative state
+- **AND** the stored helper and successful-transfer audit remain unchanged
+
+#### Scenario: Cake duty is genuinely empty after the boundary
+
+- **WHEN** an authorized person confirms a claim of a configured empty cake position after the boundary
+- **THEN** the claim is accepted if all current block rules permit it
+- **AND** the new responsible helper is immediately locked without an in-service replacement or release flow
+
+#### Scenario: Administrator attempts a locked cleanup change
+
+- **WHEN** an administrator attempts an ordinary release, replacement or occupant change of an occupied cleanup position after the boundary
+- **THEN** the web service refuses the change and retains its responsible helper
+
+#### Scenario: Reminder transport fails after batch transition
+
+- **WHEN** the actual day-before batch has committed its dated cutoff and subsequent block reminder delivery fails or is skipped
+- **THEN** every committed occupied-duty lock remains in force, including contactless helpers
+- **AND** existing failure or skip reporting does not reopen a request or release responsibility

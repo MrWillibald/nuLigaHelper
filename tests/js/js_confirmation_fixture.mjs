@@ -1,6 +1,6 @@
 // A native-dialog boundary for DOM regressions. Confirmation is opt-in so tests
 // can inspect pending promises before any assignment request is allowed.
-export function installConfirmation(document, { autoConfirm = false } = {}) {
+export function installConfirmation(document, { autoConfirm = false, id = "assignment-confirmation" } = {}) {
   class Control {
     constructor() { this.listeners = new Map(); this.hidden = false; this.textContent = ""; }
     addEventListener(name, callback) {
@@ -31,6 +31,6 @@ export function installConfirmation(document, { autoConfirm = false } = {}) {
   dialog.close = () => { dialog.open = false; dialog.dispatch("close"); };
   dialog.getBoundingClientRect = () => ({ top: 50, right: 400, bottom: 500, left: 50 });
   const originalGet = document.getElementById?.bind(document);
-  document.getElementById = (id) => id === "assignment-confirmation" ? dialog : originalGet?.(id);
+  document.getElementById = (name) => name === id ? dialog : originalGet?.(name);
   return { dialog, confirm, cancel, context, late };
 }

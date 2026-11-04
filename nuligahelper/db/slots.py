@@ -104,6 +104,21 @@ def _authorize_duty_write(
     raise ValueError("Keine Berechtigung für diese Einteilung.")
 
 
+def _authorize_reopen(
+    session: Session, container: Game | DayBlock, actor_id: int | None, actor_tier: str,
+) -> Person:
+    """Reopening bypasses the lock, so only a current admin may do it, never for the past."""
+    actor = session.get(Person, actor_id, populate_existing=True) if actor_id else None
+    if (actor_tier != "admin" or actor is None or not actor.is_admin
+            or actor.account_status != ACCOUNT_ACTIVE):
+        raise ValueError("Nur Admins können einen Dienst auf offen setzen.")
+    from nuligahelper import common
+    duty_date = age_eligibility.parse_game_date(container.date)
+    if duty_date is not None and duty_date < common.effective_today():
+        raise ValueError("Vergangene Einteilungen können nicht geändert werden.")
+    return actor
+
+
 def _validate_retirement(
     session: Session, container: Game | DayBlock,
     assignment: Assignment | BlockAssignment, action: str,

@@ -139,7 +139,7 @@ have no responsible team.
 
 Administrators SHALL be able to set the delivery time and requested cake quantity for each cake block. The quantity SHALL be a nonnegative whole number and SHALL define one volunteer position per requested cake. Zero SHALL mean no cakes are requested. A new block SHALL begin without a guessed time or quantity, SHALL show that setup is needed and SHALL not accept claims until both settings are configured. Other viewers SHALL not change those settings. Invalid time or quantity SHALL be refused without changing saved settings.
 
-Each occupied cake position SHALL represent one cake contribution by its volunteer. Increasing quantity SHALL add empty positions while preserving existing positions. A decrease that would remove an occupied position SHALL be refused; configuration SHALL NOT release, replace or silently retire its helper. No new force-release or cake-duty retirement path SHALL be added to make such a decrease possible; remaining positions SHALL not be silently renumbered. A stale configuration update SHALL be refused with the current settings rather than overwrite a newer edit. Claims SHALL be validated against the currently saved capacity.
+Each occupied cake position SHALL represent one cake contribution by its volunteer. Increasing quantity SHALL add empty positions while preserving existing positions. A decrease that would remove an occupied position SHALL be refused; configuration SHALL NOT release, replace or silently retire its helper. No force-release or cake-duty retirement path SHALL be added to make such a decrease possible, apart from the general explicit administrator reopening of a duty; remaining positions SHALL not be silently renumbered. A stale configuration update SHALL be refused with the current settings rather than overwrite a newer edit. Claims SHALL be validated against the currently saved capacity.
 
 #### Scenario: One volunteer per cake
 
@@ -175,7 +175,7 @@ Each occupied cake position SHALL represent one cake contribution by its volunte
 
 - **WHEN** an administrator attempts an ordinary release of an occupied cake position to permit a quantity reduction
 - **THEN** the release does not bypass binding protection and the reduction remains refused while the position is occupied
-- **AND** no force-release or separate offered-cake retirement operation is available to make the reduction succeed
+- **AND** only the explicit, confirmed administrator reopening of that position can empty it, after which the reduction is evaluated as for any empty position
 
 #### Scenario: Explicitly request no cakes
 
@@ -254,7 +254,7 @@ Assigned cake volunteers SHALL receive ordinary day-level reminders one week bef
 
 ### Requirement: All day-block duties share the binding assignment lifecycle
 
-Preparation, cleanup and every configured cake-delivery position SHALL use the same pre-save binding confirmation, replacement-request, atomic takeover and day-before occupied-duty lock rules as offered game duties. The lock boundary SHALL be 09:00 Europe/Berlin on the day before the duty independently of the reminder job or delivery. The complete dated cohort, including empty positions, SHALL use durable idempotent cutoff state and authoritative clock checks after acquiring write access and after retries; a missing cron marker SHALL NOT postpone locking. The current helper SHALL remain assigned and responsible while `Ersatz gesucht` is open. A valid authorized takeover before the boundary SHALL transfer the occupied position atomically, preserving per-block one-duty rules, current capacity, compare-and-swap conflicts and audit history. No new individual age rule SHALL be introduced for a day block. Block authority SHALL remain team independent: ordinary members and MVs act only for themselves, while an administrator acts within existing person-assignment rights without a lock override. A truly empty configured position SHALL remain claimable after the boundary and SHALL become immediately locked when successfully claimed.
+Preparation, cleanup and every configured cake-delivery position SHALL use the same pre-save binding confirmation, replacement-request, atomic takeover and day-before occupied-duty lock rules as offered game duties. The lock boundary SHALL be 09:00 Europe/Berlin on the day before the duty independently of the reminder job or delivery. The complete dated cohort, including empty positions, SHALL use durable idempotent cutoff state and authoritative clock checks after acquiring write access and after retries; a missing cron marker SHALL NOT postpone locking. The current helper SHALL remain assigned and responsible while `Ersatz gesucht` is open. A valid authorized takeover before the boundary SHALL transfer the occupied position atomically, preserving per-block one-duty rules, current capacity, compare-and-swap conflicts and audit history. No new individual age rule SHALL be introduced for a day block. Block authority SHALL remain team independent: ordinary members and MVs act only for themselves, while an administrator acts within existing person-assignment rights without a lock override, apart from the explicit administrator reopening of a duty. A truly empty configured position SHALL remain claimable after the boundary and SHALL become immediately locked when successfully claimed.
 
 #### Scenario: Preparation helper seeks a replacement
 
@@ -276,7 +276,7 @@ Preparation, cleanup and every configured cake-delivery position SHALL use the s
 
 #### Scenario: Administrator attempts a locked cleanup change
 
-- **WHEN** an administrator attempts to release, replace or change an occupied cleanup position after the boundary
+- **WHEN** an administrator attempts an ordinary release, replacement or occupant change of an occupied cleanup position after the boundary
 - **THEN** the web service refuses the change and retains its responsible helper
 
 #### Scenario: Reminder transport fails after batch transition

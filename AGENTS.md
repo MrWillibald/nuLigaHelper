@@ -108,7 +108,7 @@ SQLite file. Two independent entry points share the `db` package:
   statistics (`/statistik`), persons (`/personen`), duty form (`/dienst`), audit
   (`/audit`), login/registration and legal pages. Mutations go through small JSON APIs
   called from `web/static/app.js`: `/api/assignment/{claim,release,request-replacement,
-  cancel-replacement,takeover}`, the same set under `/api/block-assignment/`,
+  cancel-replacement,takeover,reopen}`, the same set under `/api/block-assignment/`,
   `/api/games/<id>/team`, `/api/teams/<id>/mv`, `/api/blocks/<id>/cake-settings` and the
   candidate reads `/api/games/<id>/candidates` and `/api/blocks/<id>/candidates`.
   `build_schedule()` pre-computes per-game view dicts (including greyed-out options and
@@ -223,6 +223,14 @@ tests/run_tests.sh                            # whole suite, must stay green
   and kept in sync by `static/app.js`); enforced by the unique constraint
   `(game_id, person_id)` on `assignments`, by `db.assign_person` (raises
   `ValueError`) and by the web/CLI entry points.
+- **Administrators may reopen a duty.** `db.reopen_slot()` / `db.reopen_block_slot()`
+  (`/api/assignment/reopen`, `/api/block-assignment/reopen`, `Auf offen setzen`) empty an
+  occupied duty, also after lock, and are the only exception to the two rules below.
+  They require a current active admin (never system/CLI callers), an explicit confirmation
+  and the expected occupant, and refuse duties dated before `common.effective_today()`;
+  open dates are permitted. An open request closes in the same transaction and a `reopen`
+  audit names admin and helper. The helper is notified after commit; a failed or skipped
+  message keeps the slot open and the response reports `notified: false`.
 - **Assignments are binding; ordinary withdrawal never creates a vacancy.** Before
   any UI claim or takeover, show German `Bestätigen` / `Abbrechen` confirmation
   explaining continued responsibility and the day-before lock. Selection, opening,
@@ -268,7 +276,7 @@ tests/run_tests.sh                            # whole suite, must stay green
   reopen commitments; weekly reminders do not lock. Empty offered duties stay
   claimable within existing rights and lock immediately when claimed after cutoff.
   No tier, including admin or CLI, may release, request replacement for or change a
-  locked occupied duty. There is no 24-hour window, automatic return, periodic
+  locked occupied duty, apart from the explicit admin reopening above. There is no 24-hour window, automatic return, periodic
   rollback or replacement broadcast. A saved cutoff is not proof of delivery.
 
 - **Day blocks are dated, team-independent containers.** Preparation and cleanup
@@ -322,7 +330,7 @@ tests/run_tests.sh                            # whole suite, must stay green
   an occupied game/day/block, including the last game of a date, is refused without
   partial destructive synchronization or successful-removal audits/notifications.
   These restrictions apply before and after cutoff and have no administrator/system
-  override. Successful deactivation without blocking duties clears MV appointments;
+  override; admin reopening is a separate per-duty operation, not destructive maintenance. Successful deactivation without blocking duties clears MV appointments;
   reactivation restores no historically released assignment.
 
 - Current task names use `db.role_label()` / `db.position_label()`. **Ordner** retains

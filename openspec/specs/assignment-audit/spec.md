@@ -10,7 +10,7 @@ which game and when, so the club can answer after the fact why a task slot chang
 ### Requirement: Every assignment change is recorded
 
 The system SHALL record one entry for every change to a game or day-block task
-assignment, whether it was made by the person themselves, by an MV where permitted, by an admin or by permitted pre-cutoff obsolete-duty retirement. Replacement-request opening, authorized cancellation, successful-takeover closure and day-before closure, as well as first locking of an occupied assignment and release of a saved lock because its game was postponed to a later, not-yet-due date or its date became open or unparseable, SHALL be recorded as distinguishable lifecycle transitions even when the occupant does not change. A takeover SHALL record a linked before-and-after responsibility transfer atomically with the assignment and request closure; it SHALL NOT be recorded as an independently committed ordinary release followed by a claim. Repeated enforcement of an already saved lock SHALL NOT append duplicate transition entries. A postponement or open-date unlock SHALL be recorded once per released assignment with system origin and the unchanged responsible helper; it SHALL NOT be recorded as a release or claim.
+assignment, whether it was made by the person themselves, by an MV where permitted, by an admin or by permitted pre-cutoff obsolete-duty retirement. Replacement-request opening, authorized cancellation, successful-takeover closure and day-before closure, as well as first locking of an occupied assignment and release of a saved lock because its game was postponed to a later, not-yet-due date or its date became open or unparseable, SHALL be recorded as distinguishable lifecycle transitions even when the occupant does not change. A takeover SHALL record a linked before-and-after responsibility transfer atomically with the assignment and request closure; it SHALL NOT be recorded as an independently committed ordinary release followed by a claim. Repeated enforcement of an already saved lock SHALL NOT append duplicate transition entries. A postponement or open-date unlock SHALL be recorded once per released assignment with system origin and the unchanged responsible helper; it SHALL NOT be recorded as a release or claim. An administrator reopening SHALL be recorded once as a distinguishable `reopen` transition naming the administrator and the removed helper, atomically with the slot change and with closure of any open replacement request; it SHALL NOT be recorded as an ordinary release.
 
 #### Scenario: Self-service claim recorded
 
@@ -73,6 +73,13 @@ assignment, whether it was made by the person themselves, by an MV where permitt
 - **AND** the entry does not claim that the assignment was released or reassigned
 - **AND** the same evidence is recorded when the first synchronization after this release repairs a game moved before it
 - **AND** a later re-lock at a valid date's cutoff is recorded as a new lock transition
+
+#### Scenario: Administrator reopening recorded
+
+- **WHEN** an administrator reopens an occupied game or day-block duty
+- **THEN** one `reopen` entry names the administrator as actor and the removed helper as affected person
+- **AND** an open replacement request adds one closure entry in the same transaction
+- **AND** a refused or conflicting reopen request appends no entry
 
 #### Scenario: Confirmation is cancelled
 

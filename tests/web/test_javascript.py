@@ -124,5 +124,14 @@ def test_replacement_search_cancellation_keeps_responsibility_and_current_genera
     assert result.returncode == 0, result.stderr or result.stdout
 
 
+def test_reopening_needs_confirmation_and_reports_an_unreached_helper():
+    node = shutil.which("node")
+    if node is None:
+        return
+    result = subprocess.run([node, "tests/js/js_reopen_confirmation.mjs"], cwd=h.PROJECT_DIR,
+                            text=True, capture_output=True, timeout=30)
+    assert result.returncode == 0, result.stderr or result.stdout
+
+
 if __name__ == "__main__":
     h.run_all(dict(globals()))

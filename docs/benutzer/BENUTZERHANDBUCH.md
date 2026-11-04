@@ -74,7 +74,7 @@ Die verfügbaren Schaltflächen hängen von deinem Benutzerkonto ab. Du musst be
 
 Für MV-Aufgaben zählt, für welche Mannschaft du tatsächlich als MV hinterlegt bist. Die bloße Mitgliedschaft in einem Team macht dich nicht zum MV. Eine Person kann mehrere Mannschaftszugehörigkeiten und auch mehrere MV-Zuständigkeiten haben.
 
-Admins können innerhalb ihrer Rechte alle aktiven Personen einteilen. Altersvoraussetzungen, belegte Plätze, verbindliche Zusagen und Sperrfristen gelten für alle Rollen. Auch ein Admin kann einen fest eingeteilten Dienst nicht freigeben oder austauschen.
+Admins können innerhalb ihrer Rechte alle aktiven Personen einteilen. Altersvoraussetzungen, belegte Plätze, verbindliche Zusagen und Sperrfristen gelten für alle Rollen. Auch ein Admin kann einen fest eingeteilten Dienst nicht austauschen; er kann ihn nur über **Auf offen setzen** leeren, und die Person wird benachrichtigt.
 
 **Datenschutz in der Oberfläche:** Im Heimspielplan stehen Namen, aber keine E-Mail-Adressen, Telefonnummern oder vollständigen Geburtsdaten. Andere Mitglieder und MVs sehen deine Kontaktdaten und dein Geburtsdatum auch in der Helferverwaltung nicht. Diese Daten sind für dich selbst und für Admins zugänglich. Ein MV darf bei einer Neuanlage ein Geburtsdatum eingeben; daraus entsteht kein späterer Lesezugriff auf fremde Geburtsdaten.
 
@@ -261,7 +261,7 @@ Eine Ersatzperson für den Verkauf bei Erwachsenen muss zusammen mit der verblei
 
 Besetzte Dienste werden am Vortag um 09:00 Uhr deutscher Ortszeit fest, offene Ersatzsuchen enden. Das gilt auch ohne zugestellte Erinnerung. Ein für Samstag angesetzter Dienst wird also am Freitag um 09:00 Uhr fest; es gibt keine Frist von 24 Stunden vor Spielbeginn.
 
-**Kurzfristiger Ausfall nach der Sperre:** Informiere umgehend deine Mannschaftsverantwortlichen oder die Vereinsorganisation direkt. Im Webservice gibt es dafür keine Freigabe und keinen Admin-Schalter zum Wechseln. Die gespeicherte Verantwortung bleibt bestehen. **Spielverschiebung:** Wird ein Spiel auf einen späteren Tag verlegt oder steht vorerst ohne festen Termin im Spielplan, hebt der nächste tägliche Spielplanabgleich die Sperre seiner Spieldienste auf. Du bleibst eingeteilt und verantwortlich; eine durch die Sperre beendete Ersatzsuche startest du bei Bedarf neu. Am Vortag des neuen Termins um 09:00 Uhr wird der Dienst wieder fest. Wird ein Spiel vorverlegt, bleibt eine bestehende Sperre bestehen. Tagesdienste bleiben beim jeweiligen Datum und behalten ihre Sperre.
+**Kurzfristiger Ausfall nach der Sperre:** Informiere umgehend deine Mannschaftsverantwortlichen oder die Vereinsorganisation direkt. Du selbst kannst den Dienst im Webservice nicht freigeben oder wechseln. Die gespeicherte Verantwortung bleibt bestehen, bis ein Admin den Dienst über **Auf offen setzen** freigibt; dann erhältst du eine Benachrichtigung. **Spielverschiebung:** Wird ein Spiel auf einen späteren Tag verlegt oder steht vorerst ohne festen Termin im Spielplan, hebt der nächste tägliche Spielplanabgleich die Sperre seiner Spieldienste auf. Du bleibst eingeteilt und verantwortlich; eine durch die Sperre beendete Ersatzsuche startest du bei Bedarf neu. Am Vortag des neuen Termins um 09:00 Uhr wird der Dienst wieder fest. Wird ein Spiel vorverlegt, bleibt eine bestehende Sperre bestehen. Tagesdienste bleiben beim jeweiligen Datum und behalten ihre Sperre.
 
 ## 11 Vorbereitung und Aufräumen übernehmen
 
@@ -426,7 +426,7 @@ Innerhalb deiner Rechte zeigen die Auswahllisten zuerst Mitglieder der verantwor
 
 ### Was Adminrechte nicht aufheben
 
-Du kannst keinen normal angebotenen besetzten Dienst ersatzlos leeren. Nutze vor der Sperre die Ersatzsuche und die bestätigte Übernahme. Altersvoraussetzungen und feste Einteilungen gelten auch für Admins. Bereits belegte, wegen einer Spieländerung nicht mehr angebotene Aufgaben können als **Bestehende Einteilung – nur Freigabe** erscheinen. Nur für solche Altdienste ist vor der tatsächlichen Sperre eine berechtigte Freigabe vorgesehen; sie ist keine allgemeine Abmeldefunktion.
+Nutze vor der Sperre möglichst die Ersatzsuche und die bestätigte Übernahme. Altersvoraussetzungen gelten auch für Admins. Wenn das nicht reicht, zum Beispiel bei einem Ausfall am Spieltag, kannst du einen besetzten Dienst mit **Auf offen setzen** leeren, auch nach der Sperre. Nach deiner Bestätigung ist der Platz frei, eine offene Ersatzsuche endet und die Person wird benachrichtigt. Kann sie nicht erreicht werden, bleibt der Platz frei und du erhältst eine Warnung; informiere sie dann persönlich. Vergangene Dienste lassen sich nicht ändern. Wird der freie Platz nach der Sperre neu übernommen, ist die Zusage sofort fest. Bereits belegte, wegen einer Spieländerung nicht mehr angebotene Aufgaben können als **Bestehende Einteilung – nur Freigabe** erscheinen. Nur für solche Altdienste ist vor der tatsächlichen Sperre eine berechtigte Freigabe vorgesehen; sie ist keine allgemeine Abmeldefunktion.
 
 ## 18 Als Admin Spieltage ausblenden
 
@@ -472,7 +472,7 @@ Das **Änderungsprotokoll** ist nur für Admins sichtbar. Es hilft nachzuvollzie
 | Ziel | Gespeicherte Beschreibung des Spiels oder Tagesblocks. |
 | Dienst | Damalige Aufgabenbezeichnung und Platznummer. |
 
-Häufige Aktionsnamen sind **claim** für eine Zusage, **request_open** für eine Ersatzsuche, **request_close** für deren Beendigung, **takeover** für eine Übernahme **lock** für eine Sperre und **unlock** für die automatische Aufhebung einer Sperre, weil das Spiel auf einen späteren Tag verlegt wurde oder keinen festen Termin mehr hat. **release** betrifft eine zulässige Freigabe, etwa eines nicht mehr angebotenen Altdienstes; es bedeutet keine allgemeine Freigabemöglichkeit. **Durch Migration entfernt** kennzeichnet eine historische Entfernung bei einer ausdrücklich vorgesehenen Datenumstellung.
+Häufige Aktionsnamen sind **claim** für eine Zusage, **request_open** für eine Ersatzsuche, **request_close** für deren Beendigung, **takeover** für eine Übernahme **lock** für eine Sperre und **unlock** für die automatische Aufhebung einer Sperre, weil das Spiel auf einen späteren Tag verlegt wurde oder keinen festen Termin mehr hat. **release** betrifft eine zulässige Freigabe, etwa eines nicht mehr angebotenen Altdienstes; es bedeutet keine allgemeine Freigabemöglichkeit. **reopen** bedeutet, dass ein Admin den Dienst auf offen gesetzt hat. **Durch Migration entfernt** kennzeichnet eine historische Entfernung bei einer ausdrücklich vorgesehenen Datenumstellung.
 
 Die Einträge sind unveränderliche Nachweise und keine Rückgängig-Funktion. Historische Aufgabenbezeichnungen bleiben wörtlich erhalten und können von heutigen Bezeichnungen abweichen. Das Protokoll ist auf Dienstzuweisungen ausgerichtet und keine vollständige Liste aller Profil- und Verwaltungsänderungen. Das reine Öffnen einer Karte oder das Abbrechen einer Zusage erzeugt keine erfolgreiche Einteilung.
 
@@ -517,7 +517,7 @@ Nutze zuerst **Filter löschen**. Prüfe **Vergangene Spieltage** und einen Hinw
 
 ### Ich kann meinen Namen nicht auswählen
 
-Prüfe, ob du angemeldet und freigeschaltet bist. Öffne die Karte und warte, bis die Auswahl geladen ist. Weitere Gründe sind ein anderer Dienst beim selben Spiel, eine nicht erfüllte Altersvoraussetzung, ein fehlendes Geburtsdatum, eine ungeklärte Altersklasse oder eine nicht passende Berechtigung. Ein normal besetzter Platz wird erst durch eine offene Ersatzsuche übernehmbar. Ein gesperrter besetzter Platz kann nicht mehr geändert werden.
+Prüfe, ob du angemeldet und freigeschaltet bist. Öffne die Karte und warte, bis die Auswahl geladen ist. Weitere Gründe sind ein anderer Dienst beim selben Spiel, eine nicht erfüllte Altersvoraussetzung, ein fehlendes Geburtsdatum, eine ungeklärte Altersklasse oder eine nicht passende Berechtigung. Ein normal besetzter Platz wird erst durch eine offene Ersatzsuche übernehmbar. Ein gesperrter besetzter Platz kann nur noch ein Admin auf offen setzen.
 
 ### Die Auswahlliste bleibt deaktiviert
 
@@ -533,7 +533,7 @@ Warte kurz und lade den aktuellen Stand erneut. Prüfe bei einem Fehler nach **B
 
 ### Ich bin fest eingeteilt und falle kurzfristig aus
 
-Kontaktiere direkt deine Mannschaftsverantwortlichen oder die Vereinsorganisation. Im Webservice bleibt die Einteilung bestehen; weder ein Admin noch eine Profiländerung kann die Sperre aufheben. Eine ausbleibende Erinnerung verlängert die Wechselmöglichkeit nicht.
+Kontaktiere direkt deine Mannschaftsverantwortlichen oder die Vereinsorganisation. Im Webservice bleibt die Einteilung bestehen, bis ein Admin den Dienst auf offen setzt; eine Profiländerung hebt die Sperre nicht auf. Eine ausbleibende Erinnerung verlängert die Wechselmöglichkeit nicht.
 
 ### Meine Profildaten lassen sich nicht speichern
 

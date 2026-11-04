@@ -76,6 +76,12 @@ def team_options(session) -> list[dict]:
     ]
 
 
+def may_reopen(container, assignment) -> bool:
+    duty_date = parse_date(container.date)
+    return bool(assignment and g.tier == "admin"
+                and (duty_date is None or duty_date >= common.effective_today()))
+
+
 def duty_state(container, assignment):
     locked = db.duty_is_locked(get_session(), container, assignment)
     return {
@@ -91,6 +97,7 @@ def duty_state(container, assignment):
              and may_request_game(container, assignment))
             or (isinstance(container, db.DayBlock) and may_request_block(container, assignment))
         )),
+        "can_reopen": may_reopen(container, assignment),
         "release_only": bool(assignment and isinstance(container, db.Game)
                              and (assignment.role, assignment.slot) not in db.offered_positions(container)),
     }

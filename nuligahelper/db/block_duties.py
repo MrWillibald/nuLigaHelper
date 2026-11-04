@@ -29,6 +29,7 @@ from nuligahelper.db.slots import (
     _validate_retirement,
 )
 from nuligahelper.db.locks import enforce_due_duty_locks
+from nuligahelper.db.duties import _reopen_change
 
 if TYPE_CHECKING:
     from nuligahelper.db.models import DayBlock
@@ -169,6 +170,10 @@ def claim_block_slot(
                     "diesen Tagesblock bereits eingeteilt."
                 ) from None
             raise
+
+
+def reopen_block_slot(session, block, slot, expected_person_id, actor=None, actor_tier="system"):
+    return _reopen_change(session, block, None, slot, expected_person_id, actor, actor_tier)
 
 
 def release_block_slot(

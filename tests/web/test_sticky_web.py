@@ -275,5 +275,153 @@ def test_weekly_reminder_keeps_search_open_and_preflight_contention_is_reported_
         directory.cleanup()
 
 
+def _claimed_duties(app, ids):
+    client = client_for(app, ids, "Original")
+    targets = [("/api/assignment", dict(game_id=ids["game"], role=db.ROLE_SECURITY, slot=0))] + [
+        ("/api/block-assignment", dict(block_id=ids[phase], slot=0)) for phase in db.BLOCK_PHASES]
+    for prefix, target in targets:
+        assert write(client, f"{prefix}/claim", **target, expected_person_id=None).json["ok"]
+    return targets
+
+
+def _set_mail(engine, ids):
+    with h.Session(engine) as session:
+        session.get(db.Person, ids["Original"]).email = "original@test.invalid"
+        session.commit()
+
+
+@patch("nuligahelper.common.effective_today", return_value=date(2026, 10, 31))
+def test_admin_reopens_locked_game_and_block_duties_and_the_helper_is_told(_today):
+    directory, engine, app, ids = fixture()
+    try:
+        with patch("nuligahelper.common.effective_today", return_value=date(2026, 10, 30)):
+            targets = _claimed_duties(app, ids)
+        _set_mail(engine, ids)
+        admin = client_for(app, ids, "Admin")
+        cutoff = datetime(2026, 10, 31, 9, tzinfo=ZoneInfo("Europe/Berlin"))
+        with (patch("nuligahelper.db.clock.duty_now", return_value=cutoff),
+              patch("nuligahelper.jobs.notifier.Notifier.send_Mail") as mail):
+            for prefix, target in targets:
+                done = write(admin, f"{prefix}/reopen", **target, expected_person_id=ids["Original"])
+                assert done.status_code == 200 and done.json["notified"] is True, done.json
+                assert done.json["assignment"]["person_id"] is None
+            assert mail.call_count == len(targets), "every removed helper receives one message"
+        with h.Session(engine) as session:
+            assert session.query(db.Assignment).count() == 0
+            assert session.query(db.BlockAssignment).count() == 0
+            assert session.query(db.AssignmentAudit).filter_by(action="reopen").count() == len(targets)
+    finally:
+        engine.dispose()
+        directory.cleanup()
+
+
+@patch("nuligahelper.common.effective_today", return_value=date(2026, 10, 30))
+def test_reopen_is_refused_for_lower_tiers_stale_pages_past_duties_and_missing_csrf(_today):
+    directory, engine, app, ids = fixture()
+    try:
+        targets = _claimed_duties(app, ids)
+        _set_mail(engine, ids)
+        before = audit_count(engine)
+        expected = ids["Original"]
+        with patch("nuligahelper.jobs.notifier.Notifier.send_Mail") as mail:
+            for prefix, target in targets:
+                for name in ("Original", "MV"):
+                    refused = write(client_for(app, ids, name), f"{prefix}/reopen", **target, expected_person_id=expected)
+                    assert refused.status_code == 403, name
+                guest = app.test_client().post(f"{prefix}/reopen", json={**target, "expected_person_id": expected},
+                                               headers=h.csrf_headers())
+                assert guest.status_code in {302, 400, 401, 403}, "guests never reach the writer"
+                admin = client_for(app, ids, "Admin")
+                assert admin.post(f"{prefix}/reopen", json={**target, "expected_person_id": expected}).status_code in {400, 403}
+                stale = write(admin, f"{prefix}/reopen", **target, expected_person_id=ids["Replacement"])
+                assert stale.status_code == 409
+            with patch("nuligahelper.common.effective_today", return_value=date(2026, 11, 2)):
+                prefix, target = targets[0]
+                past = write(client_for(app, ids, "Admin"), f"{prefix}/reopen", **target, expected_person_id=expected)
+                assert past.status_code == 400 and "Vergangene" in past.json["error"]
+            assert not mail.called, "a refused request must not notify anybody"
+        assert audit_count(engine) == before
+    finally:
+        engine.dispose()
+        directory.cleanup()
+
+
+@patch("nuligahelper.common.effective_today", return_value=date(2026, 10, 30))
+def test_failed_or_skipped_notification_keeps_the_slot_open_and_warns_without_contact_data(_today):
+    directory, engine, app, ids = fixture()
+    try:
+        targets = _claimed_duties(app, ids)
+        admin = client_for(app, ids, "Admin")
+        (prefix, target), (block_prefix, block_target) = targets[0], targets[1]
+        skipped = write(admin, f"{prefix}/reopen", **target, expected_person_id=ids["Original"])
+        assert skipped.status_code == 200 and skipped.json["notified"] is False, "no contact counts as not notified"
+        _set_mail(engine, ids)
+        with patch("nuligahelper.jobs.notifier.Notifier.send_Mail", side_effect=OSError("smtp down")):
+            failed = write(admin, f"{block_prefix}/reopen", **block_target, expected_person_id=ids["Original"])
+        assert failed.status_code == 200 and failed.json["notified"] is False
+        assert "original@test.invalid" not in failed.get_data(as_text=True)
+        with h.Session(engine) as session:
+            assert session.query(db.Assignment).count() == 0
+            assert session.get(db.DayBlock, block_target["block_id"]).assignment_for_slot(0) is None
+    finally:
+        engine.dispose()
+        directory.cleanup()
+
+
+@patch("nuligahelper.common.effective_today", return_value=date(2026, 10, 30))
+def test_reopen_control_is_admin_only_and_hidden_for_past_duties(_today):
+    directory, engine, app, ids = fixture()
+    try:
+        _claimed_duties(app, ids)
+        admin = client_for(app, ids, "Admin")
+        markup = admin.get("/").get_data(as_text=True)
+        tree = html.fromstring(markup)
+        visible = tree.xpath('//button[@data-reopen and not(@hidden)]')
+        assert len(visible) == 4, "the game duty and every occupied block duty show the control"
+        assert "Auf offen setzen" in visible[0].text_content()
+        for name in ("Original", "MV"):
+            assert "data-reopen" not in client_for(app, ids, name).get("/").get_data(as_text=True)
+        assert "data-reopen" not in app.test_client().get("/").get_data(as_text=True)
+        with patch("nuligahelper.common.effective_today", return_value=date(2026, 11, 2)):
+            past = html.fromstring(admin.get("/?show_hidden=1").get_data(as_text=True))
+            assert not past.xpath('//button[@data-reopen and not(@hidden)]')
+    finally:
+        engine.dispose()
+        directory.cleanup()
+
+
+@patch("nuligahelper.common.effective_today", return_value=date(2026, 10, 30))
+def test_html_reopening_needs_confirmation_and_never_writes_before_it(_today):
+    directory, engine, app, ids = fixture()
+    try:
+        targets = _claimed_duties(app, ids)
+        admin = client_for(app, ids, "Admin")
+        member = client_for(app, ids, "Original")
+        for _prefix, target in targets:
+            form = {**target, "expected_person_id": ids["Original"]}
+            query = "&".join(f"{key}={value}" for key, value in target.items())
+            assert "Auf offen setzen" in admin.get(f"/dienst?{query}").get_data(as_text=True)
+            assert "Auf offen setzen" not in member.get(f"/dienst?{query}").get_data(as_text=True)
+            before = audit_count(engine)
+            review = admin.post("/dienst", data=h.csrf_data({**form, "action": "reopen"}))
+            text = review.get_data(as_text=True)
+            assert review.status_code == 200 and "Bestätigen" in text and "Abbrechen" in text and "Original" in text
+            assert audit_count(engine) == before, "opening the confirmation is read-only"
+            cancel = admin.post("/dienst", data=h.csrf_data({**form, "action": "reopen", "decision": "cancel"}))
+            assert cancel.status_code == 302 and audit_count(engine) == before
+            assert member.post("/dienst", data=h.csrf_data({**form, "action": "reopen"})).status_code == 403
+            refused = member.post("/dienst", data=h.csrf_data({**form, "action": "reopen", "decision": "confirm"}))
+            assert refused.status_code == 403 and audit_count(engine) == before
+            done = admin.post("/dienst", data=h.csrf_data({**form, "action": "reopen", "decision": "confirm"}))
+            assert done.status_code == 302, "a confirmed reopening returns to the schedule"
+        assert "bitte informiere sie persönlich" in admin.get("/").get_data(as_text=True), \
+            "a helper without contact data leaves a warning for the admin"
+        with h.Session(engine) as session:
+            assert session.query(db.AssignmentAudit).filter_by(action="reopen").count() == len(targets)
+    finally:
+        engine.dispose()
+        directory.cleanup()
+
+
 if __name__ == "__main__":
     h.run_all(dict(globals()))

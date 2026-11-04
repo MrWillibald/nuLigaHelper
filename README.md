@@ -18,7 +18,8 @@ outside this repository.
 - Dated day blocks per home-game date: Vorbereitung and Aufräumen (three places each) and
   Kuchenlieferung (quantity and delivery time set by admins).
 - Binding duties: helpers seek a replacement instead of withdrawing; occupied duties lock
-  at 09:00 (Europe/Berlin) on the day before.
+  at 09:00 (Europe/Berlin) on the day before. Only admins can set a duty back to open,
+  and the removed helper is notified.
 - Reminders one week and one day ahead, weekly vacancy invitations to the responsible
   team, MV follow-up for open positions, referee-coordinator alerts and admin info mails.
   E-mail is preferred, SMS (Twilio) is the fallback.

@@ -604,7 +604,7 @@ function applyDutyState(field, state, explicitSelect) {
   for (const [key, attribute] of [
     ["locked", "locked"], ["seeking_replacement", "seekingReplacement"],
     ["can_request_replacement", "canRequestReplacement"], ["release_only", "releaseOnly"],
-    ["late_claim_locked", "lateClaimLocked"],
+    ["late_claim_locked", "lateClaimLocked"], ["can_reopen", "canReopen"],
   ]) {
     if (state[key] !== undefined) data[attribute] = state[key] ? "true" : "false";
   }
@@ -648,6 +648,8 @@ function applyDutyState(field, state, explicitSelect) {
     request.hidden = !occupied || locked || releaseOnly || data.canRequestReplacement !== "true";
     request.textContent = seeking ? "Ersatzsuche beenden" : "Ersatz suchen";
   }
+  const reopen = field?.querySelector?.("[data-reopen]");
+  if (reopen) reopen.hidden = !occupied || data.canReopen !== "true";
 }
 
 let activeAssignmentConfirmation = false;
@@ -664,6 +666,24 @@ function confirmAssignment(select, option) {
   context.textContent = `${option.textContent || option.label || "Die ausgewählte Person"} übernimmt ${duty}${day ? ` am ${day}` : ""}.`;
   const lateNotice = dialog.querySelector("[data-confirmation-late]");
   if (lateNotice) lateNotice.hidden = select.dataset.lateClaimLocked !== "true";
+  return runConfirmation(dialog, select);
+}
+
+function confirmReopen(button, field) {
+  const dialog = document.getElementById?.("reopen-confirmation");
+  if (!dialog?.showModal || activeAssignmentConfirmation) {
+    showFeedback("Die Bestätigung konnte nicht geöffnet werden. Bitte lade die Seite neu.");
+    return Promise.resolve(false);
+  }
+  activeAssignmentConfirmation = true;
+  const day = button.closest?.(".day-block")?.querySelector?.(".day-title")?.textContent?.trim();
+  const person = field.dataset.personName || field.querySelector?.("[data-duty-occupant]")?.textContent?.trim();
+  dialog.querySelector("[data-confirmation-context]").textContent =
+    `${person || "Die eingeteilte Person"} verliert ${field.dataset.dutyLabel || "den Dienst"}${day ? ` am ${day}` : ""}.`;
+  return runConfirmation(dialog, button);
+}
+
+function runConfirmation(dialog, control) {
   for (const help of activeTaskHelp) help.dismiss();
   return new Promise((resolve) => {
     let finished = false;
@@ -673,7 +693,7 @@ function confirmAssignment(select, option) {
       activeAssignmentConfirmation = false;
       for (const [element, name, callback] of listeners) element.removeEventListener(name, callback);
       if (dialog.open) dialog.close();
-      if (select.isConnected !== false && !select.hidden) select.focus?.({ preventScroll: true });
+      if (control.isConnected !== false && !control.hidden) control.focus?.({ preventScroll: true });
       resolve(confirmed);
     };
     const cancel = (event) => { event.preventDefault(); finish(false); };
@@ -820,10 +840,45 @@ function bindReplacementRequest(button) {
   });
 }
 
+function bindReopen(button) {
+  if (button._reopenBound) return;
+  button._reopenBound = true;
+  button.addEventListener("click", async () => {
+    const field = button.closest("[data-occupant-id]");
+    const card = assignmentCard(button);
+    if (card._mutationPending || card._confirmationPending) return;
+    const expected = Number(field.dataset.occupantId) || null;
+    if (!expected || field.dataset.canReopen !== "true") return;
+    card._confirmationPending = true;
+    try {
+      if (!await confirmReopen(button, field)) return;
+    } finally { card._confirmationPending = false; }
+    setCardMutationPending(card, true);
+    try {
+      const prefix = button.dataset.block ? "/api/block-assignment/" : "/api/assignment/";
+      const result = await postJSON(`${prefix}reopen`, {
+        ...assignmentTarget(button), expected_person_id: expected,
+      });
+      if (!result.ok) {
+        if (result.assignment) applyDutyState(field, result.assignment);
+        if (!mutationFailure(result)) await loadCandidateCard(card, true, true);
+        return;
+      }
+      // A locked slot has no selection control yet, so the saved state is rendered anew.
+      const outcome = result.notified
+        ? { message: "Dienst auf offen gesetzt. Die Person wurde benachrichtigt.", severity: "success" }
+        : { message: "Dienst auf offen gesetzt. Die Person konnte nicht benachrichtigt werden; bitte informiere sie persönlich.", severity: "warning" };
+      if (globalThis.nuLigaFeedback) globalThis.nuLigaFeedback.navigate([outcome]);
+      else showFeedback(outcome.message, outcome.severity);
+    } finally { setCardMutationPending(card, false); }
+  });
+}
+
 document.querySelectorAll("select[data-role]").forEach(bindAssignmentSelect);
 document.querySelectorAll("select[data-block-assignment]").forEach(bindBlockSelect);
 document.querySelectorAll("[data-request-replacement]").forEach(bindReplacementRequest);
-globalThis.nuLigaAssignmentTools = { confirmAssignment, applyDutyState, bindAssignmentSelect, bindReplacementRequest };
+document.querySelectorAll("[data-reopen]").forEach(bindReopen);
+globalThis.nuLigaAssignmentTools = { confirmAssignment, applyDutyState, bindAssignmentSelect, bindReplacementRequest, bindReopen };
 
 function invalidateCandidateCard(card) {
   card._candidateRevision = (card._candidateRevision || 0) + 1;
@@ -876,7 +931,7 @@ function renderBlockView(card, block, resetForm = false) {
       slot.label, description, Boolean(slot.editable), slot.person_id || null,
       slot.person_name || "", slot.person_team_label || "",
       slot.replacement_token || null, Boolean(slot.locked), Boolean(slot.seeking_replacement),
-      Boolean(slot.can_request_replacement),
+      Boolean(slot.can_request_replacement), Boolean(slot.can_reopen),
     ]);
     let field = fieldsBySlot.get(String(slot.slot));
     if (field && !field._cakeSlotSignature) {
@@ -943,6 +998,17 @@ function renderBlockView(card, block, resetForm = false) {
       request.setAttribute("data-request-replacement", "");
       bindReplacementRequest(request);
       field.appendChild(request);
+    }
+    if (slot.can_reopen) {
+      const reopen = document.createElement("button");
+      reopen.type = "button";
+      reopen.className = "btn btn-secondary duty-request";
+      reopen.textContent = "Auf offen setzen";
+      reopen.dataset.block = String(block.id);
+      reopen.dataset.slot = String(slot.slot);
+      reopen.setAttribute("data-reopen", "");
+      bindReopen(reopen);
+      field.appendChild(reopen);
     }
     applyDutyState(field, slot);
     return field;
