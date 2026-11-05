@@ -2,8 +2,8 @@
 #                          nuLigaHelper – tests
 # ---------------------------------------------------------------
 # Project layout guards: code imports the nuligahelper package, test
-# patches target package modules, and only the transition shims stay
-# at the repository root.
+# patches target package modules, and the repository root holds no
+# Python modules.
 # ---------------------------------------------------------------
 
 import re
@@ -19,8 +19,6 @@ OLD_MODULES = (
     "monitor_watchdog", "runtime_check", "privacy", "manage_db",
 )
 OLD = "|".join(OLD_MODULES)
-ROOT_SHIMS = {"main.py", "manage_db.py", "operations.py", "privacy.py", "runtime_check.py",
-              "monitor_watchdog.py", "webapp.py", "schema_migrations.py"}
 
 
 def _sources():
@@ -45,13 +43,11 @@ def test_patch_targets_name_package_modules():
     assert not offenders, "patch nuligahelper.<module>.<name>: " + "; ".join(offenders)
 
 
-def test_repository_root_keeps_only_transition_shims():
-    assert {path.name for path in PROJECT.glob("*.py")} == ROOT_SHIMS, (
-        "application code belongs in nuligahelper/; the root only keeps the transition shims"
+def test_repository_root_holds_no_python_modules():
+    assert not sorted(path.name for path in PROJECT.glob("*.py")), (
+        "application code belongs in nuligahelper/; entry points are package modules"
     )
-    assert sorted(path.name for path in (PROJECT / "test").iterdir()) == ["run_tests.sh"], (
-        "test/ only keeps the deploy-command shim; tests live in tests/"
-    )
+    assert not (PROJECT / "test").exists(), "tests live in tests/"
 
 
 if __name__ == "__main__":

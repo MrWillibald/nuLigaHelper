@@ -88,16 +88,12 @@ decision and the existing validated restore procedure; never blindly replace
 the live database with an older snapshot.
 
 The files in `systemd/` and `nuligahelper-watchdog.cron` are installation
-templates. Install reviewed copies as root, verify them with
+templates. Install reviewed copies as root, the cron entry at
+`/etc/cron.d/nuligahelper-watchdog`, verify the units with
 `systemd-analyze verify`, and run `systemctl daemon-reload` before starting a
 changed service. Do not switch the link while the web, daily, or cleanup
-services are using the database.
-The legacy release originally had `deploy/gunicorn.conf.py` but not
-`release-assets/gunicorn.conf.py`. Before installing the new web unit, which
-points to `current/release-assets/gunicorn.conf.py`, provide the reviewed
-root-owned compatibility file in the retained legacy release and verify that
-unit can start it. Installing the new unit against an unmodified legacy release
-would stop the web service.
+services are using the database. Activation refuses a unit or watchdog entry
+that does not start the package entry points.
 
 Site-specific Caddy configuration, `/etc/nuligahelper/web.env`, club settings,
 contacts, credentials, the SQLite database in `/var/lib/nuligahelper`, snapshots, and operator approval

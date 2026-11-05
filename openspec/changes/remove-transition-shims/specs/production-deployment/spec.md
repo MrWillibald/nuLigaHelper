@@ -4,7 +4,7 @@
 
 ### Requirement: Activation requires package entry points on the host
 
-The repository SHALL NOT ship root-level transition entry points for the former module layout. Before stopping any writer or ingress for activation or continuation, the deployment workflow SHALL verify that every installed and loaded application unit starts the selected release through package module entry points and that the watchdog cron entry at its documented path runs the package watchdog module. It SHALL refuse with an actionable status, leaving services and timers unchanged, when a unit or the watchdog entry still invokes a former root script or Gunicorn target. Candidate preparation SHALL refuse a commit without the application package or its offline test runner. Code-only rollback SHALL be offered only to a previous release that contains the application package.
+Before stopping any writer or ingress for activation or continuation, the deployment workflow SHALL verify that every installed and loaded application unit starts the selected release through package module entry points and that the watchdog cron entry at its documented path runs the package watchdog module. It SHALL refuse with an actionable status, leaving services and timers unchanged, when a unit or the watchdog entry still invokes a former root script or Gunicorn target.
 
 #### Scenario: Host runs the package units
 
@@ -21,6 +21,10 @@ The repository SHALL NOT ship root-level transition entry points for the former 
 
 - **WHEN** the watchdog cron entry is absent, unsafe to read or still calls `monitor_watchdog.py`
 - **THEN** activation refuses before any service interruption
+
+### Requirement: Releases contain the application package
+
+The repository SHALL NOT ship root-level transition entry points for the former module layout. Candidate preparation SHALL refuse a commit without the application package or its offline test runner. Code-only rollback SHALL be offered only to a previous release that contains the application package.
 
 #### Scenario: Candidate predates the package layout
 

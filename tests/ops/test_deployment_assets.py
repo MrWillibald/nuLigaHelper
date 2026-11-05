@@ -88,56 +88,6 @@ def test_units_start_package_modules():
         assert module in (PROJECT / script).read_text(), script
 
 
-SHIMS = {
-    'main.py': 'nuligahelper.jobs.daily', 'manage_db.py': 'nuligahelper.cli',
-    'operations.py': 'nuligahelper.ops.monitoring', 'privacy.py': 'nuligahelper.ops.privacy',
-    'runtime_check.py': 'nuligahelper.ops.runtime_check',
-    'monitor_watchdog.py': 'nuligahelper.ops.watchdog',
-}
-
-
-def test_transition_shims_work_from_a_release_tree():
-    # Installed units run "<release>/venv/bin/python -B <release>/<shim>.py" with the
-    # release as working directory; the shims must reach the package from there.
-    for name, module in SHIMS.items():
-        source = (PROJECT / name).read_text()
-        assert f'runpy.run_module("{module}", run_name="__main__", alter_sys=True)' in source, name
-    with tempfile.TemporaryDirectory() as directory:
-        release = Path(directory) / 'release'
-        release.mkdir()
-        shutil.copytree(PROJECT / 'nuligahelper', release / 'nuligahelper',
-                        ignore=shutil.ignore_patterns('__pycache__'))
-        for name in [*SHIMS, 'webapp.py', 'schema_migrations.py', 'alembic.ini']:
-            shutil.copy(PROJECT / name, release / name)
-        environment = {key: value for key, value in os.environ.items()
-                       if not key.startswith(('NULIGAHELPER_', 'PYTHON'))}
-
-        def run(*args, **extra):
-            return subprocess.run([sys.executable, '-B', *args], cwd=release, text=True,
-                                  capture_output=True, env={**environment, **extra}, timeout=60)
-
-        result = run('runtime_check.py')
-        assert result.returncode == 1 and result.stderr.strip() == 'NULIGAHELPER_SECRET', result
-        result = run('manage_db.py', '--help')
-        assert result.returncode == 0 and 'migrate-schema' in result.stdout, result.stderr
-        result = run('operations.py', 'config-check', '--config',
-                     str(PROJECT / 'tests/fixtures/operations.json'))
-        assert result.stdout.strip() == 'operations=valid', result
-        result = run('privacy.py', '--help')
-        assert result.returncode == 0 and '--apply' in result.stdout, result.stderr
-        result = run('-c', 'import schema_migrations; print(schema_migrations.head_revisions()[0])')
-        assert result.returncode == 0 and re.fullmatch(r'\d{4}_\w+', result.stdout.strip()), result
-        database = Path(directory) / 'web.db'
-        init = run('-m', 'nuligahelper.cli', '--db', str(database), 'init')
-        assert init.returncode == 0, init.stderr
-        result = run('-c', 'import webapp; print(webapp.app.name)',
-                     NULIGAHELPER_DB=str(database), NULIGAHELPER_SECRET='synthetic-shim-secret')
-        assert result.returncode == 0 and result.stdout.strip() == 'nuligahelper.web', result.stderr
-        for name in ('main.py', 'monitor_watchdog.py'):
-            result = run('-c', f'import importlib.util; print(importlib.util.find_spec({SHIMS[name]!r}) is not None)')
-            assert result.stdout.strip() == 'True', (name, result.stderr)
-
-
 def _serve_health(release, target, environment):
     """Start Gunicorn like the web unit does; return the /healthz body and its log."""
     with socket.socket() as probe:
@@ -167,7 +117,7 @@ def _serve_health(release, target, environment):
     return body, log
 
 
-def test_release_gunicorn_config_serves_old_and_new_web_targets():
+def test_release_gunicorn_config_serves_the_package_web_target():
     # The installed web unit loads <release>/release-assets/gunicorn.conf.py; its logging
     # config resolves module paths at start-up, which --check-config does not exercise.
     with tempfile.TemporaryDirectory() as directory:
@@ -177,8 +127,7 @@ def test_release_gunicorn_config_serves_old_and_new_web_targets():
                         ignore=shutil.ignore_patterns('__pycache__'))
         shutil.copytree(ASSETS, release / 'release-assets',
                         ignore=shutil.ignore_patterns('__pycache__'))
-        for name in ('webapp.py', 'alembic.ini'):
-            shutil.copy(PROJECT / name, release / name)
+        shutil.copy(PROJECT / 'alembic.ini', release / 'alembic.ini')
         database = Path(directory) / 'web.db'
         environment = {key: value for key, value in os.environ.items()
                        if not key.startswith(('NULIGAHELPER_', 'PYTHON'))}
@@ -187,11 +136,10 @@ def test_release_gunicorn_config_serves_old_and_new_web_targets():
                               text=True, timeout=60)
         assert init.returncode == 0, init.stderr
         environment.update(NULIGAHELPER_DB=str(database), NULIGAHELPER_SECRET='synthetic-web-secret')
-        for target in ('webapp:app', 'nuligahelper.web:app'):
-            body, log = _serve_health(release, target, environment)
-            assert body == b'ok\n', (target, log)
-            assert 'level=INFO operation=web event=diagnostic' in log and '127.0.0.1' not in log, (
-                f'{target}: Gunicorn must log through the redacting journal formatter: {log}')
+        body, log = _serve_health(release, 'nuligahelper.web:app', environment)
+        assert body == b'ok\n', log
+        assert 'level=INFO operation=web event=diagnostic' in log and '127.0.0.1' not in log, (
+            f'Gunicorn must log through the redacting journal formatter: {log}')
 
 
 if __name__ == '__main__':

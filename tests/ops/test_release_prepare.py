@@ -1,8 +1,11 @@
 """Offline checks for operator-selected, non-activating release preparation."""
 
+import contextlib
 import importlib.util
 import copy
+import io
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 import subprocess
@@ -34,12 +37,14 @@ def synthetic_source(root):
     git('config', 'user.email', 'operator@club.test', cwd=source)
     git('config', 'user.name', 'Synthetic Operator', cwd=source)
     (source / 'release-assets').mkdir()
-    (source / 'test').mkdir()
+    (source / 'tests').mkdir()
+    (source / 'nuligahelper').mkdir()
+    (source / 'nuligahelper/__init__.py').write_text('')
     (source / 'requirements-production.txt').write_text('')
     (source / 'requirements-test.txt').write_text('')
     (source / 'release-assets/gunicorn.conf.py').write_text('bind = "127.0.0.1:8080"\n')
     (source / 'release-assets/recovery_check.py').write_text('"""Synthetic helper."""\n')
-    (source / 'test/run_tests.sh').write_text('#!/bin/bash\nexit 0\n')
+    (source / 'tests/run_tests.sh').write_text('#!/bin/bash\nexit 0\n')
     git('add', '.', cwd=source)
     git('commit', '-m', 'Synthetic master release', cwd=source)
     return source, git('rev-parse', 'HEAD', cwd=source)
@@ -129,6 +134,38 @@ def test_preparation_failures_keep_current_and_services_untouched():
             assert not (app_root / 'releases' / commit).exists()
             releases = app_root / 'releases'
             assert not releases.exists() or not list(releases.glob('.stage-*'))
+
+
+def test_preparation_refuses_a_candidate_from_before_the_package_layout():
+    for missing in ('tests/run_tests.sh', 'nuligahelper/__init__.py'):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source, _ = synthetic_source(root)
+            (source / missing).unlink()
+            (source / 'test').mkdir()
+            (source / 'test/run_tests.sh').write_text('#!/bin/bash\nexit 0\n')
+            git('add', '-A', cwd=source)
+            git('commit', '-m', 'Synthetic pre-package release', cwd=source)
+            commit = git('rev-parse', 'HEAD', cwd=source)
+            config = configuration(root, source)
+            app_root = Path(config['app_root'])
+            original = (app_root / 'current').resolve()
+            real_run = deploy.run
+            commands = []
+            def record(*args, **kwargs):
+                commands.append(args)
+                return real_run(*args, **kwargs)
+            with patch.object(deploy, 'check_headroom'), \
+                    patch.object(deploy, 'check_cache_directory'), \
+                    patch.object(deploy, 'ensure_releases_directory',
+                                 side_effect=lambda app, group: _synthetic_releases(app)), \
+                    patch.object(deploy, 'run', side_effect=record):
+                _assert_refused(lambda: deploy.prepare(config, commit),
+                                'lacks required release assets')
+            assert not any(args[0] == 'bash' for args in commands), \
+                'a candidate without tests/run_tests.sh must not run the old test/ runner'
+            assert (app_root / 'current').resolve() == original
+            assert not (app_root / 'releases' / commit).exists()
 
 
 def test_clean_preparation_records_exact_commit_without_switching_current():
@@ -262,6 +299,207 @@ def test_every_reviewed_unit_uses_only_current_and_one_environment_file():
             raise AssertionError('mixed or legacy installed unit paths accepted')
 
 
+def _assert_refused(action, phrase):
+    try:
+        action()
+    except deploy.DeployError as error:
+        assert phrase in str(error), error
+    else:
+        raise AssertionError('accepted, expected refusal: ' + phrase)
+
+
+REVIEWED_UNITS = Path(h.PROJECT_DIR) / 'release-assets/systemd'
+TRANSITION_VARIANTS = (
+    ('nuligahelper-daily.service', '-m nuligahelper.jobs.daily',
+     '/opt/nuligahelper/current/main.py'),
+    ('nuligahelper-daily.service', '-m nuligahelper.ops.runtime_check',
+     '/opt/nuligahelper/current/runtime_check.py'),
+    ('nuligahelper-web.service', 'nuligahelper.web:app', 'webapp:app'),
+)
+
+
+def _loaded_properties(content):
+    """Render a unit file the way `systemctl show` reports its loaded state."""
+    lines = ['WorkingDirectory=/opt/nuligahelper/current',
+             'EnvironmentFiles=/etc/nuligahelper/web.env (ignore_errors=no)']
+    for line in content.splitlines():
+        if line.startswith(('ExecStart=', 'ExecStartPre=')):
+            field, command = line.split('=', 1)
+            lines.append(f'{field}={{ path={command.split()[0]} ; argv[]={command} ; '
+                         'ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] ; '
+                         'pid=0 ; code=(null) ; status=0/0 }')
+    return '\n'.join(lines)
+
+
+def test_reviewed_units_pass_the_package_entry_point_checks():
+    for name in deploy.SERVICE_UNITS:
+        content = (REVIEWED_UNITS / name).read_text()
+        deploy.unit_paths_safe(content, name)
+        deploy.loaded_unit_safe(_loaded_properties(content), name)
+
+
+def test_units_with_transition_entry_points_are_refused_in_file_and_loaded_state():
+    for name, current, old in TRANSITION_VARIANTS:
+        content = (REVIEWED_UNITS / name).read_text()
+        assert current in content, 'the variant must change the reviewed unit'
+        stale = content.replace(current, old)
+        _assert_refused(lambda: deploy.unit_paths_safe(stale, name),
+                        'installed application unit still uses transition entry points')
+        _assert_refused(lambda: deploy.loaded_unit_safe(_loaded_properties(stale), name),
+                        'loaded application unit still uses transition entry points')
+
+
+def test_every_loaded_command_of_a_field_is_checked():
+    name = 'nuligahelper-daily.service'
+    content = (REVIEWED_UNITS / name).read_text()
+    pre = '/opt/nuligahelper/current/venv/bin/python -B /opt/nuligahelper/current/runtime_check.py'
+    stale = content.replace('ExecStartPre=', f'ExecStartPre={pre}\nExecStartPre=', 1)
+    _assert_refused(lambda: deploy.loaded_unit_safe(_loaded_properties(stale), name),
+                    'still uses transition entry points')
+
+
+def test_web_unit_must_start_gunicorn_with_the_package_target():
+    name = 'nuligahelper-web.service'
+    content = (REVIEWED_UNITS / name).read_text()
+    start = next(line for line in content.splitlines() if line.startswith('ExecStart='))
+    module = ('ExecStart=/opt/nuligahelper/current/venv/bin/python -B -m nuligahelper.web '
+              '--config /opt/nuligahelper/current/release-assets/gunicorn.conf.py')
+    _assert_refused(lambda: deploy.unit_paths_safe(content.replace(start, module), name),
+                    'still uses transition entry points')
+
+
+def test_installed_unit_verification_reads_the_loaded_state():
+    with tempfile.TemporaryDirectory() as directory:
+        units = Path(directory)
+        for name in deploy.SERVICE_UNITS:
+            (units / name).write_text((REVIEWED_UNITS / name).read_text())
+
+        def systemd(stale):
+            def answer(*args, **kwargs):
+                if args[0] != 'systemctl':
+                    return ''
+                name = args[2].replace('@monitor', '@')
+                content = (units / name).read_text()
+                if name == 'nuligahelper-web.service' and stale:
+                    content = content.replace('nuligahelper.web:app', 'webapp:app')
+                return _loaded_properties(content)
+            return answer
+
+        root_owned = SimpleNamespace(st_uid=0, st_mode=0o100644)
+        with patch.object(Path, 'stat', return_value=root_owned):
+            with patch.object(deploy, 'run', side_effect=systemd(False)):
+                deploy.verify_installed_units(units)
+            with patch.object(deploy, 'run', side_effect=systemd(True)):
+                _assert_refused(lambda: deploy.verify_installed_units(units),
+                                'loaded application unit still uses transition entry points')
+
+
+def _watchdog_file(root, content=None):
+    entry = root / 'nuligahelper-watchdog'
+    reviewed = Path(h.PROJECT_DIR) / 'release-assets/nuligahelper-watchdog.cron'
+    entry.write_text(reviewed.read_text() if content is None else content)
+    entry.chmod(0o644)
+    return entry
+
+
+def test_reviewed_watchdog_entry_passes():
+    with tempfile.TemporaryDirectory() as directory:
+        deploy.verify_watchdog_entry(_watchdog_file(Path(directory)), os.getuid())
+        entry = _watchdog_file(Path(directory), 'SHELL=/bin/sh\nMAILTO = ""\n\n'
+                               + _watchdog_file(Path(directory)).read_text())
+        deploy.verify_watchdog_entry(entry, os.getuid())
+
+
+def test_unsafe_or_outdated_watchdog_entries_are_refused():
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        owner = os.getuid()
+        verify = deploy.verify_watchdog_entry
+        _assert_refused(lambda: verify(root / 'missing', owner), 'unavailable')
+
+        entry = _watchdog_file(root)
+        link = root / 'link'
+        link.symlink_to(entry)
+        _assert_refused(lambda: verify(link, owner), 'regular file')
+
+        entry.chmod(0o664)
+        _assert_refused(lambda: verify(entry, owner), 'writable outside root')
+        entry.chmod(0o644)
+        _assert_refused(lambda: verify(entry, owner + 1), 'writable outside root')
+
+        reviewed = entry.read_text()
+        job = next(line for line in reviewed.splitlines() if not line.startswith('#'))
+        old = job.replace('-m nuligahelper.ops.watchdog',
+                          '-B /opt/nuligahelper/current/monitor_watchdog.py')
+        assert old != job
+        for content in (old + '\n', reviewed + job + '\n', reviewed + old + '\n',
+                        '# ' + job + '\n', job + '_old\n', ''):
+            _assert_refused(lambda: verify(_watchdog_file(root, content), owner),
+                            'one nuligahelper.ops.watchdog job')
+
+
+def _run_main(*arguments):
+    errors = io.StringIO()
+    with patch.object(sys, 'argv', ['nuligahelper-deploy', *arguments]), \
+            patch.object(deploy.os, 'geteuid', return_value=0), \
+            patch.object(deploy, 'load_config', return_value={
+                'app_root': '/synthetic/app', 'recovery_dir': '/synthetic/recovery',
+                'service_group': 'synthetic'}), \
+            patch.object(deploy, 'exclusive_lock',
+                         side_effect=lambda path: os.open(os.devnull, os.O_RDONLY)), \
+            contextlib.redirect_stderr(errors):
+        return deploy.main(), errors.getvalue()
+
+
+def test_activate_and_continue_refuse_old_host_entry_points_before_any_interruption():
+    record = {'outcome': 'migration_required', 'previous_release': '/synthetic/previous'}
+    actions = (('activate', '--sha', 'c' * 40), ('continue', '--deployment-id', 'd' * 32))
+    for gate, other in (('verify_installed_units', 'verify_watchdog_entry'),
+                        ('verify_watchdog_entry', 'verify_installed_units')):
+        for action in actions:
+            with patch.object(deploy, gate, side_effect=deploy.DeployError('synthetic gate')), \
+                    patch.object(deploy, other), \
+                    patch.object(deploy, 'read_deployment_record', return_value=record), \
+                    patch.object(deploy, 'enter_maintenance') as maintenance, \
+                    patch.object(deploy, 'complete_activation') as activation:
+                status, errors = _run_main(*action)
+            assert status == 1 and 'synthetic gate' in errors, (gate, action, errors)
+            assert not maintenance.called and not activation.called, (gate, action)
+
+
+def test_inspect_reports_entry_point_findings_without_failing():
+    refusal = deploy.DeployError('installed application unit still uses transition entry points')
+    with patch.object(deploy, 'verify_installed_units', side_effect=refusal), \
+            patch.object(deploy, 'verify_watchdog_entry'):
+        assert deploy.host_entry_points() == {'units': str(refusal), 'watchdog': 'ready'}
+    with patch.object(deploy, 'verify_installed_units', side_effect=FileNotFoundError()), \
+            patch.object(deploy, 'verify_watchdog_entry',
+                         side_effect=deploy.DeployError('watchdog cron entry is unavailable')):
+        assert deploy.host_entry_points() == {
+            'units': 'FileNotFoundError', 'watchdog': 'watchdog cron entry is unavailable'}
+
+
+def test_previous_release_must_contain_the_application_package():
+    with tempfile.TemporaryDirectory() as directory:
+        previous = Path(directory)
+        (previous / 'release-assets').mkdir()
+        (previous / 'release-assets/gunicorn.conf.py').write_text('')
+        verify = lambda: deploy.verify_previous_web_compatibility(str(previous), 'synthetic')
+        _assert_refused(verify, 'lacks the application package')
+        (previous / 'nuligahelper/web').mkdir(parents=True)
+        (previous / 'nuligahelper/web/__init__.py').write_text('')
+        with patch.object(deploy.grp, 'getgrnam', return_value=SimpleNamespace(gr_gid=-1)):
+            _assert_refused(verify, 'previous Gunicorn file')
+
+
+def test_previous_schema_head_reads_only_the_package():
+    with patch.object(deploy, 'run', return_value='0009_synthetic_head') as command:
+        assert deploy.previous_schema_head('/synthetic/previous') == '0009_synthetic_head'
+    script = command.call_args.args[-1]
+    assert 'nuligahelper.db import schema_upgrade' in script
+    assert 'schema_migrations' not in script and 'except' not in script
+
+
 def test_failed_tool_output_does_not_leak_secret_canary():
     canary = 'synthetic-contact-and-secret-canary'
     try:
@@ -321,10 +559,13 @@ def test_read_only_plan_contains_no_configuration_or_contact_canary():
         with patch.object(deploy, '_unit_state', return_value={
                 'LoadState': 'loaded', 'ActiveState': 'active'}), \
                 patch.object(deploy, 'schema_probe', return_value={
-                    'gate': 'ready', 'revision': '0003_game_day_task_blocks'}):
+                    'gate': 'ready', 'revision': '0003_game_day_task_blocks'}), \
+                patch.object(deploy, 'verify_installed_units'), \
+                patch.object(deploy, 'verify_watchdog_entry'):
             plan = deploy.inspect_plan(config, commit)
         serialized = json.dumps(plan)
         assert plan['activation_available'] is True
+        assert plan['entry_points'] == {'units': 'ready', 'watchdog': 'ready'}
         assert plan['selected_commit'] == commit
         assert 'synthetic-contact-and-secret-canary' not in serialized
         assert 'public_health_url' not in serialized

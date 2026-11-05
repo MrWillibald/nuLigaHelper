@@ -13,35 +13,36 @@ This guide assumes the deploy command, its root-owned
 systemd units are installed and have passed the host preflight. The first
 production cutover has been accepted as described in the private operations
 runbook. The tracked [release asset guide](../../release-assets/README.md) explains the
-setup and the legacy-release Gunicorn compatibility requirement; repeat those
-gates only when a host is rebuilt or re-installed.
+setup; repeat those gates only when a host is rebuilt or re-installed.
 
-### One-time transition to the package layout
+### Prerequisite: package entry points on the host
 
-Releases with the `nuligahelper/` package keep thin root shims (`main.py`,
-`webapp.py`, `manage_db.py`, `operations.py`, `privacy.py`, `runtime_check.py`,
-`monitor_watchdog.py`, `schema_migrations.py` and `test/run_tests.sh`), so the
-installed units and the installed deploy command keep working unchanged. Change
-the host in this order:
+Releases contain no root scripts, so a host can only run them with the reviewed units
+and watchdog entry from `release-assets/`. Check this before activating:
 
-1. Deploy and accept the first package-layout release with the **existing** units
-   and deploy command, following the steps below.
-2. While that release is current, install the reviewed copies of
-   `release-assets/systemd/*.service`, `release-assets/nuligahelper-watchdog.cron`
-   and `release-assets/nuligahelper-deploy.py` as root. The new units start
-   `python -B -m nuligahelper.…` and Gunicorn loads `nuligahelper.web:app`. Verify
-   them with `systemd-analyze verify`, run `systemctl daemon-reload`, restart the
-   web service in a maintenance window and run the post-activation checks in
-   section 4 again. If you paused the daily, cleanup and monitor timers for the
-   swap, restore their previous states before starting `nuligahelper-monitor.service`
-   by hand: the monitor reports a disabled or inactive timer as critical, exits
-   with status 2 and sends an operator alert.
-3. From then on the code rollback may only select package-layout releases: a
-   release from before the package layout cannot start under the new units. To
-   return to such a release, reinstall the previous unit files first.
+```bash
+systemctl show nuligahelper-web.service nuligahelper-daily.service -p ExecStart
+```
 
-A follow-up release removes the shims; deploy it only after every host runs the
-updated units and deploy command.
+```bash
+sudo cat /etc/cron.d/nuligahelper-watchdog
+```
+
+The daily job must start `python -B -m nuligahelper.jobs.daily`, the web service
+Gunicorn with `nuligahelper.web:app`, and the cron file must hold exactly one entry
+with `-m nuligahelper.ops.watchdog`. Move an entry installed elsewhere to this path.
+
+The deploy command checks all application units and the watchdog entry. `activate`
+and `continue` refuse with `application unit still uses transition entry points` or a
+`watchdog cron entry` message before anything is stopped; `inspect` reports the same
+findings under `entry_points` without failing. `prepare` refuses a commit without the
+`nuligahelper/` package or `tests/run_tests.sh`, and the code rollback only accepts a
+previous release that contains the package. To return to a release from before the
+package layout, reinstall the previous unit files first.
+
+A deploy command installed from an older release does not make these checks, so do
+them by hand and install the updated `release-assets/nuligahelper-deploy.py` as root
+after activating this release.
 
 ### One-time transition: day blocks need a calendar date
 
