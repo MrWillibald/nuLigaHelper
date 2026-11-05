@@ -59,10 +59,6 @@ All documentation is indexed in [docs/README.md](docs/README.md).
 | `release-assets/` | Reviewed systemd, Caddy, Gunicorn and deploy-command templates |
 | `openspec/` | Behavior specifications and changes |
 
-The Python files at the repository root (`main.py`, `webapp.py`, …) and `test/run_tests.sh`
-only forward to the package for already installed systemd units and deploy commands; they
-are removed once every host runs the updated units.
-
 # Getting started
 
 ```bash

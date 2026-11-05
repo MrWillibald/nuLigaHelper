@@ -55,6 +55,13 @@ DATABASE_USERS = ("nuligahelper-daily.service", "nuligahelper-cleanup.service",
                   "nuligahelper-alert-test.service")
 SERVICE_UNITS = ("nuligahelper-web.service", *DATABASE_USERS,
                  "nuligahelper-alert@.service")
+PACKAGE_MODULE = re.compile(
+    r"/opt/nuligahelper/current/venv/bin/python -B -m nuligahelper(?:\.\w+)+(?:\s|\Z)")
+GUNICORN_BINARY = "/opt/nuligahelper/current/venv/bin/gunicorn"
+GUNICORN_TARGET = "nuligahelper.web:app"
+WATCHDOG_CRON = Path("/etc/cron.d/nuligahelper-watchdog")
+WATCHDOG_MODULE = re.compile(r"-m nuligahelper\.ops\.watchdog(?:\s|\Z)")
+CRON_VARIABLE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\s*=")
 
 
 class DeployError(RuntimeError):
@@ -423,6 +430,22 @@ def verify_local_web(config: dict[str, object], commit: str,
     wait_for_web_ready(config, controller)
 
 
+def command_arguments(command: str) -> str:
+    """Return the command of a unit file line or of a loaded systemd property."""
+    loaded = re.search(r"argv\[\]=(.*?) ; ", command)
+    return loaded.group(1) if loaded else command.split("=", 1)[-1]
+
+
+def package_entry_points(commands: list[str], name: str, origin: str) -> None:
+    """Refuse commands the release cannot start: it ships no root scripts."""
+    arguments = [command_arguments(command) for command in commands]
+    current = all(GUNICORN_TARGET in command.split() if GUNICORN_BINARY in command
+                  else PACKAGE_MODULE.search(command) for command in arguments)
+    if not current or (name == "nuligahelper-web.service" and not any(
+            GUNICORN_BINARY in command for command in arguments)):
+        raise DeployError(f"{origin} application unit still uses transition entry points")
+
+
 def unit_paths_safe(content: str, name: str) -> None:
     lines = [line.strip() for line in content.splitlines()
              if line.startswith(("WorkingDirectory=", "EnvironmentFile=",
@@ -442,6 +465,29 @@ def unit_paths_safe(content: str, name: str) -> None:
             "/opt/nuligahelper/current/release-assets/gunicorn.conf.py" in line
             for line in commands):
         raise DeployError("installed web unit still uses legacy Gunicorn configuration")
+    package_entry_points(commands, name, "installed")
+
+
+def loaded_unit_safe(loaded: str, name: str) -> None:
+    """Apply the unit file rules to the properties systemd has actually loaded."""
+    properties = dict(line.split("=", 1) for line in loaded.splitlines() if "=" in line)
+    if properties.get("WorkingDirectory") != "/opt/nuligahelper/current" or \
+            not re.fullmatch(
+                r"/etc/nuligahelper/web\.env \(ignore_errors=(?:yes|no)\)",
+                properties.get("EnvironmentFiles", "")):
+        raise DeployError("loaded application unit has mixed runtime paths")
+    # systemctl show prints one line per command, so read lines, not the dict.
+    commands = [line for line in loaded.splitlines()
+                if re.match(r"ExecStart(?:Pre)?=.", line)]
+    starts = [line for line in commands if line.startswith("ExecStart=")]
+    if not starts or any("/opt/nuligahelper/current/" not in line for line in starts) or \
+            any("/opt/nuligahelper/" in line.replace("/opt/nuligahelper/current/", "")
+                for line in commands):
+        raise DeployError("loaded application unit has mixed runtime paths")
+    package_entry_points(commands, name, "loaded")
+    if any(properties.get(field, "") for field in
+           ("ExecCondition", "ExecStartPost", "ExecReload", "ExecStop", "ExecStopPost")):
+        raise DeployError("loaded application unit has unreviewed command hooks")
 
 
 def verify_installed_units(directory: Path = Path("/etc/systemd/system")) -> None:
@@ -464,24 +510,42 @@ def verify_installed_units(directory: Path = Path("/etc/systemd/system")) -> Non
                      "--property=WorkingDirectory,EnvironmentFiles,ExecStart,ExecStartPre,"
                      "ExecCondition,ExecStartPost,ExecReload,ExecStop,ExecStopPost",
                      env=safe_environment())
-        properties = dict(line.split("=", 1) for line in loaded.splitlines() if "=" in line)
-        if properties.get("WorkingDirectory") != "/opt/nuligahelper/current" or \
-                not re.fullmatch(
-                    r"/etc/nuligahelper/web\.env \(ignore_errors=(?:yes|no)\)",
-                    properties.get("EnvironmentFiles", "")):
-            raise DeployError("loaded application unit has mixed runtime paths")
-        for field in ("ExecStart", "ExecStartPre"):
-            command = properties.get(field, "")
-            if field == "ExecStart" and "/opt/nuligahelper/current/" not in command:
-                raise DeployError("loaded application unit has mixed runtime paths")
-            if "/opt/nuligahelper/" in command.replace(
-                    "/opt/nuligahelper/current/", ""):
-                raise DeployError("loaded application unit has mixed runtime paths")
-        if any(properties.get(field, "") for field in
-               ("ExecCondition", "ExecStartPost", "ExecReload", "ExecStop", "ExecStopPost")):
-            raise DeployError("loaded application unit has unreviewed command hooks")
+        loaded_unit_safe(loaded, name)
     run("systemd-analyze", "verify", *(str(directory / name) for name in SERVICE_UNITS),
         env=safe_environment())
+
+
+def verify_watchdog_entry(path: Path = WATCHDOG_CRON, owner: int = 0) -> None:
+    """Refuse a cron entry that would silently stop the independent watchdog."""
+    try:
+        info = path.lstat()
+        if not stat.S_ISREG(info.st_mode):
+            raise DeployError("watchdog cron entry must be a regular file")
+        content = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise DeployError("watchdog cron entry is unavailable") from exc
+    if info.st_uid != owner or info.st_mode & 0o022:
+        raise DeployError("watchdog cron entry is writable outside root")
+    lines = [line.strip() for line in content.splitlines()]
+    entries = [line for line in lines if line and not line.startswith("#")
+               and not CRON_VARIABLE.match(line)]
+    if len(entries) != 1 or not WATCHDOG_MODULE.search(entries[0]):
+        raise DeployError("watchdog cron entry must be one nuligahelper.ops.watchdog job")
+
+
+def host_entry_points() -> dict[str, str]:
+    """Report the activation entry point gates without failing a read-only plan."""
+    findings = {}
+    for label, check in (("units", verify_installed_units),
+                         ("watchdog", verify_watchdog_entry)):
+        try:
+            check()
+            findings[label] = "ready"
+        except DeployError as exc:
+            findings[label] = str(exc)
+        except OSError as exc:
+            findings[label] = type(exc).__name__
+    return findings
 
 
 def assert_maintenance_still_closed(database: Path, controller: HostController) -> None:
@@ -634,6 +698,7 @@ def inspect_plan(config: dict[str, object], commit: str) -> dict[str, object]:
             "current": prior_release(app_root), "database": str(database),
             "database_size_bytes": database.stat().st_size,
             "schema": schema_probe(candidate, database), "units": units,
+            "entry_points": host_entry_points(),
             "action": "read_only_plan", "activation_available": True}
 
 
@@ -839,6 +904,9 @@ def enter_maintenance(config: dict[str, object], commit: str,
 
 def verify_previous_web_compatibility(previous: str, group_name: str) -> None:
     """The new web unit must also start the retained prior release on rollback."""
+    package = Path(previous) / "nuligahelper/web/__init__.py"
+    if package.is_symlink() or not package.is_file():
+        raise DeployError("previous release lacks the application package")
     gunicorn = Path(previous) / "release-assets/gunicorn.conf.py"
     if gunicorn.is_symlink() or not gunicorn.is_file():
         raise DeployError("previous release lacks the new web unit's Gunicorn file")
@@ -975,10 +1043,7 @@ def previous_schema_head(previous: str) -> str:
     environment = safe_environment()
     environment["PYTHONPATH"] = previous
     revision = run(str(Path(previous) / "venv/bin/python"), "-B", "-c",
-                   "try:\n"
-                   "    from nuligahelper.db import schema_upgrade as migrations\n"
-                   "except ImportError:\n"
-                   "    import schema_migrations as migrations\n"
+                   "from nuligahelper.db import schema_upgrade as migrations; "
                    "heads = migrations.head_revisions(); "
                    "assert len(heads) == 1; print(heads[0])",
                    env=environment)
@@ -1143,7 +1208,9 @@ def prepare(config: dict[str, object], requested: str | None = None) -> dict[str
         if not (destination / "requirements-production.txt").is_file() or \
                 not (destination / "requirements-test.txt").is_file() or \
                 not (destination / "release-assets/gunicorn.conf.py").is_file() or \
-                not (destination / "release-assets/recovery_check.py").is_file():
+                not (destination / "release-assets/recovery_check.py").is_file() or \
+                not (destination / "tests/run_tests.sh").is_file() or \
+                not (destination / "nuligahelper/__init__.py").is_file():
             raise DeployError("selected commit lacks required release assets")
         env = safe_environment()
         run(str(config["python"]), "-m", "venv", str(destination / "venv"), env=env)
@@ -1151,10 +1218,7 @@ def prepare(config: dict[str, object], requested: str | None = None) -> dict[str
         run(interpreter, "-m", "pip", "install", "--disable-pip-version-check",
             "-r", str(destination / "requirements-test.txt"), cwd=destination, env=env)
         run(interpreter, "-m", "pip", "check", cwd=destination, env=env)
-        suite = destination / "tests/run_tests.sh"
-        if not suite.is_file():
-            suite = destination / "test/run_tests.sh"  # releases before the package layout
-        run("bash", str(suite), cwd=destination, env=env)
+        run("bash", str(destination / "tests/run_tests.sh"), cwd=destination, env=env)
         run(interpreter, "-m", "compileall", "-q", str(destination), cwd=destination, env=env)
         run(interpreter, "-m", "py_compile", str(destination / "release-assets/gunicorn.conf.py"),
             cwd=destination, env=env)
@@ -1213,6 +1277,7 @@ def main() -> int:
                 report = {"app_root": config["app_root"],
                           "current": prior_release(Path(config["app_root"])),
                           "source_cache": config["source_cache"],
+                          "entry_points": host_entry_points(),
                           "activation_available": True}
             print(json.dumps(report, sort_keys=True))
             return 0
@@ -1223,6 +1288,7 @@ def main() -> int:
                 result = prepare(config, args.sha)
             elif args.action == "activate":
                 verify_installed_units()
+                verify_watchdog_entry()
                 candidate = prepared_candidate(Path(config["app_root"]), args.sha)
                 marker = json.loads((candidate / ".prepared.json").read_text(encoding="utf-8"))
                 previous = prior_release(Path(config["app_root"]))
@@ -1241,6 +1307,7 @@ def main() -> int:
                     if result["outcome"] != "migration_required":
                         raise DeployError("only a migration-paused deployment can continue")
                     verify_installed_units()
+                    verify_watchdog_entry()
                     verify_previous_web_compatibility(
                         result["previous_release"], str(config["service_group"]))
                     result = complete_activation(config, result, controller)

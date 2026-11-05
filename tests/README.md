@@ -16,9 +16,6 @@ tests/run_tests.sh                               # everything (standalone runner
 ./venv/bin/python -m pytest tests/web -k login   # one area / pattern
 ```
 
-`test/run_tests.sh` only forwards to `tests/run_tests.sh` for deploy commands installed
-before the package layout; remove it together with the root shims.
-
 The optional `browser_disclosures.mjs` check uses an already installed Playwright
 module and Chromium browser; it installs no packages. It serves only a synthetic
 app on loopback and checks delayed scripts, native fallbacks and a larger roster:

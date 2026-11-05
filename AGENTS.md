@@ -24,9 +24,8 @@ Language: code/comments in English, UI texts and notification templates in Germa
 ## Module map
 
 All application code lives in the `nuligahelper/` package; the repository root keeps
-launch scripts, requirements, `alembic.ini`, `config_template.json` and, for one
-release, thin transition shims (`main.py`, `webapp.py`, `manage_db.py`, … and
-`test/run_tests.sh`) for already installed units and deploy commands.
+launch scripts, requirements, `alembic.ini` and `config_template.json`, but no Python
+modules.
 
 Domain and data (`nuligahelper/db/`, imported as `from nuligahelper import db`):
 
@@ -436,7 +435,7 @@ tests/run_tests.sh                            # whole suite, must stay green
 - `gunicorn --check-config` does not apply `logconfig_dict`, so a stale module path in
   `release-assets/gunicorn.conf.py` only fails when the service starts. Module paths in
   configuration strings are invisible to import guards; `tests/ops/test_deployment_assets.py`
-  starts real Gunicorn from a release tree for the old and new web targets.
+  starts real Gunicorn from a release tree.
 - Dispatch counting: a person without mail *and* phone counts as skipped (return 0),
   every valid contact returns 1 — tests rely on these exact counts.
 - Webapp tests build on each other top-to-bottom (a click-through scenario);
