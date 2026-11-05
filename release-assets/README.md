@@ -53,8 +53,8 @@ verify its postflight, then use `continue --deployment-id <deployment-id>`.
 For example, while all writers remain stopped:
 
 ```bash
-sudo -u nuligahelper /opt/nuligahelper/releases/<full-sha>/venv/bin/python -B \
-  /opt/nuligahelper/releases/<full-sha>/nuligahelper.cli \
+sudo -u nuligahelper env --chdir=/opt/nuligahelper/releases/<full-sha> \
+  /opt/nuligahelper/releases/<full-sha>/venv/bin/python -B -m nuligahelper.cli \
   --db /var/lib/nuligahelper/nuliga_helper.db migrate-schema --confirm-stopped
 sudo /usr/local/sbin/nuligahelper-deploy continue --deployment-id <deployment-id>
 ```

@@ -32,7 +32,10 @@ the host in this order:
    `python -B -m nuligahelper.…` and Gunicorn loads `nuligahelper.web:app`. Verify
    them with `systemd-analyze verify`, run `systemctl daemon-reload`, restart the
    web service in a maintenance window and run the post-activation checks in
-   section 4 again.
+   section 4 again. If you paused the daily, cleanup and monitor timers for the
+   swap, restore their previous states before starting `nuligahelper-monitor.service`
+   by hand: the monitor reports a disabled or inactive timer as critical, exits
+   with status 2 and sends an operator alert.
 3. From then on the code rollback may only select package-layout releases: a
    release from before the package layout cannot start under the new units. To
    return to such a release, reinstall the previous unit files first.
@@ -160,12 +163,16 @@ printed by activation:
 ```bash
 RELEASE_SHA='same-full-40-character-sha-used-for-prepare'
 DEPLOYMENT_ID='paste-deployment-id-from-activate-output'
-sudo -u nuligahelper "/opt/nuligahelper/releases/$RELEASE_SHA/venv/bin/python" -B \
-  "/opt/nuligahelper/releases/$RELEASE_SHA/nuligahelper.cli" \
+RELEASE_DIR="/opt/nuligahelper/releases/$RELEASE_SHA"
+sudo -u nuligahelper env --chdir="$RELEASE_DIR" "$RELEASE_DIR/venv/bin/python" -B \
+  -m nuligahelper.cli \
   --db /var/lib/nuligahelper/nuliga_helper.db migrate-schema --confirm-stopped
 sudo /usr/local/sbin/nuligahelper-deploy continue --deployment-id "$DEPLOYMENT_ID"
 ```
 
+`-m nuligahelper.cli` imports the package from the working directory, so the
+command switches to the candidate release first; `env --chdir` does this for the
+service user even when the operator account cannot enter the release directory.
 Record the migration's backup path and successful postflight. An unknown,
 newer, divergent, or damaged schema is a refusal: keep services stopped and
 investigate it through the private recovery runbook. Never initialize a
